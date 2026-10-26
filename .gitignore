@@ -227,3 +227,4 @@ node_modules/
 dist/
 .DS_Store
 backend/storage/
+backend/spikes/out/
