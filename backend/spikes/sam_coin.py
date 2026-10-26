@@ -25,6 +25,9 @@ load_dotenv(ROOT / ".env")
 client = AsyncOpenAI(base_url="https://api.meta.ai/v1", api_key=os.environ["MODEL_API_KEY"])
 
 
+COLORS = [(0, 200, 0), (0, 128, 255), (255, 0, 255), (255, 200, 0)]  # BGR
+
+
 def slug(text):
     return re.sub(r"\W+", "_", text.strip().lower()).strip("_")
 
@@ -62,7 +65,7 @@ async def segment(image_path: Path, concept: str, raw_name: str):
     return img, w, h, boxes, masks, result.raw_output
 
 
-def report(img, w, h, boxes, masks, raw, tag):
+def report(img, w, h, boxes, masks, raw, tag, concept):
     print(f"objects found: {len(boxes)}")
     # wire x/y fields of each mask token, e.g. <|mask;x=0;y=0;data=H,W,...|>
     wire_xy = re.findall(r"<\|mask;x=(-?\d+);y=(-?\d+)", raw)
@@ -84,14 +87,30 @@ def report(img, w, h, boxes, masks, raw, tag):
         out = OUT / f"sam_{tag}_{b.object_id}_mask.png"
         cv2.imwrite(str(out), canvas)
         print(f"    saved {out.name}")
+        # overlay: translucent colour over the photo, box outline, confidence label
+        shown = img.copy()
+        shown[canvas > 0] = (0.5 * shown[canvas > 0] + 0.5 * np.array(COLORS[i % len(COLORS)])).astype(np.uint8)
+        t = max(2, w // 500)
+        cv2.rectangle(shown, (b.left, b.top), (b.right - 1, b.bottom - 1), COLORS[i % len(COLORS)], t)
+        label = f"{concept} {b.confidence:.2f}" if b.confidence is not None else concept
+        cv2.putText(shown, label, (b.left, max(b.top - t * 3, 30 * t)), cv2.FONT_HERSHEY_SIMPLEX, t * 0.8,
+                    COLORS[i % len(COLORS)], t * 2, cv2.LINE_AA)
+        out = OUT / f"sam_{tag}_{b.object_id}_overlay.png"
+        cv2.imwrite(str(out), shown)
+        print(f"    saved {out.name}")
 
 
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--part", default="part", help="noun phrase naming the part in test_01.jpg")
+    ap.add_argument("--prompts", nargs="+", help="run only these concepts on test_01.jpg")
     args = ap.parse_args()
 
     photo = GOLDEN / "test_01.jpg"
+    if args.prompts:
+        for concept in args.prompts:
+            report(*await segment(photo, concept, f"sam_{slug(concept)}_raw.txt"), slug(concept), concept)
+        return
     runs = [(photo, "coin", "sam_coin_raw.txt"),
             (photo, args.part, f"sam_{slug(args.part)}_raw.txt"),
             (photo, "credit card", "sam_credit_card_raw.txt")]
@@ -103,7 +122,7 @@ async def main():
 
     for path, concept, raw_name in runs:
         tag = slug(concept) if path == photo else f"{slug(concept)}_{path.stem}"
-        report(*await segment(path, concept, raw_name), tag)
+        report(*await segment(path, concept, raw_name), tag, concept)
 
 
 if __name__ == "__main__":
