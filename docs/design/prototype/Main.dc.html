@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SnapPart phone prototype</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;color:#1D1D1F;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+button:active,a:active{opacity:.7}
+input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #F5F5F7">
+
+<!-- ============ HOME ============ -->
+<sc-if value="{{ scr.home }}" hint-placeholder-val="{{ true }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 20px">
+  <div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10V6a2 2 0 0 1 2-2h4M18 4h4a2 2 0 0 1 2 2v4M24 18v4a2 2 0 0 1-2 2h-4M10 24H6a2 2 0 0 1-2-2v-4"/><circle cx="14" cy="14" r="4"/></svg>
+      <span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em">SnapPart</span>
+    </div>
+    <button onClick="{{ go.about }}" style="min-height: 44px; padding: 0 4px; border: 0; background: transparent; font-size: 15px; color: #0A63D8">About</button>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 4px">
+    <h1 style="margin: 0; font-size: 40px; line-height: 1.04; font-weight: 700; letter-spacing: -0.035em">Snap a photo.<br>Print a part.</h1>
+    <p style="margin: 0; font-size: 17px; line-height: 1.4; color: #5E5E64">Turn a photo of a flat or round part into a printable 3D file, measured in millimetres.</p>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <div style="background: #FFFFFF; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="width: 44px; height: 44px; border-radius: 12px; background: #E8F0FD; display: flex; align-items: center; justify-content: center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A63D8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        </div>
+        <div>
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">Photo mode</h2>
+          <p style="margin: 2px 0 0; font-size: 14px; color: #5E5E64">Brackets, plates, wheels, axles</p>
+        </div>
+      </div>
+      <button onClick="{{ go.photoMode }}" style="min-height: 50px; border: 0; border-radius: 14px; background: #0A63D8; color: #FFFFFF; font-size: 17px; font-weight: 600">Snap your part</button>
+    </div>
+    <div style="background: #FFFFFF; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="width: 44px; height: 44px; border-radius: 12px; background: #EDEDF0; display: flex; align-items: center; justify-content: center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1D1D1F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16l-1 4z"/><path d="M14 7l3 3"/></svg>
+        </div>
+        <div>
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">Design mode</h2>
+          <p style="margin: 2px 0 0; font-size: 14px; color: #5E5E64">Sketches, logos, names. Simple designs only for now.</p>
+        </div>
+      </div>
+      <button onClick="{{ go.designMode }}" style="min-height: 50px; border: 0; border-radius: 14px; background: #EDEDF0; color: #1D1D1F; font-size: 17px; font-weight: 600">Make from a design</button>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5E5E64">Try an example</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <button onClick="{{ ex.bracket }}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: #FFFFFF; font-size: 15px; font-weight: 500; color: #1D1D1F">Bracket</button>
+      <button onClick="{{ ex.wheel }}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: #FFFFFF; font-size: 15px; font-weight: 500; color: #1D1D1F">Wheel</button>
+      <button onClick="{{ ex.keychain }}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: #FFFFFF; font-size: 15px; font-weight: 500; color: #1D1D1F">Name keychain</button>
+    </div>
+  </div>
+  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px">
+    <button onClick="{{ go.roadmap }}" style="min-height: 44px; border: 0; background: transparent; font-size: 15px; color: #0A63D8">See the roadmap</button>
+    <p style="margin: 0; font-size: 13px; line-height: 1.4; color: #5E5E64; text-align: center">Built during the Meta Global AI Developer Hackathon with SAM 3.1 and Muse Spark.</p>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ PART TYPE ============ -->
+<sc-if value="{{ scr.type }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; align-items: center; min-height: 44px">
+    <button onClick="{{ go.home }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Back
+    </button>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spacing: -0.03em">What are you capturing?</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.4; color: #5E5E64">This decides which photos we ask for.</p>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <button onClick="{{ pick.flat }}" aria-pressed="{{ isFlat }}" style="text-align: left; background: #FFFFFF; border-radius: 22px; padding: 16px; border: 2px solid {{ flatBorder }}; display: flex; gap: 14px; align-items: center; font-family: inherit; color: #1D1D1F">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="8" y="18" width="48" height="28" rx="4" fill="#E8F0FD" stroke="#0A63D8" stroke-width="2"/><circle cx="20" cy="32" r="4" fill="#FFFFFF" stroke="#0A63D8" stroke-width="2"/><circle cx="44" cy="32" r="4" fill="#FFFFFF" stroke="#0A63D8" stroke-width="2"/></svg>
+      <span style="flex: 1; min-width: 0; display: block">
+        <span style="display: block; font-size: 18px; font-weight: 600; letter-spacing: -0.015em">Flat part</span>
+        <span style="display: block; margin: 2px 0 6px; font-size: 14px; line-height: 1.35; color: #5E5E64">Brackets, plates, tags, gaskets</span>
+        <span style="display: block; font-size: 13px; font-weight: 500; color: #0A63D8">2 photos: Top, Front</span>
+      </span>
+      <sc-if value="{{ isFlat }}" hint-placeholder-val="{{ true }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#0A63D8"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></sc-if>
+      <sc-if value="{{ isRound }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="#C7C7CC" stroke-width="1.5"/></svg></sc-if>
+    </button>
+    <button onClick="{{ pick.round }}" aria-pressed="{{ isRound }}" style="text-align: left; background: #FFFFFF; border-radius: 22px; padding: 16px; border: 2px solid {{ roundBorder }}; display: flex; gap: 14px; align-items: center; font-family: inherit; color: #1D1D1F">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="#E8F0FD" stroke="#0A63D8" stroke-width="2"/><circle cx="32" cy="32" r="12" fill="#FFFFFF" stroke="#0A63D8" stroke-width="2"/><circle cx="32" cy="32" r="3.5" fill="#E8F0FD" stroke="#0A63D8" stroke-width="2"/></svg>
+      <span style="flex: 1; min-width: 0; display: block">
+        <span style="display: block; font-size: 18px; font-weight: 600; letter-spacing: -0.015em">Round part</span>
+        <span style="display: block; margin: 2px 0 6px; font-size: 14px; line-height: 1.35; color: #5E5E64">Wheels, knobs, spacers, axles</span>
+        <span style="display: block; font-size: 13px; font-weight: 500; color: #0A63D8">2 photos: End, Side</span>
+      </span>
+      <sc-if value="{{ isRound }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#0A63D8"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></sc-if>
+      <sc-if value="{{ isFlat }}" hint-placeholder-val="{{ true }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="#C7C7CC" stroke-width="1.5"/></svg></sc-if>
+    </button>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5E5E64">Reference object</p>
+      <button onClick="{{ toggleWhy }}" aria-label="Why a reference object?" style="width: 44px; height: 44px; margin: -10px -10px -10px 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#0A63D8" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="9"/><path d="M11 10v5M11 7v.01"/></svg>
+      </button>
+    </div>
+    <sc-if value="{{ s.why }}" hint-placeholder-val="{{ false }}">
+      <p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3C3C43; background: #E8F0FD; border-radius: 14px; padding: 12px 14px">A photo has no size on its own. A card or coin of known size next to the part turns pixels into millimetres.</p>
+    </sc-if>
+    <div style="display: flex; background: #E3E3E8; border-radius: 12px; padding: 3px; gap: 2px">
+      <button onClick="{{ setRef.card }}" aria-pressed="{{ refIsCard }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; background: {{ segCard.bg }}; font-weight: {{ segCard.fw }}; color: #1D1D1F">Bank card</button>
+      <button onClick="{{ setRef.coin }}" aria-pressed="{{ refIsCoin }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; background: {{ segCoin.bg }}; font-weight: {{ segCoin.fw }}; color: #1D1D1F">Coin</button>
+      <button onClick="{{ setRef.mm }}" aria-pressed="{{ refIsMm }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; background: {{ segMm.bg }}; font-weight: {{ segMm.fw }}; color: #1D1D1F">Size in mm</button>
+    </div>
+
+    <sc-if value="{{ refIsCard }}" hint-placeholder-val="{{ true }}">
+      <p style="margin: 0; font-size: 14px; line-height: 1.4; color: #5E5E64">A bank card is 85.60 × 53.98 mm everywhere and gives the most accurate scale. We check what we find with you before measuring.</p>
+    </sc-if>
+    <sc-if value="{{ refIsCoin }}" hint-placeholder-val="{{ false }}">
+      <div style="background: #FFFFFF; border-radius: 18px; padding: 4px 14px">
+        <sc-for list="{{ coins }}" as="c" hint-placeholder-count="4">
+          <button onClick="{{ c.pick }}" aria-pressed="{{ c.on }}" style="width: 100%; min-height: 48px; border: 0; border-bottom: 1px solid #EDEDF0; background: transparent; display: flex; align-items: center; justify-content: space-between; font-size: 15px; color: #1D1D1F; text-align: left">
+            <span>{{ c.name }}</span>
+            <span style="display: flex; align-items: center; gap: 8px; color: #5E5E64; font-size: 14px">{{ c.mm }}
+              <sc-if value="{{ c.on }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#0A63D8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5l4 4L15 5"/></svg></sc-if>
+            </span>
+          </button>
+        </sc-for>
+        <button onClick="{{ coinOther }}" aria-pressed="{{ coinIsOther }}" style="width: 100%; min-height: 48px; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; font-size: 15px; color: #1D1D1F; text-align: left">
+          <span>Another coin</span>
+          <span style="display: flex; align-items: center; gap: 8px; color: #5E5E64; font-size: 14px">Muse Spark identifies it
+            <sc-if value="{{ coinIsOther }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#0A63D8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5l4 4L15 5"/></svg></sc-if>
+          </span>
+        </button>
+      </div>
+      <sc-if value="{{ coinIsOther }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; font-size: 14px; line-height: 1.4; color: #5E5E64">After the photos, Muse Spark looks up the coin on the web and asks you to confirm its diameter before we measure.</p>
+      </sc-if>
+    </sc-if>
+    <sc-if value="{{ refIsMm }}" hint-placeholder-val="{{ false }}">
+      <div style="background: #FFFFFF; border-radius: 18px; padding: 2px 14px">
+        <sc-for list="{{ sizeRows }}" as="sz" hint-placeholder-count="2">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 68px; border-bottom: {{ sz.divider }}">
+            <span style="flex: 1; min-width: 0; font-size: 15px; line-height: 1.3">{{ sz.label }}</span>
+            <span style="display: flex; align-items: center; gap: 2px">
+              <button onClick="{{ sz.dec }}" aria-label="{{ sz.decLabel }}" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: #EDEDF0; font-size: 22px; color: #1D1D1F">−</button>
+              <span style="min-width: 62px; text-align: center; font-size: 16px; font-weight: 600">{{ sz.text }}</span>
+              <button onClick="{{ sz.inc }}" aria-label="{{ sz.incLabel }}" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: #EDEDF0; font-size: 22px; color: #1D1D1F">+</button>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 14px; line-height: 1.4; color: #5E5E64">{{ sizeNote }}</p>
+    </sc-if>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px; margin-top: auto">
+    <p style="margin: 0; font-size: 13px; line-height: 1.4; color: #5E5E64; text-align: center">{{ optionalLine }}</p>
+    <button onClick="{{ go.capture }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #0A63D8; color: #FFFFFF; font-size: 17px; font-weight: 600">Continue to camera</button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ CAPTURE ============ -->
+<sc-if value="{{ scr.capture }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; background: #000000; color: #FFFFFF; overflow: hidden; display: flex; flex-direction: column">
+  <div style="position: absolute; inset: 0; background: linear-gradient(180deg, #2A2A2E 0%, #1A1A1D 100%)"></div>
+  <svg width="390" height="844" viewBox="0 0 390 844" style="position: absolute; inset: 0" aria-hidden="true">
+    <sc-if value="{{ refIsCard }}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{ cam.upright }}" hint-placeholder-val="{{ false }}">
+        <rect x="40" y="250" width="100" height="158" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="7 6"/>
+        <text x="90" y="334" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="13" font-family="Inter, sans-serif">Card upright</text>
+        <rect x="170" y="250" width="180" height="250" rx="14" fill="none" stroke="#0A84FF" stroke-width="2.5"/>
+        <text x="260" y="380" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="14" font-family="Inter, sans-serif">Part here</text>
+      </sc-if>
+      <sc-if value="{{ cam.flatLayout }}" hint-placeholder-val="{{ true }}">
+        <rect x="52" y="214" width="286" height="180" rx="14" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="7 6"/>
+        <text x="195" y="308" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="14" font-family="Inter, sans-serif">Card here</text>
+        <rect x="62" y="420" width="266" height="190" rx="14" fill="none" stroke="#0A84FF" stroke-width="2.5"/>
+        <text x="195" y="520" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="14" font-family="Inter, sans-serif">Part here</text>
+      </sc-if>
+    </sc-if>
+    <sc-if value="{{ refIsCoin }}" hint-placeholder-val="{{ false }}">
+      <circle cx="105" cy="300" r="52" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="7 6"/>
+      <text x="105" y="304" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="13" font-family="Inter, sans-serif">Coin here</text>
+      <rect x="62" y="400" width="266" height="210" rx="14" fill="none" stroke="#0A84FF" stroke-width="2.5"/>
+      <text x="195" y="510" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="14" font-family="Inter, sans-serif">Part here</text>
+    </sc-if>
+    <sc-if value="{{ refIsMm }}" hint-placeholder-val="{{ false }}">
+      <rect x="62" y="260" width="266" height="300" rx="14" fill="none" stroke="#0A84FF" stroke-width="2.5"/>
+      <text x="195" y="414" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="14" font-family="Inter, sans-serif">Part here</text>
+    </sc-if>
+  </svg>
+  <sc-if value="{{ cam.taken }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 0; right: 0; top: 330px; display: flex; justify-content: center">
+      <span style="display: flex; align-items: center; gap: 8px; background: rgba(48,209,88,0.9); color: #000000; border-radius: 20px; padding: 8px 14px; font-size: 14px; font-weight: 600">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5"/></svg>
+        Captured. Press the shutter to retake.
+      </span>
+    </div>
+  </sc-if>
+  <sc-if value="{{ s.shutter }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: #FFFFFF; opacity: 0.85"></div>
+  </sc-if>
+
+  <div style="position: relative; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <button onClick="{{ openSheet.discard }}" aria-label="Close camera" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: rgba(60,60,67,0.6); display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l10 10M14 4L4 14"/></svg>
+      </button>
+      <button onClick="{{ toggleHandDemo }}" aria-pressed="{{ s.handDemo }}" style="min-height: 44px; padding: 0 14px; border-radius: 22px; border: 0; background: {{ cam.handBg }}; color: #FFFFFF; font-size: 13px; font-weight: 600">Demo: hand in frame {{ cam.handState }}</button>
+      <button onClick="{{ toggleFlash }}" aria-label="{{ cam.flashLabel }}" aria-pressed="{{ s.flash }}" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: {{ cam.flashBg }}; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="{{ cam.flashStroke }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2L4 11h5l-1 7 7-9h-5l1-7z"/><sc-if value="{{ cam.flashOff }}" hint-placeholder-val="{{ true }}"><path d="M3 3l14 14"/></sc-if></svg>
+      </button>
+    </div>
+    <div style="background: rgba(60,60,67,0.72); border-radius: 18px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between">
+      <div>
+        <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.75)">{{ cam.stepText }}</p>
+        <p style="margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">{{ cam.viewName }}</p>
+      </div>
+      <span style="font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.16); border-radius: 8px; padding: 4px 8px">{{ cam.pose }}</span>
+    </div>
+  </div>
+  <div style="position: relative; margin: 12px 16px 0; align-self: center; background: rgba(60,60,67,0.6); border-radius: 14px; padding: 9px 14px; font-size: 13px; line-height: 1.35; text-align: center; color: rgba(255,255,255,0.92)">{{ cam.tip }}</div>
+  <sc-if value="{{ s.flash }}" hint-placeholder-val="{{ false }}">
+    <p style="position: relative; margin: 8px 16px 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.8)">Flash on. Watch for glare on shiny parts.</p>
+  </sc-if>
+  <div style="position: relative; margin: 8px auto 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #30D158">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#30D158"/><path d="M4.8 8.2l2.2 2.2 4.2-4.6" fill="none" stroke="#000000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Phone is level
+  </div>
+
+  <div style="position: relative; margin-top: auto; padding: 16px 16px 26px; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 40%); display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; gap: 8px; justify-content: center">
+      <sc-for list="{{ thumbs }}" as="t" hint-placeholder-count="5">
+        <button onClick="{{ t.pick }}" aria-label="{{ t.aria }}" style="width: 60px; height: 60px; border-radius: 12px; padding: 0 0 4px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; box-sizing: border-box; color: #FFFFFF; font-family: inherit; background: {{ t.bg }}; border: {{ t.border }}">
+          <sc-if value="{{ t.done }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#30D158" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5"/></svg></sc-if>
+          <span style="font-size: 11px; font-weight: 600">{{ t.label }}</span>
+          <span style="font-size: 9px; color: rgba(255,255,255,0.6)">{{ t.sub }}</span>
+        </button>
+      </sc-for>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <button onClick="{{ openSheet.gallery }}" style="min-width: 88px; min-height: 44px; border: 0; background: transparent; text-align: left; font-size: 15px; color: #FFFFFF">Use gallery</button>
+      <button onClick="{{ shoot }}" aria-label="Take photo" style="width: 72px; height: 72px; border-radius: 36px; border: 4px solid #FFFFFF; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+        <span style="width: 56px; height: 56px; border-radius: 28px; background: #FFFFFF; display: block"></span>
+      </button>
+      <button onClick="{{ reviewTap }}" aria-disabled="{{ cam.reviewDisabled }}" style="min-width: 88px; min-height: 44px; border: 0; background: transparent; text-align: right; font-size: 15px; font-weight: 600; color: {{ cam.reviewColor }}">Review</button>
+    </div>
+    <sc-if value="{{ cam.needMore }}" hint-placeholder-val="{{ true }}">
+      <p style="margin: -4px 0 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.7)">{{ cam.needText }}</p>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ REVIEW ============ -->
+<sc-if value="{{ scr.review }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; align-items: center; min-height: 44px">
+    <button onClick="{{ go.capture }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Camera
+    </button>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spacing: -0.03em">Review photos</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.4; color: #5E5E64">Retake anything that is blurry, dark, or has a hand on the part.</p>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{ reviewItems }}" as="r" hint-placeholder-count="3">
+      <div style="background: #FFFFFF; border-radius: 18px; padding: 12px; display: flex; align-items: center; gap: 12px">
+        <div style="width: 56px; height: 56px; flex: none; border-radius: 12px; background: {{ r.thumbBg }}; display: flex; align-items: center; justify-content: center">
+          <sc-if value="{{ r.taken }}" hint-placeholder-val="{{ true }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A63D8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg></sc-if>
+        </div>
+        <div style="flex: 1; min-width: 0">
+          <p style="margin: 0; font-size: 16px; font-weight: 600">{{ r.label }}</p>
+          <p style="margin: 2px 0 0; font-size: 13px; color: {{ r.noteColor }}">{{ r.note }}</p>
+        </div>
+        <button onClick="{{ r.retake }}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #EDEDF0; font-size: 14px; font-weight: 600; color: #1D1D1F">{{ r.action }}</button>
+        <sc-if value="{{ r.canRemove }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ r.remove }}" aria-label="Remove photo" style="width: 44px; height: 44px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#5E5E64" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l10 10M14 4L4 14"/></svg>
+          </button>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+    <div>
+      <p style="margin: 0; font-size: 13px; color: #5E5E64">Reference</p>
+      <p style="margin: 2px 0 0; font-size: 15px; font-weight: 600">{{ refSummary }}</p>
+    </div>
+    <button onClick="{{ go.type }}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #EDEDF0; font-size: 14px; font-weight: 600; color: #1D1D1F">Change</button>
+  </div>
+  <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px">
+    <sc-if value="{{ needMoreReview }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 13px; text-align: center; color: #B3261E">Take the required photos first.</p></sc-if>
+    <button onClick="{{ buildTap }}" aria-disabled="{{ needMoreReview }}" style="min-height: 52px; border: 0; border-radius: 14px; font-size: 17px; font-weight: 600; background: {{ buildBg }}; color: {{ buildFg }}">Build part</button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ RUN / PIPELINE ============ -->
+<sc-if value="{{ scr.run }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+    <button onClick="{{ cancelRun }}" style="min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">Cancel</button>
+    <button onClick="{{ toggleFail }}" aria-pressed="{{ s.failDemo }}" style="min-height: 36px; padding: 0 12px; border: 0; border-radius: 18px; background: {{ failBg }}; font-size: 12px; font-weight: 600; color: #1D1D1F">Demo: script error {{ failState }}</button>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spacing: -0.03em">{{ runTitle }}</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.4; color: #5E5E64">{{ runSub }}</p>
+  </div>
+  <div style="background: #FFFFFF; border-radius: 22px; padding: 4px 16px; display: flex; flex-direction: column">
+    <sc-for list="{{ steps }}" as="st" hint-placeholder-count="5">
+      <div style="border-bottom: {{ st.divider }}">
+        <button onClick="{{ st.toggle }}" aria-expanded="{{ st.open }}" style="width: 100%; border: 0; background: transparent; padding: 14px 0; display: flex; gap: 12px; align-items: flex-start; text-align: left; font-family: inherit; color: #1D1D1F">
+          <span style="flex: none; margin-top: 1px; display: block">
+            <sc-if value="{{ st.isDone }}" hint-placeholder-val="{{ true }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#34C759"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></sc-if>
+            <sc-if value="{{ st.isRun }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="#0A63D8" stroke-width="2.5" stroke-dasharray="40 24"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite"/></circle></svg></sc-if>
+            <sc-if value="{{ st.isWait }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="#C7C7CC" stroke-width="1.5"/></svg></sc-if>
+          </span>
+          <span style="flex: 1; min-width: 0; display: block">
+            <span style="display: block; font-size: 16px; font-weight: 600; color: {{ st.titleColor }}">{{ st.title }}</span>
+            <span style="display: flex; gap: 8px; margin-top: 6px; align-items: center">
+              <span style="font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; color: {{ st.badgeFg }}; background: {{ st.badgeBg }}">{{ st.model }}</span>
+              <span style="font-size: 12px; color: {{ st.statusColor }}">{{ st.status }}</span>
+            </span>
+          </span>
+        </button>
+        <sc-if value="{{ st.open }}" hint-placeholder-val="{{ false }}">
+          <p style="margin: -4px 0 14px 36px; font-size: 13px; line-height: 1.45; color: #5E5E64">{{ st.detail }}</p>
+        </sc-if>
+        <sc-if value="{{ st.showCode }}" hint-placeholder-val="{{ false }}">
+          <div style="margin: -2px 0 14px 36px; background: #1D1D1F; border-radius: 12px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5; color: #E5E5EA">
+            <div>result = (cq.Workplane("XY")</div>
+            <div>&nbsp;&nbsp;.circle(outer / 2).extrude(thick)</div>
+            <div>&nbsp;&nbsp;.faces("&gt;Z").hole(axle))</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ st.showLadder }}" hint-placeholder-val="{{ false }}">
+          <div style="margin: -2px 0 14px 36px; display: flex; flex-direction: column; gap: 6px">
+            <sc-for list="{{ ladder }}" as="l" hint-placeholder-count="3">
+              <p style="margin: 0; font-size: 13px; line-height: 1.4; color: {{ l.color }}">{{ l.text }}</p>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display: flex; gap: 10px">
+    <div style="flex: 1; background: #FFFFFF; border-radius: 16px; padding: 12px 14px">
+      <p style="margin: 0; font-size: 12px; color: #5E5E64">Total time</p>
+      <p style="margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">[time]</p>
+    </div>
+    <div style="flex: 1; background: #FFFFFF; border-radius: 16px; padding: 12px 14px">
+      <p style="margin: 0; font-size: 12px; color: #5E5E64">Model cost</p>
+      <p style="margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">[cost]</p>
+    </div>
+  </div>
+  <button onClick="{{ seeResult }}" aria-disabled="{{ notDone }}" style="margin-top: auto; min-height: 52px; border: 0; border-radius: 14px; font-size: 17px; font-weight: 600; background: {{ seeBg }}; color: {{ seeFg }}">{{ seeText }}</button>
+</div>
+</sc-if>
+
+<!-- ============ RESULT ============ -->
+<sc-if value="{{ scr.result }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+    <button onClick="{{ go.home }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Home
+    </button>
+    <div style="display: flex; background: #E3E3E8; border-radius: 10px; padding: 2px">
+      <button onClick="{{ setWire.solid }}" aria-pressed="{{ nWire }}" style="min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; font-size: 13px; color: #1D1D1F; background: {{ wireSeg.solidBg }}; font-weight: {{ wireSeg.solidFw }}">Solid</button>
+      <button onClick="{{ setWire.wire }}" aria-pressed="{{ s.wire }}" style="min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; font-size: 13px; color: #1D1D1F; background: {{ wireSeg.wireBg }}; font-weight: {{ wireSeg.wireFw }}">Wireframe</button>
+    </div>
+  </div>
+
+  <div style="position: relative; background: #FFFFFF; border-radius: 22px; height: 270px; flex: none; overflow: hidden">
+    <svg width="350" height="270" viewBox="0 0 350 270" style="position: absolute; inset: 0" aria-hidden="true">
+      <sc-if value="{{ vw.wheelIso }}" hint-placeholder-val="{{ true }}">
+        <ellipse cx="175" cy="218" rx="104" ry="14" fill="#000000" fill-opacity="0.06"/>
+        <path d="M71 125v50c0 28 47 44 104 44s104-16 104-44v-50z" fill="{{ vc.side }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        <ellipse cx="175" cy="125" rx="104" ry="44" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        <ellipse cx="175" cy="125" rx="30" ry="12" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+      </sc-if>
+      <sc-if value="{{ vw.wheelTop }}" hint-placeholder-val="{{ false }}">
+        <circle cx="175" cy="135" r="104" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        <circle cx="175" cy="135" r="74" fill="none" stroke="{{ vc.stroke }}" stroke-width="1" stroke-dasharray="4 4"/>
+        <circle cx="175" cy="135" r="24" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+      </sc-if>
+      <sc-if value="{{ vw.bracketIso }}" hint-placeholder-val="{{ false }}">
+        <g transform="translate(0,30)">
+          <ellipse cx="180" cy="160" rx="130" ry="14" fill="#000000" fill-opacity="0.06"/>
+          <path d="M50 110 L140 150 L140 172 L50 132 Z" fill="{{ vc.side }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <path d="M140 150 L300 100 L300 122 L140 172 Z" fill="{{ vc.side }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <path d="M50 110 L210 60 L300 100 L140 150 Z" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <ellipse cx="105" cy="112" rx="13" ry="6" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <ellipse cx="245" cy="92" rx="13" ry="6" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        </g>
+      </sc-if>
+      <sc-if value="{{ vw.bracketTop }}" hint-placeholder-val="{{ false }}">
+        <rect x="50" y="85" width="250" height="100" rx="12" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        <circle cx="90" cy="135" r="13" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+        <circle cx="260" cy="135" r="13" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+      </sc-if>
+      <sc-if value="{{ vw.keyIso }}" hint-placeholder-val="{{ false }}">
+        <g transform="translate(25,50)">
+          <rect x="{{ kc.x }}" y="86" width="{{ kc.w }}" height="64" rx="32" fill="{{ vc.side }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <rect x="{{ kc.x }}" y="72" width="{{ kc.w }}" height="64" rx="32" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <sc-if value="{{ s.dHole }}" hint-placeholder-val="{{ true }}"><circle cx="{{ kc.holeX }}" cy="104" r="7" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/></sc-if>
+          <text x="{{ kc.tx }}" y="114" text-anchor="middle" font-size="30" font-family="{{ kc.font }}" font-weight="{{ kc.fw }}" fill="{{ kc.textFill }}">{{ s.dText }}</text>
+        </g>
+      </sc-if>
+      <sc-if value="{{ vw.keyTop }}" hint-placeholder-val="{{ false }}">
+        <g transform="translate(25,50)">
+          <rect x="{{ kc.x }}" y="78" width="{{ kc.w }}" height="64" rx="32" fill="{{ vc.top }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/>
+          <sc-if value="{{ s.dHole }}" hint-placeholder-val="{{ true }}"><circle cx="{{ kc.holeX }}" cy="110" r="7" fill="{{ vc.hole }}" stroke="{{ vc.stroke }}" stroke-width="1.5"/></sc-if>
+          <text x="{{ kc.tx }}" y="120" text-anchor="middle" font-size="30" font-family="{{ kc.font }}" font-weight="{{ kc.fw }}" fill="{{ kc.textFill }}">{{ s.dText }}</text>
+        </g>
+      </sc-if>
+    </svg>
+    <span style="position: absolute; left: 12px; top: 14px; background: #1D1D1F; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 5px 10px">{{ badge1 }}</span>
+    <span style="position: absolute; right: 12px; top: 14px; background: #1D1D1F; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 5px 10px">{{ badge2 }}</span>
+    <div style="position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; align-items: center; justify-content: space-between">
+      <span style="font-size: 12px; color: #5E5E64">Sample shape in this mockup</span>
+      <div style="display: flex; background: #E3E3E8; border-radius: 9px; padding: 2px">
+        <button onClick="{{ setView.iso }}" aria-pressed="{{ viewIsIso }}" style="min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 12px; color: #1D1D1F; background: {{ viewSeg.isoBg }}; font-weight: {{ viewSeg.isoFw }}">3D</button>
+        <button onClick="{{ setView.top }}" aria-pressed="{{ nIso }}" style="min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 12px; color: #1D1D1F; background: {{ viewSeg.topBg }}; font-weight: {{ viewSeg.topFw }}">Top</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 26px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em">{{ resTitle }}</h1>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <span style="font-size: 12px; font-weight: 600; color: #0A63D8; background: #E8F0FD; border-radius: 8px; padding: 3px 8px">{{ resTag1 }}</span>
+      <span style="font-size: 12px; font-weight: 600; color: #3C3C43; background: #EDEDF0; border-radius: 8px; padding: 3px 8px">{{ resTag2 }}</span>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border-radius: 22px; padding: 4px 16px">
+    <sc-for list="{{ params }}" as="pm" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; justify-content: space-between; min-height: 56px; border-bottom: {{ pm.divider }}">
+        <span style="font-size: 15px">{{ pm.label }}</span>
+        <span style="display: flex; align-items: center; gap: 2px">
+          <button onClick="{{ pm.dec }}" aria-label="{{ pm.decLabel }}" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #EDEDF0; font-size: 20px; color: #1D1D1F">−</button>
+          <span style="min-width: 68px; text-align: center; font-size: 15px; font-weight: 600">{{ pm.text }}</span>
+          <button onClick="{{ pm.inc }}" aria-label="{{ pm.incLabel }}" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #EDEDF0; font-size: 20px; color: #1D1D1F">+</button>
+        </span>
+      </div>
+    </sc-for>
+  </div>
+  <button onClick="{{ rebuild }}" style="min-height: 48px; border: 0; border-radius: 14px; font-size: 16px; font-weight: 600; background: {{ rebuildBg }}; color: {{ rebuildFg }}">{{ rebuildText }}</button>
+
+  <div style="background: #FFFFFF; border-radius: 22px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+    <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5E5E64">Accuracy check</p>
+    <label for="cal" style="font-size: 14px; color: #3C3C43">Measure your real part with calipers. {{ calLabel }} (mm)</label>
+    <input id="cal" type="text" inputmode="decimal" value="{{ s.cal }}" onInput="{{ onCal }}" placeholder="e.g. 42.0" style="min-height: 44px; border: 0; border-radius: 12px; background: #F5F5F7; padding: 0 14px; font-size: 16px; color: #1D1D1F; outline: none">
+    <p style="margin: 0; font-size: 14px; line-height: 1.4; color: {{ calColor }}">{{ calResult }}</p>
+    <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #5E5E64">Typical error across our tests: [MEASURED ERROR]. Filled in only after real tests.</p>
+  </div>
+
+  <div style="display: flex; gap: 10px">
+    <button onClick="{{ download }}" style="flex: 1; min-height: 50px; border: 0; border-radius: 14px; background: #0A63D8; color: #FFFFFF; font-size: 16px; font-weight: 600">Download STL</button>
+    <button onClick="{{ openSheet.script }}" style="flex: 1; min-height: 50px; border: 0; border-radius: 14px; background: #EDEDF0; color: #1D1D1F; font-size: 16px; font-weight: 600">Copy script</button>
+  </div>
+  <div style="display: flex; justify-content: center; gap: 4px; flex-wrap: wrap">
+    <sc-if value="{{ canEditPhotos }}" hint-placeholder-val="{{ true }}"><button onClick="{{ go.review }}" style="min-height: 44px; border: 0; background: transparent; font-size: 15px; color: #0A63D8">Edit photos</button></sc-if>
+    <sc-if value="{{ isDesignMode }}" hint-placeholder-val="{{ false }}"><button onClick="{{ go.designBack }}" style="min-height: 44px; border: 0; background: transparent; font-size: 15px; color: #0A63D8">Edit design</button></sc-if>
+    <button onClick="{{ go.home }}" style="min-height: 44px; border: 0; background: transparent; font-size: 15px; color: #0A63D8">Start over</button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ DESIGN MODE ============ -->
+<sc-if value="{{ scr.design }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; align-items: center; min-height: 44px">
+    <button onClick="{{ go.home }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Back
+    </button>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spacing: -0.03em">Design mode</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.4; color: #5E5E64">Simple designs only for now. Sketches, logos and short names.</p>
+  </div>
+  <div style="display: flex; background: #E3E3E8; border-radius: 12px; padding: 3px; gap: 2px">
+    <button onClick="{{ setDTab.upload }}" aria-pressed="{{ dIsUpload }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; color: #1D1D1F; background: {{ dTabSeg.upBg }}; font-weight: {{ dTabSeg.upFw }}">Upload</button>
+    <button onClick="{{ setDTab.type }}" aria-pressed="{{ nUpload }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; color: #1D1D1F; background: {{ dTabSeg.tyBg }}; font-weight: {{ dTabSeg.tyFw }}">Type a name</button>
+  </div>
+
+  <sc-if value="{{ dIsUpload }}" hint-placeholder-val="{{ false }}">
+    <div style="background: #FFFFFF; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center">
+      <sc-if value="{{ nUploaded }}" hint-placeholder-val="{{ true }}">
+        <div style="width: 100%; box-sizing: border-box; height: 150px; border: 1.5px dashed #C7C7CC; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 0 16px">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#5E5E64" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 19V6M9 11l5-5 5 5M5 20v2h18v-2"/></svg>
+          <span style="font-size: 14px; line-height: 1.4; color: #5E5E64">Dark lines on white paper work best. One simple shape.</span>
+        </div>
+        <button onClick="{{ openSheet.upload }}" style="min-height: 48px; width: 100%; border: 0; border-radius: 14px; background: #0A63D8; color: #FFFFFF; font-size: 16px; font-weight: 600">Choose an image</button>
+      </sc-if>
+      <sc-if value="{{ s.uploaded }}" hint-placeholder-val="{{ false }}">
+        <div style="width: 100%; box-sizing: border-box; height: 150px; border-radius: 16px; background: #F5F5F7; display: flex; align-items: center; justify-content: center">
+          <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true"><path d="M60 14l13.5 28 30.5 4-22 21.5 5.5 30.5L60 83 32.5 98 38 67.5 16 46l30.5-4z" fill="#E8F0FD" stroke="#0A63D8" stroke-width="3" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="width: 100%; display: flex; align-items: center; justify-content: space-between">
+          <span style="font-size: 14px; color: #3C3C43">star-sketch.png</span>
+          <button onClick="{{ removeUpload }}" style="min-height: 44px; border: 0; background: transparent; font-size: 14px; font-weight: 600; color: #B3261E">Remove</button>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ nUpload }}" hint-placeholder-val="{{ true }}">
+    <div style="background: #FFFFFF; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="dtext" style="font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5E5E64">Text</label>
+        <input id="dtext" type="text" value="{{ s.dText }}" onInput="{{ onDText }}" maxlength="12" style="min-height: 48px; border: 0; border-radius: 12px; background: #F5F5F7; padding: 0 14px; font-size: 17px; color: #1D1D1F; outline: none">
+        <span style="font-size: 12px; color: {{ textHintColor }}">{{ textHint }}</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5E5E64">Font</span>
+        <div style="display: flex; gap: 8px">
+          <sc-for list="{{ fonts }}" as="f" hint-placeholder-count="3">
+            <button onClick="{{ f.pick }}" aria-pressed="{{ f.on }}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 22px; font-size: 15px; background: {{ f.bg }}; color: {{ f.fg }}; font-family: {{ f.family }}; font-weight: {{ f.fw }}">{{ f.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="background: #FFFFFF; border-radius: 22px; height: 140px; flex: none; position: relative; display: flex; align-items: center; justify-content: center">
+    <sc-if value="{{ previewReady }}" hint-placeholder-val="{{ true }}">
+      <svg width="300" height="110" viewBox="0 0 300 110" aria-hidden="true">
+        <sc-if value="{{ dIsUpload }}" hint-placeholder-val="{{ false }}">
+          <path d="M150 12l15 31 34 4-25 24 6 34-30-17-30 17 6-34-25-24 34-4z" fill="{{ pv.top }}" stroke="#9DB3D6" stroke-width="2" stroke-linejoin="round"/>
+        </sc-if>
+        <sc-if value="{{ nUpload }}" hint-placeholder-val="{{ true }}">
+          <rect x="{{ kc.px }}" y="26" width="{{ kc.w }}" height="58" rx="29" fill="{{ pv.top }}" stroke="#9DB3D6" stroke-width="1.5"/>
+          <sc-if value="{{ s.dHole }}" hint-placeholder-val="{{ true }}"><circle cx="{{ kc.pHoleX }}" cy="55" r="7" fill="#FFFFFF" stroke="#9DB3D6" stroke-width="1.5"/></sc-if>
+          <text x="{{ kc.ptx }}" y="65" text-anchor="middle" font-size="30" font-family="{{ kc.font }}" font-weight="{{ kc.fw }}" fill="{{ kc.textFill }}">{{ s.dText }}</text>
+        </sc-if>
+      </svg>
+    </sc-if>
+    <sc-if value="{{ nPreview }}" hint-placeholder-val="{{ false }}"><span style="font-size: 14px; color: #5E5E64">{{ emptyPreview }}</span></sc-if>
+    <span style="position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #5E5E64">Preview</span>
+  </div>
+
+  <div style="background: #FFFFFF; border-radius: 22px; padding: 4px 16px">
+    <sc-for list="{{ dparams }}" as="pm" hint-placeholder-count="2">
+      <div style="display: flex; align-items: center; justify-content: space-between; min-height: 56px; border-bottom: 1px solid #EDEDF0">
+        <span style="font-size: 15px">{{ pm.label }}</span>
+        <span style="display: flex; align-items: center; gap: 2px">
+          <button onClick="{{ pm.dec }}" aria-label="{{ pm.decLabel }}" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #EDEDF0; font-size: 20px; color: #1D1D1F">−</button>
+          <span style="min-width: 68px; text-align: center; font-size: 15px; font-weight: 600">{{ pm.text }}</span>
+          <button onClick="{{ pm.inc }}" aria-label="{{ pm.incLabel }}" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #EDEDF0; font-size: 20px; color: #1D1D1F">+</button>
+        </span>
+      </div>
+    </sc-for>
+    <div style="display: flex; align-items: center; justify-content: space-between; min-height: 56px; border-bottom: 1px solid #EDEDF0">
+      <span style="font-size: 15px">Style</span>
+      <div style="display: flex; background: #E3E3E8; border-radius: 9px; padding: 2px">
+        <button onClick="{{ setDStyle.raised }}" aria-pressed="{{ dRaised }}" style="min-height: 36px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; color: #1D1D1F; background: {{ dStyleSeg.raBg }}; font-weight: {{ dStyleSeg.raFw }}">Raised</button>
+        <button onClick="{{ setDStyle.cut }}" aria-pressed="{{ nRaised }}" style="min-height: 36px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; color: #1D1D1F; background: {{ dStyleSeg.cuBg }}; font-weight: {{ dStyleSeg.cuFw }}">Cut-out</button>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; min-height: 56px">
+      <span id="holeLabel" style="font-size: 15px">Keychain hole</span>
+      <button onClick="{{ toggleHole }}" role="switch" aria-checked="{{ s.dHole }}" aria-labelledby="holeLabel" style="width: 51px; height: 31px; border: 0; padding: 0; background: transparent; position: relative">
+        <svg width="51" height="31" viewBox="0 0 51 31" aria-hidden="true"><rect width="51" height="31" rx="15.5" fill="{{ holeTrack }}"/><circle cx="{{ holeKnob }}" cy="15.5" r="13.5" fill="#FFFFFF"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <button onClick="{{ make3d }}" aria-disabled="{{ nPreview }}" style="margin-top: auto; min-height: 52px; border: 0; border-radius: 14px; font-size: 17px; font-weight: 600; background: {{ makeBg }}; color: {{ makeFg }}">Make 3D</button>
+</div>
+</sc-if>
+
+<!-- ============ ABOUT ============ -->
+<sc-if value="{{ scr.about }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 32px; display: flex; flex-direction: column; gap: 22px">
+  <div style="display: flex; align-items: center; min-height: 44px">
+    <button onClick="{{ go.home }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Home
+    </button>
+  </div>
+  <h1 style="margin: 0; font-size: 36px; line-height: 1.05; font-weight: 700; letter-spacing: -0.035em">A photo in.<br>A printable part out.</h1>
+  <p style="margin: 0; font-size: 17px; line-height: 1.45; color: #5E5E64">SnapPart turns photos of a simple flat or round part into a 3D file in millimetres, so a broken bracket or a lost wheel can be printed again.</p>
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">How it works</h2>
+    <sc-for list="{{ aboutSteps }}" as="a" hint-placeholder-count="3">
+      <div style="background: #FFFFFF; border-radius: 18px; padding: 14px 16px">
+        <p style="margin: 0; font-size: 16px; font-weight: 600">{{ a.t }}</p>
+        <p style="margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: #5E5E64">{{ a.d }}</p>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">Which model does what</h2>
+    <div style="background: #FFFFFF; border-radius: 18px; padding: 4px 16px">
+      <sc-for list="{{ aboutModels }}" as="m" hint-placeholder-count="4">
+        <div style="padding: 12px 0; border-bottom: {{ m.divider }}">
+          <span style="font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; color: {{ m.fg }}; background: {{ m.bg }}">{{ m.name }}</span>
+          <p style="margin: 8px 0 0; font-size: 14px; line-height: 1.45; color: #3C3C43">{{ m.d }}</p>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="background: #FFFFFF; border-radius: 18px; padding: 14px 16px">
+    <p style="margin: 0; font-size: 16px; font-weight: 600">Measured accuracy</p>
+    <p style="margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: #5E5E64">Typical error against calipers: [MEASURED ERROR]. Filled in only after real tests on real parts.</p>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">Limits, said plainly</h2>
+    <ul style="margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.65; color: #3C3C43">
+      <li>Simple flat and round parts only.</li>
+      <li>Shiny, clear or very dark parts photograph badly.</li>
+      <li>Hidden details are not guessed. Add more views.</li>
+      <li>Design mode handles simple shapes and short names only.</li>
+    </ul>
+  </div>
+  <button onClick="{{ go.roadmap }}" style="min-height: 50px; border: 0; border-radius: 14px; background: #EDEDF0; color: #1D1D1F; font-size: 16px; font-weight: 600">See the roadmap</button>
+</div>
+</sc-if>
+
+<!-- ============ ROADMAP ============ -->
+<sc-if value="{{ scr.roadmap }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 20px 32px; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; align-items: center; min-height: 44px">
+    <button onClick="{{ go.home }}" style="display: flex; align-items: center; gap: 4px; min-height: 44px; border: 0; background: transparent; font-size: 17px; color: #0A63D8">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+      Home
+    </button>
+  </div>
+  <h1 style="margin: 0; font-size: 36px; line-height: 1.05; font-weight: 700; letter-spacing: -0.035em">Where SnapPart goes next.</h1>
+  <p style="margin: 0; font-size: 16px; line-height: 1.45; color: #5E5E64">Ideas below are plans, not features. Only Now exists today.</p>
+  <div style="display: flex; background: #E3E3E8; border-radius: 12px; padding: 3px; gap: 2px">
+    <sc-for list="{{ rmTabs }}" as="tb" hint-placeholder-count="3">
+      <button onClick="{{ tb.pick }}" aria-pressed="{{ tb.on }}" style="flex: 1; min-height: 44px; border: 0; border-radius: 10px; font-size: 15px; color: #1D1D1F; background: {{ tb.bg }}; font-weight: {{ tb.fw }}">{{ tb.label }}</button>
+    </sc-for>
+  </div>
+  <div style="background: #FFFFFF; border-radius: 22px; padding: 18px 18px 8px">
+    <span style="font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; color: {{ rmBadge.fg }}; background: {{ rmBadge.bg }}">{{ rmBadge.text }}</span>
+    <sc-for list="{{ rmItems }}" as="it" hint-placeholder-count="4">
+      <p style="margin: 0; padding: 14px 0; font-size: 16px; line-height: 1.45; border-bottom: {{ it.divider }}">{{ it.text }}</p>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ SHEETS ============ -->
+<sc-if value="{{ sheet.any }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; z-index: 20">
+  <button onClick="{{ closeSheet }}" aria-label="Close" style="position: absolute; inset: 0; width: 100%; border: 0; padding: 0; background: rgba(0,0,0,0.4)"></button>
+  <div style="position: absolute; left: 8px; right: 8px; bottom: 8px; background: #FFFFFF; border-radius: 26px; padding: 20px 16px 16px; display: flex; flex-direction: column; gap: 10px; max-height: 640px; overflow-y: auto">
+
+    <sc-if value="{{ sheet.gallery }}" hint-placeholder-val="{{ false }}">
+      <h2 style="margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Add a photo</h2>
+      <button onClick="{{ galleryPick }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #F5F5F7; font-size: 16px; font-weight: 500; color: #1D1D1F; text-align: left; padding: 0 16px">Photo library</button>
+      <button onClick="{{ galleryPick }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #F5F5F7; font-size: 16px; font-weight: 500; color: #1D1D1F; text-align: left; padding: 0 16px">Take with the Camera app</button>
+      <p style="margin: 0; font-size: 13px; line-height: 1.4; color: #5E5E64">Use the Camera app if the live guide or flash is not available in your browser. The same checks run on the photo.</p>
+      <button onClick="{{ closeSheet }}" style="min-height: 50px; border: 0; background: transparent; font-size: 16px; font-weight: 600; color: #0A63D8">Cancel</button>
+    </sc-if>
+
+    <sc-if value="{{ sheet.hand }}" hint-placeholder-val="{{ false }}">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Your hand touches the part</h2>
+      <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3C3C43">The part outline would include your fingers. Hold the part with a bit of putty or a clip, or retake without touching it.</p>
+      <button onClick="{{ handRetake }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #0A63D8; color: #FFFFFF; font-size: 16px; font-weight: 600">Retake</button>
+      <button onClick="{{ handUse }}" style="min-height: 50px; border: 0; border-radius: 14px; background: #EDEDF0; color: #1D1D1F; font-size: 16px; font-weight: 600">Use anyway</button>
+    </sc-if>
+
+    <sc-if value="{{ sheet.discard }}" hint-placeholder-val="{{ false }}">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Discard these photos?</h2>
+      <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3C3C43">You will go back to the start and lose the photos taken so far.</p>
+      <button onClick="{{ doDiscard }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #B3261E; color: #FFFFFF; font-size: 16px; font-weight: 600">Discard</button>
+      <button onClick="{{ closeSheet }}" style="min-height: 50px; border: 0; border-radius: 14px; background: #EDEDF0; color: #1D1D1F; font-size: 16px; font-weight: 600">Keep shooting</button>
+    </sc-if>
+
+    <sc-if value="{{ sheet.upload }}" hint-placeholder-val="{{ false }}">
+      <h2 style="margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Choose an image</h2>
+      <button onClick="{{ uploadPick }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #F5F5F7; font-size: 16px; font-weight: 500; color: #1D1D1F; text-align: left; padding: 0 16px">Photo library</button>
+      <button onClick="{{ uploadPick }}" style="min-height: 52px; border: 0; border-radius: 14px; background: #F5F5F7; font-size: 16px; font-weight: 500; color: #1D1D1F; text-align: left; padding: 0 16px">Take a photo of a sketch</button>
+      <button onClick="{{ closeSheet }}" style="min-height: 50px; border: 0; background: transparent; font-size: 16px; font-weight: 600; color: #0A63D8">Cancel</button>
+    </sc-if>
+
+    <sc-if value="{{ sheet.script }}" hint-placeholder-val="{{ false }}">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">CAD script</h2>
+      <p style="margin: 0; font-size: 13px; color: #5E5E64">Written by Muse Spark 1.3. Runs in CadQuery.</p>
+      <pre style="margin: 0; background: #1D1D1F; color: #E5E5EA; border-radius: 14px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5; overflow-x: auto; white-space: pre">{{ scriptText }}</pre>
+      <button onClick="{{ copyScript }}" style="min-height: 52px; border: 0; border-radius: 14px; background: {{ copyBg }}; color: #FFFFFF; font-size: 16px; font-weight: 600">{{ copyText }}</button>
+      <button onClick="{{ closeSheet }}" style="min-height: 50px; border: 0; background: transparent; font-size: 16px; font-weight: 600; color: #0A63D8">Done</button>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ TOAST ============ -->
+<sc-if value="{{ s.toast }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 20px; right: 20px; bottom: 30px; z-index: 30; display: flex; justify-content: center; pointer-events: none">
+  <span style="background: rgba(29,29,31,0.94); color: #FFFFFF; border-radius: 16px; padding: 12px 16px; font-size: 14px; line-height: 1.35; text-align: center">{{ s.toast }}</span>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.timers = [];
+    this.toastTimer = null;
+    this.state = {
+      screen: 'home', mode: 'photo', part: 'flat', ref: 'card', coin: 0, mmA: 60, mmB: 25, why: false,
+      cur: 0, shots: {}, warn: {}, flash: false, handDemo: false, shutter: false, example: false,
+      sheet: null, step: 0, ladder: 0, expand: -1, failDemo: false, view: 'iso', wire: false,
+      p: { wOuter: 42, wHole: 6, wThick: 12, bLen: 60, bWid: 25, bThick: 4, bHole: 5, dWidth: 50, dThick: 3 },
+      dirty: false, rebuilding: false, cal: '', copied: false, toast: '',
+      dTab: 'type', dText: 'Maya', dFont: 'rounded', dStyle: 'raised', dHole: true, uploaded: false,
+      rmTab: 0
+    };
+  }
+
+  componentWillUnmount() { this.clearTimers(); clearTimeout(this.toastTimer); }
+  clearTimers() { this.timers.forEach((t) => clearTimeout(t)); this.timers = []; }
+  later(fn, ms) { this.timers.push(setTimeout(fn, ms)); }
+  say(msg) {
+    clearTimeout(this.toastTimer);
+    this.setState({ toast: msg });
+    this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2400);
+  }
+
+  seq() {
+    return this.state.part === 'round'
+      ? [{ id: 'end', label: 'End', req: true }, { id: 'side', label: 'Side', req: true }, { id: 'end2', label: 'Other end', req: false }, { id: 'hole', label: 'Axle hole', req: false }]
+      : [{ id: 'top', label: 'Top', req: true }, { id: 'front', label: 'Front', req: true }, { id: 'back', label: 'Back', req: false }, { id: 'right', label: 'Right', req: false }, { id: 'left', label: 'Left', req: false }];
+  }
+  kind() {
+    const s = this.state;
+    return s.mode === 'design' ? 'keychain' : (s.part === 'round' ? 'wheel' : 'bracket');
+  }
+  requiredDone() {
+    const s = this.state;
+    return this.seq().filter((v) => v.req).every((v) => s.shots[v.id]);
+  }
+  refSummary() {
+    const s = this.state;
+    if (s.ref === 'card') return 'Bank card, 85.60 × 53.98 mm';
+    if (s.ref === 'coin') {
+      const c = this.coins()[s.coin];
+      return c ? c.name + ', ' + c.mm : 'Coin, identified by Muse Spark';
+    }
+    return s.part === 'round' ? 'Typed size: Ø ' + s.mmA + ' mm, ' + s.mmB + ' mm long' : 'Typed size: ' + s.mmA + ' × ' + s.mmB + ' mm';
+  }
+  coins() {
+    return [
+      { name: 'US quarter', mm: '24.26 mm' },
+      { name: 'US penny', mm: '19.05 mm' },
+      { name: 'Euro 1 €', mm: '23.25 mm' },
+      { name: 'UK £1', mm: '23.43 mm' }
+    ];
+  }
+  paramDefs() {
+    const k = this.kind();
+    if (k === 'wheel') return [['wOuter', 'Outer diameter', 20, 80, 1], ['wHole', 'Axle hole', 2, 12, 0.5], ['wThick', 'Thickness', 4, 30, 1]];
+    if (k === 'bracket') return [['bLen', 'Length', 20, 120, 1], ['bWid', 'Width', 10, 60, 1], ['bThick', 'Thickness', 2, 12, 0.5], ['bHole', 'Hole diameter', 2, 10, 0.5]];
+    return [['dWidth', 'Width', 20, 90, 1], ['dThick', 'Thickness', 1.5, 8, 0.5]];
+  }
+  bump(key, delta, lo, hi, step, rebuildNeeded) {
+    const p = Object.assign({}, this.state.p);
+    const v = Math.round((p[key] + delta * step) * 10) / 10;
+    p[key] = Math.min(hi, Math.max(lo, v));
+    this.setState({ p: p, dirty: rebuildNeeded ? true : this.state.dirty, cal: this.state.cal });
+  }
+  paramRows(forDesign) {
+    const defs = forDesign ? this.paramDefs() : this.paramDefs();
+    const p = this.state.p;
+    return defs.map((d, i) => ({
+      label: d[1],
+      text: p[d[0]] + ' mm',
+      divider: i === defs.length - 1 ? '0' : '1px solid #EDEDF0',
+      decLabel: 'Decrease ' + d[1],
+      incLabel: 'Increase ' + d[1],
+      dec: () => this.bump(d[0], -1, d[2], d[3], d[4], !forDesign),
+      inc: () => this.bump(d[0], 1, d[2], d[3], d[4], !forDesign)
+    }));
+  }
+
+  startRun() {
+    this.clearTimers();
+    const s0 = this.state;
+    let p0 = s0.p;
+    if (s0.mode !== 'design' && s0.ref === 'mm') {
+      const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      p0 = Object.assign({}, s0.p);
+      if (s0.part === 'round') { p0.wOuter = cl(s0.mmA, 20, 80); p0.wThick = cl(s0.mmB, 4, 30); }
+      else { p0.bLen = cl(s0.mmA, 20, 120); p0.bWid = cl(s0.mmB, 10, 60); }
+    }
+    this.setState({ screen: 'run', step: 0, ladder: 0, expand: -1, sheet: null, dirty: false, cal: '', p: p0 });
+    let t = 1000;
+    for (let i = 0; i < 5; i++) {
+      if (i === 3 && this.state.failDemo) {
+        for (let k = 1; k <= 3; k++) { t += 900; const kk = k; this.later(() => this.setState({ ladder: kk }), t); }
+      }
+      t += 1000;
+      const n = i + 1;
+      this.later(() => this.setState({ step: n }), t);
+    }
+  }
+  example(part, mode) {
+    const shots = {};
+    (part === 'round' ? ['end', 'side'] : ['top', 'front']).forEach((id) => { shots[id] = true; });
+    this.setState({ mode: mode, part: part, ref: 'card', shots: shots, example: mode !== 'design', cur: 0 }, () => this.startRun());
+  }
+
+  renderVals() {
+    const s = this.state;
+    const kind = this.kind();
+    const seq = this.seq();
+    const isDesignMode = s.mode === 'design';
+    const set = (o) => () => this.setState(o);
+    const segStyle = (on) => ({ bg: on ? '#FFFFFF' : 'transparent', fw: on ? '600' : '500' });
+
+    // ---- navigation
+    const go = {
+      home: () => { this.clearTimers(); this.setState({ screen: 'home', sheet: null }); },
+      about: set({ screen: 'about' }),
+      roadmap: set({ screen: 'roadmap' }),
+      photoMode: set({ mode: 'photo', screen: 'type', example: false }),
+      designMode: set({ mode: 'design', screen: 'design', example: false }),
+      type: set({ screen: 'type' }),
+      capture: () => {
+        const i = seq.findIndex((v) => !s.shots[v.id]);
+        this.setState({ screen: 'capture', cur: s.screen === 'type' ? (i < 0 ? 0 : i) : s.cur });
+      },
+      review: set({ screen: 'review' }),
+      designBack: set({ screen: 'design' })
+    };
+    const ex = {
+      bracket: () => this.example('flat', 'photo'),
+      wheel: () => this.example('round', 'photo'),
+      keychain: () => { this.setState({ dText: 'Maya', dTab: 'type', dHole: true, dStyle: 'raised' }, () => this.example('flat', 'design')); }
+    };
+    const scr = {};
+    ['home', 'type', 'capture', 'review', 'run', 'result', 'design', 'about', 'roadmap'].forEach((n) => { scr[n] = s.screen === n; });
+
+    // ---- part type
+    const isFlat = s.part === 'flat';
+    const pick = {
+      flat: () => this.setState({ part: 'flat', shots: {}, cur: 0, mmA: 60, mmB: 25 }),
+      round: () => this.setState({ part: 'round', shots: {}, cur: 0, mmA: 42, mmB: 12 })
+    };
+    const setRef = { card: set({ ref: 'card' }), coin: set({ ref: 'coin' }), mm: set({ ref: 'mm' }) };
+    const coins = this.coins().map((c, i) => ({
+      name: c.name, mm: c.mm, on: s.ref === 'coin' && s.coin === i,
+      pick: () => this.setState({ coin: i })
+    }));
+    const coinIsOther = s.coin === -1;
+
+    // ---- capture
+    const cv = seq[Math.min(s.cur, seq.length - 1)];
+    const reqList = seq.filter((v) => v.req);
+    const reqIdx = reqList.findIndex((v) => v.id === cv.id);
+    const tips = {
+      top: 'Camera straight above. Reference and part flat on a matte surface.',
+      front: 'Camera at the part’s height, from the front. Same reference on the table.',
+      back: 'Turn the part around. Camera at its height, from behind.',
+      right: 'Camera at the part’s height, from its right side.',
+      left: 'Camera at the part’s height, from its left side.',
+      end: 'Look straight into one end of the part. Reference flat beside it.',
+      side: 'Look from the side. Stand the card upright next to the part.',
+      end2: 'Turn the part around and photograph the other end.',
+      hole: 'Close up on the axle hole, straight on.'
+    };
+    const poses = { top: 'Camera above', front: 'Camera in front', back: 'Camera behind', right: 'Camera right', left: 'Camera left', end: 'Camera at the end', side: 'Camera at the side', end2: 'Camera at the end', hole: 'Close up' };
+    const done = !!s.shots[cv.id];
+    const cam = {
+      upright: cv.id === 'side' && s.ref === 'card',
+      flatLayout: !(cv.id === 'side' && s.ref === 'card'),
+      taken: done,
+      stepText: cv.req ? 'Step ' + (reqIdx + 1) + ' of ' + reqList.length : 'Optional extra view',
+      viewName: cv.label + ' view',
+      pose: poses[cv.id],
+      tip: tips[cv.id],
+      flashOff: !s.flash,
+      flashLabel: s.flash ? 'Turn flash off' : 'Turn flash on',
+      flashBg: s.flash ? '#FFD60A' : 'rgba(60,60,67,0.6)',
+      flashStroke: s.flash ? '#000000' : '#FFFFFF',
+      handBg: s.handDemo ? '#B3261E' : 'rgba(60,60,67,0.6)',
+      handState: s.handDemo ? 'on' : 'off',
+      reviewDisabled: !this.requiredDone(),
+      reviewColor: this.requiredDone() ? '#0A84FF' : 'rgba(255,255,255,0.35)',
+      needMore: !this.requiredDone(),
+      needText: 'Take the ' + reqList.map((v) => v.label).join(' and ') + ' photos to continue.'
+    };
+    const thumbs = seq.map((v, i) => {
+      const taken = !!s.shots[v.id];
+      const current = i === s.cur;
+      return {
+        label: v.label, sub: v.req ? '' : 'optional', done: taken,
+        aria: v.label + (taken ? ', taken. Tap to retake' : ', not taken'),
+        bg: taken ? '#3A3A3C' : '#1C1C1E',
+        border: current ? '2px solid #0A84FF' : (v.req ? '1.5px dashed rgba(255,255,255,0.45)' : '1px dashed rgba(255,255,255,0.2)'),
+        pick: () => this.setState({ cur: i })
+      };
+    });
+    const shoot = () => {
+      if (s.handDemo && !done) { this.setState({ sheet: 'hand' }); return; }
+      this.takePhoto(false);
+    };
+
+    // ---- review
+    const reviewItems = seq.map((v, i) => {
+      const taken = !!s.shots[v.id];
+      const warned = !!s.warn[v.id];
+      return {
+        label: v.label,
+        taken: taken,
+        thumbBg: taken ? '#E8F0FD' : '#F5F5F7',
+        note: taken ? (warned ? 'Hand may touch the part. Consider a retake.' : 'Looks good (sample check)') : (v.req ? 'Required, not taken' : 'Optional, not taken'),
+        noteColor: taken ? (warned ? '#B3261E' : '#5E5E64') : (v.req ? '#B3261E' : '#5E5E64'),
+        action: taken ? 'Retake' : 'Take',
+        canRemove: taken && !v.req,
+        retake: () => this.setState({ screen: 'capture', cur: i }),
+        remove: () => { const sh = Object.assign({}, s.shots); delete sh[v.id]; this.setState({ shots: sh }); }
+      };
+    });
+    const reqOk = this.requiredDone();
+
+    // ---- run
+    const designUpload = isDesignMode && s.dTab === 'upload';
+    const stepsDef = isDesignMode
+      ? [
+        { t: 'Read the design', m: 'Muse Spark 1.3', ai: true, d: designUpload ? 'Looks at your sketch and checks it is simple and closed.' : 'Checks the text is short and printable.' },
+        designUpload
+          ? { t: 'Trace the outline', m: 'SAM 3.1', ai: true, d: 'Cuts the shape out of the paper and returns a clean mask.' }
+          : { t: 'Set the lettering', m: 'Font engine, not AI', ai: false, d: 'Lays out the letters with the chosen font.' },
+        { t: 'Scale to millimetres', m: 'OpenCV, not AI', ai: false, d: 'Fits the outline to the width you chose.' },
+        { t: 'Write the CAD script', m: 'Muse Spark 1.3', ai: true, d: 'Writes CadQuery code for the plate, text and keychain hole.' },
+        { t: 'Build the solid', m: 'CadQuery, not AI', ai: false, d: 'Runs the script in a sandbox and exports an STL file.' }
+      ]
+      : [
+        { t: 'Check the photos', m: 'Muse Spark 1.3', ai: true, d: 'Looks at every photo: sharp, lit, reference visible, no hand on the part.' },
+        { t: 'Find the reference and the part', m: 'SAM 3.1', ai: true, d: 'Cuts out the reference, the part and any hand in each photo.' },
+        { t: 'Measure in millimetres', m: 'OpenCV, not AI', ai: false, d: 'Scale from the reference, size from pixels. Holes and thickness from the side view.' },
+        { t: 'Write the CAD script', m: 'Muse Spark 1.3', ai: true, d: 'Streams CadQuery code from the measurements. Revolve for round parts, extrude for flat ones.' },
+        { t: 'Build the solid', m: 'CadQuery, not AI', ai: false, d: 'Runs the script in a sandbox and exports an STL file.' }
+      ];
+    const steps = stepsDef.map((d, i) => {
+      const isDone = i < s.step;
+      const isRun = i === s.step && s.step < 5;
+      const isWait = !isDone && !isRun;
+      const escalated = i === 3 && s.failDemo && s.ladder >= 3;
+      return {
+        title: d.t,
+        model: escalated && isDone ? 'Muse Wonder 1.0' : d.m,
+        detail: d.d,
+        isDone: isDone, isRun: isRun, isWait: isWait,
+        titleColor: isWait ? '#8E8E93' : '#1D1D1F',
+        badgeFg: d.ai ? '#0A63D8' : '#5E5E64',
+        badgeBg: d.ai ? '#E8F0FD' : '#EDEDF0',
+        status: isDone ? '[time]' : (isRun ? 'Running' : 'Waiting'),
+        statusColor: isRun ? '#0A63D8' : (isWait ? '#8E8E93' : '#5E5E64'),
+        divider: i === 4 ? '0' : '1px solid #EDEDF0',
+        open: s.expand === i,
+        showCode: i === 3 && isRun && !s.failDemo,
+        showLadder: i === 3 && s.failDemo && (isRun || isDone) && s.ladder > 0,
+        toggle: () => this.setState({ expand: s.expand === i ? -1 : i })
+      };
+    });
+    const ladderAll = [
+      { text: 'Attempt failed: the script did not build.', color: '#B3261E' },
+      { text: 'Repair 1 with Muse Spark 1.3: still failing.', color: '#B3261E' },
+      { text: 'Repair 2 with Muse Spark 1.3: still failing.', color: '#B3261E' },
+      { text: 'Escalated to Muse Wonder 1.0: script builds.', color: '#1E7B34' }
+    ];
+    const ladder = ladderAll.slice(0, Math.min(4, s.ladder + 1)).map((l, i, arr) => ({ text: l.text, color: i === 3 || i === arr.length - 1 && s.step === 5 ? l.color : l.color }));
+    const finished = s.step >= 5;
+    const runBusy = !finished;
+
+    // ---- result
+    const vc = s.wire
+      ? { top: 'none', side: 'none', hole: 'none', stroke: '#0A63D8' }
+      : { top: '#E3EBF7', side: '#C9D6EA', hole: '#F5F5F7', stroke: '#9DB3D6' };
+    const iso = s.view === 'iso';
+    const vw = {
+      wheelIso: kind === 'wheel' && iso, wheelTop: kind === 'wheel' && !iso,
+      bracketIso: kind === 'bracket' && iso, bracketTop: kind === 'bracket' && !iso,
+      keyIso: kind === 'keychain' && iso, keyTop: kind === 'keychain' && !iso
+    };
+    const p = s.p;
+    const len = Math.max(1, s.dText.length);
+    const kw = Math.min(280, 70 + len * 22);
+    const fonts = {
+      rounded: { family: '"SF Pro Rounded", Inter, system-ui, sans-serif', fw: '700', label: 'Rounded' },
+      serif: { family: 'Georgia, "Times New Roman", serif', fw: '600', label: 'Serif' },
+      bold: { family: 'Inter, system-ui, sans-serif', fw: '800', label: 'Bold' }
+    };
+    const fnt = fonts[s.dFont];
+    const dRaised = s.dStyle === 'raised';
+    const kcx = (300 - kw) / 2;
+    const holeOff = s.dHole ? 12 : 0;
+    const kc = {
+      x: (300 - kw) / 2, w: kw, holeX: (300 - kw) / 2 + 30, tx: 150 + holeOff,
+      px: (300 - kw) / 2, pHoleX: (300 - kw) / 2 + 30, ptx: 150 + holeOff,
+      font: fnt.family, fw: fnt.fw,
+      textFill: dRaised ? '#0A63D8' : (s.wire ? '#0A63D8' : '#FFFFFF')
+    };
+    const pv = { top: dRaised ? '#E3EBF7' : '#0A63D8' };
+    kc.textFill = dRaised ? '#0A63D8' : '#FFFFFF';
+    const resMeta = {
+      wheel: { title: 'Toy wheel with axle hole', t1: 'Revolved profile', t2: '1 centre hole', b1: 'Ø ' + p.wOuter + ' mm', b2: p.wThick + ' mm thick', cal: 'Outer diameter', calKey: 'wOuter' },
+      bracket: { title: 'Flat bracket', t1: 'Extruded outline', t2: '2 mounting holes', b1: p.bLen + ' × ' + p.bWid + ' mm', b2: p.bThick + ' mm thick', cal: 'Length', calKey: 'bLen' },
+      keychain: { title: 'Name keychain', t1: dRaised ? 'Raised lettering' : 'Cut-out lettering', t2: s.dHole ? 'Keychain hole' : 'No hole', b1: p.dWidth + ' mm wide', b2: p.dThick + ' mm thick', cal: 'Width', calKey: 'dWidth' }
+    }[kind];
+    const calNum = parseFloat(String(s.cal).replace(',', '.'));
+    let calResult = 'Enter your measurement to see the difference.';
+    let calColor = '#5E5E64';
+    if (!isNaN(calNum) && calNum > 0) {
+      const err = Math.abs(p[resMeta.calKey] - calNum);
+      const pct = err / calNum * 100;
+      calResult = 'Difference: ' + err.toFixed(1) + ' mm (' + pct.toFixed(1) + '%)';
+      calColor = pct <= 2 ? '#1E7B34' : '#B3261E';
+    }
+    const scripts = {
+      wheel: 'import cadquery as cq\nouter, axle, thick = ' + p.wOuter + ', ' + p.wHole + ', ' + p.wThick + '\nresult = (cq.Workplane("XY")\n  .circle(outer / 2).extrude(thick)\n  .faces(">Z").workplane()\n  .hole(axle))',
+      bracket: 'import cadquery as cq\nL, W, T, d = ' + p.bLen + ', ' + p.bWid + ', ' + p.bThick + ', ' + p.bHole + '\nresult = (cq.Workplane("XY")\n  .box(L, W, T)\n  .faces(">Z").workplane()\n  .pushPoints([(-L/2 + 10, 0), (L/2 - 10, 0)])\n  .hole(d))',
+      keychain: 'import cadquery as cq\nW, T = ' + p.dWidth + ', ' + p.dThick + '\ntext = "' + s.dText + '"\nplate = cq.Workplane("XY").rect(W, 16).extrude(T)\nresult = plate.faces(">Z").workplane().text(text, 10, ' + (dRaised ? '1.0' : '-1.0') + ')' + (s.dHole ? '\nresult = result.faces(">Z").workplane().center(-W/2 + 6, 0).hole(4)' : '')
+    };
+
+    // ---- design
+    const dIsUpload = s.dTab === 'upload';
+    const textOk = s.dText.trim().length >= 1;
+    const previewReady = dIsUpload ? s.uploaded : textOk;
+    const holeTrackOn = s.dHole;
+
+    const rmData = [
+      { label: 'Now', badge: { text: 'Built', fg: '#1E5E2E', bg: '#E3F6E8' }, items: ['Flat parts from Top and Front photos', 'Round parts from End and Side photos', 'Scale from a bank card, a coin or a typed size', 'Editable parameters and STL download', 'Design mode for simple shapes and names'] },
+      { label: 'Next', badge: { text: 'Planned, not built', fg: '#5E5E64', bg: '#EDEDF0' }, items: ['Printable scale sheet as a reference', 'More coin sets and a saved-parts library', 'Chamfers, fillets and slots', 'Sketch clean-up with Muse Image'] },
+      { label: 'Later', badge: { text: 'Ideas', fg: '#5E5E64', bg: '#EDEDF0' }, items: ['Threads, snap fits and multi-part assemblies', 'Send straight to a slicer or print service', 'Video capture for harder shapes'] }
+    ];
+    const rm = rmData[s.rmTab];
+
+    return {
+      nWire: !s.wire, nUpload: !(s.dTab === 'upload'), nUploaded: !s.uploaded, nPreview: !((s.dTab === 'upload') ? s.uploaded : s.dText.trim().length >= 1), nIso: s.view !== 'iso', nRaised: s.dStyle !== 'raised',
+      s: s, scr: scr, go: go, ex: ex, isDesignMode: isDesignMode,
+      // type
+      isFlat: isFlat, isRound: !isFlat, pick: pick,
+      flatBorder: isFlat ? '#0A63D8' : '#FFFFFF', roundBorder: isFlat ? '#FFFFFF' : '#0A63D8',
+      toggleWhy: () => this.setState({ why: !s.why }),
+      setRef: setRef, refIsCard: s.ref === 'card', refIsCoin: s.ref === 'coin', refIsMm: s.ref === 'mm',
+      segCard: segStyle(s.ref === 'card'), segCoin: segStyle(s.ref === 'coin'), segMm: segStyle(s.ref === 'mm'),
+      coins: coins, coinIsOther: coinIsOther, coinOther: () => this.setState({ coin: -1 }),
+      sizeRows: (isFlat
+        ? [['mmA', 'Length (longest side)', 10, 300], ['mmB', 'Width (across)', 5, 300]]
+        : [['mmA', 'Diameter (across the circle)', 5, 200], ['mmB', 'Length (along the axle)', 1, 200]]
+      ).map((d, i) => ({
+        label: d[1], text: s[d[0]] + ' mm', divider: i === 1 ? '0' : '1px solid #EDEDF0',
+        decLabel: 'Decrease ' + d[1], incLabel: 'Increase ' + d[1],
+        dec: () => this.setState({ [d[0]]: Math.max(d[2], s[d[0]] - 1) }),
+        inc: () => this.setState({ [d[0]]: Math.min(d[3], s[d[0]] + 1) })
+      })),
+      sizeNote: isFlat ? 'Measure the part with a ruler: its longest side, then the width across it. Less accurate than a card, but needs nothing in the photo.' : 'Measure across the widest circle, then along the axle direction. Less accurate than a card, but needs nothing in the photo.',
+      optionalLine: 'Optional extra photos improve the check: ' + seq.filter((v) => !v.req).map((v) => v.label).join(', ') + '.',
+      // capture
+      cam: cam, thumbs: thumbs, shoot: shoot,
+      openSheet: { gallery: set({ sheet: 'gallery' }), discard: set({ sheet: 'discard' }), upload: set({ sheet: 'upload' }), script: set({ sheet: 'script', copied: false }) },
+      toggleFlash: () => {
+        this.setState({ flash: !s.flash });
+        this.say(s.flash ? 'Flash off' : 'Flash on. Not available on iPhone Safari, where we use the Camera app instead.');
+      },
+      toggleHandDemo: set({ handDemo: !s.handDemo }),
+      reviewTap: () => { if (reqOk) this.setState({ screen: 'review' }); else this.say('Take the required photos first.'); },
+      // review
+      reviewItems: reviewItems, refSummary: this.refSummary(),
+      needMoreReview: !reqOk,
+      buildBg: reqOk ? '#0A63D8' : '#C7C7CC', buildFg: reqOk ? '#FFFFFF' : '#5E5E64',
+      buildTap: () => { if (reqOk) this.startRun(); else this.say('Take the required photos first.'); },
+      // run
+      cancelRun: () => { this.clearTimers(); this.setState({ screen: s.example ? 'home' : (isDesignMode ? 'design' : 'review') }); },
+      toggleFail: set({ failDemo: !s.failDemo }),
+      failBg: s.failDemo ? '#FFD9D6' : '#E3E3E8', failState: s.failDemo ? 'on' : 'off',
+      runTitle: finished ? 'Part is ready' : 'Building your part',
+      runSub: (s.example ? 'Example with sample photos. ' : '') + 'Tap a step to see what it does. Times and costs here are placeholders.',
+      steps: steps, ladder: ladder, notDone: runBusy,
+      seeBg: finished ? '#0A63D8' : '#C7C7CC', seeFg: finished ? '#FFFFFF' : '#5E5E64',
+      seeText: finished ? 'See the result' : 'Working…',
+      seeResult: () => { if (finished) this.setState({ screen: 'result', view: 'iso', wire: false }); },
+      // result
+      vw: vw, vc: vc, kc: kc, badge1: resMeta.b1, badge2: resMeta.b2,
+      resTitle: resMeta.title, resTag1: resMeta.t1, resTag2: resMeta.t2,
+      setWire: { solid: set({ wire: false }), wire: set({ wire: true }) },
+      wireSeg: { solidBg: s.wire ? 'transparent' : '#FFFFFF', solidFw: s.wire ? '500' : '600', wireBg: s.wire ? '#FFFFFF' : 'transparent', wireFw: s.wire ? '600' : '500' },
+      setView: { iso: set({ view: 'iso' }), top: set({ view: 'top' }) },
+      viewIsIso: iso,
+      viewSeg: { isoBg: iso ? '#FFFFFF' : 'transparent', isoFw: iso ? '600' : '500', topBg: iso ? 'transparent' : '#FFFFFF', topFw: iso ? '500' : '600' },
+      params: this.paramRows(false),
+      rebuildBg: s.dirty ? '#0A63D8' : '#EDEDF0', rebuildFg: s.dirty ? '#FFFFFF' : '#5E5E64',
+      rebuildText: s.rebuilding ? 'Rebuilding…' : (s.dirty ? 'Rebuild with new values' : 'Up to date'),
+      rebuild: () => {
+        if (!s.dirty || s.rebuilding) return;
+        this.setState({ rebuilding: true });
+        this.later(() => { this.setState({ rebuilding: false, dirty: false }); this.say('Rebuilt in [time]'); }, 900);
+      },
+      calLabel: resMeta.cal, calResult: calResult, calColor: calColor,
+      onCal: (e) => this.setState({ cal: e.target.value }),
+      download: () => this.say('snappart-' + kind + '.stl saved. Units are millimetres.'),
+      canEditPhotos: !isDesignMode && !s.example,
+      scriptText: scripts[kind],
+      copyText: s.copied ? 'Copied' : 'Copy script', copyBg: s.copied ? '#34C759' : '#0A63D8',
+      copyScript: () => { this.setState({ copied: true }); },
+      // design
+      dIsUpload: dIsUpload, setDTab: { upload: set({ dTab: 'upload' }), type: set({ dTab: 'type' }) },
+      dTabSeg: { upBg: dIsUpload ? '#FFFFFF' : 'transparent', upFw: dIsUpload ? '600' : '500', tyBg: dIsUpload ? 'transparent' : '#FFFFFF', tyFw: dIsUpload ? '500' : '600' },
+      removeUpload: set({ uploaded: false }),
+      uploadPick: () => this.setState({ uploaded: true, sheet: null }),
+      onDText: (e) => this.setState({ dText: String(e.target.value).slice(0, 12) }),
+      textHint: textOk ? s.dText.length + ' of 12 characters' : 'Type 1 to 12 characters',
+      textHintColor: textOk ? '#5E5E64' : '#B3261E',
+      fonts: Object.keys(fonts).map((k) => ({ label: fonts[k].label, family: fonts[k].family, fw: fonts[k].fw, on: s.dFont === k, bg: s.dFont === k ? '#0A63D8' : '#EDEDF0', fg: s.dFont === k ? '#FFFFFF' : '#1D1D1F', pick: () => this.setState({ dFont: k }) })),
+      previewReady: previewReady, pv: pv,
+      emptyPreview: dIsUpload ? 'Choose an image to preview it.' : 'Type a name to preview it.',
+      dparams: this.paramRows(true),
+      dRaised: dRaised, setDStyle: { raised: set({ dStyle: 'raised' }), cut: set({ dStyle: 'cut' }) },
+      dStyleSeg: { raBg: dRaised ? '#FFFFFF' : 'transparent', raFw: dRaised ? '600' : '500', cuBg: dRaised ? 'transparent' : '#FFFFFF', cuFw: dRaised ? '500' : '600' },
+      toggleHole: set({ dHole: !s.dHole }), holeTrack: holeTrackOn ? '#34C759' : '#C7C7CC', holeKnob: holeTrackOn ? 35.5 : 15.5,
+      make3d: () => { if (previewReady) this.startRun(); else this.say(dIsUpload ? 'Choose an image first.' : 'Type a name first.'); },
+      makeBg: previewReady ? '#0A63D8' : '#C7C7CC', makeFg: previewReady ? '#FFFFFF' : '#5E5E64',
+      // about + roadmap
+      aboutSteps: [
+        { t: '1. Guided photos', d: 'Top and front views next to a bank card or coin of known size.' },
+        { t: '2. Measure', d: 'The part is cut out of each photo, and sizes come from pixels and the reference.' },
+        { t: '3. Build', d: 'A model writes a CAD script. It runs in a sandbox and exports an STL.' }
+      ],
+      aboutModels: [
+        { name: 'Muse Spark 1.3', fg: '#0A63D8', bg: '#E8F0FD', d: 'Checks the photos, identifies a coin with search and your confirmation, and writes the CAD script.', divider: '1px solid #EDEDF0' },
+        { name: 'SAM 3.1', fg: '#0A63D8', bg: '#E8F0FD', d: 'Cuts the part, the reference and any hand out of each photo.', divider: '1px solid #EDEDF0' },
+        { name: 'Muse Wonder 1.0', fg: '#0A63D8', bg: '#E8F0FD', d: 'Steps in to repair the script when the first attempts fail.', divider: '1px solid #EDEDF0' },
+        { name: 'No AI', fg: '#5E5E64', bg: '#EDEDF0', d: 'Measuring from pixels with OpenCV, and building the solid with CadQuery.', divider: '0' }
+      ],
+      rmTabs: rmData.map((r, i) => ({ label: r.label, on: s.rmTab === i, bg: s.rmTab === i ? '#FFFFFF' : 'transparent', fw: s.rmTab === i ? '600' : '500', pick: () => this.setState({ rmTab: i }) })),
+      rmBadge: rm.badge,
+      rmItems: rm.items.map((t, i) => ({ text: t, divider: i === rm.items.length - 1 ? '0' : '1px solid #EDEDF0' })),
+      // sheets
+      sheet: { any: !!s.sheet, gallery: s.sheet === 'gallery', hand: s.sheet === 'hand', discard: s.sheet === 'discard', upload: s.sheet === 'upload', script: s.sheet === 'script' },
+      closeSheet: set({ sheet: null }),
+      galleryPick: () => { this.setState({ sheet: null }); this.takePhoto(false); },
+      handRetake: set({ sheet: null }),
+      handUse: () => { this.setState({ sheet: null }); this.takePhoto(true); },
+      doDiscard: () => this.setState({ sheet: null, shots: {}, warn: {}, cur: 0, screen: 'home' })
+    };
+  }
+
+  takePhoto(warned) {
+    const s = this.state;
+    const seq = this.seq();
+    const cv = seq[Math.min(s.cur, seq.length - 1)];
+    const shots = Object.assign({}, s.shots); shots[cv.id] = true;
+    const warn = Object.assign({}, s.warn);
+    if (warned) warn[cv.id] = true; else delete warn[cv.id];
+    const next = seq.findIndex((v, i) => !shots[v.id] && i !== s.cur);
+    this.setState({ shots: shots, warn: warn, shutter: true });
+    this.later(() => this.setState({ shutter: false, cur: next >= 0 ? next : s.cur }), 140);
+    const reqDone = seq.filter((v) => v.req).every((v) => shots[v.id]);
+    if (reqDone && !seq.filter((v) => v.req).every((v) => s.shots[v.id])) this.say('Required photos done. Add optional views or tap Review.');
+  }
+}
+</script>
+</body>
+</html>

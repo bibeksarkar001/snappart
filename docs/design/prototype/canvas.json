@@ -1,0 +1,24 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-26T21:45:00Z" },
+  "title": "SnapPart UI Mockups",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "Phone app (working prototype)", "is_interactive": true },
+    "Workspace.dc.html": { "x": 470, "y": 0, "w": 1360, "h": 860, "title": "Desktop workspace (working prototype)", "expand": "fill", "is_interactive": true },
+    "About.dc.html": { "x": 1910, "y": 0, "w": 1360, "h": 1150, "title": "About", "expand": "fill", "is_interactive": true },
+    "Roadmap.dc.html": { "x": 3350, "y": 0, "w": 1360, "h": 950, "title": "Roadmap", "expand": "fill", "is_interactive": true }
+  },
+  "order": [
+    "Main.dc.html",
+    "Workspace.dc.html",
+    "About.dc.html",
+    "Roadmap.dc.html"
+  ],
+  "notes": {
+    "n1": { "x": 0, "y": -260, "text": "SnapPart prototype", "kind": "title1", "maxW": 4710 },
+    "n2": { "x": 0, "y": 960, "text": "Press Play on the phone. Every button works: part type, reference, camera, review, build, result, design mode, About, Roadmap. The hand-in-frame and script-error switches show the failure paths.", "w": 360 }
+  },
+  "designSystems": []
+}

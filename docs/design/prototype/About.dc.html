@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SnapPart about</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;color:#1D1D1F;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 1150px; box-sizing: border-box; background: #F5F5F7; display: flex; flex-direction: column">
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 28px; min-height: 64px; background: rgba(255,255,255,0.8); border-bottom: 1px solid #E3E3E8">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#0A63D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10V6a2 2 0 0 1 2-2h4M18 4h4a2 2 0 0 1 2 2v4M24 18v4a2 2 0 0 1-2 2h-4M10 24H6a2 2 0 0 1-2-2v-4"/><circle cx="14" cy="14" r="4"/></svg>
+      <span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em">SnapPart</span>
+    </div>
+    <div style="display: flex; gap: 24px; font-size: 15px">
+      <a href="Workspace.dc.html" style="color: #5E5E64">Workspace</a>
+      <a href="About.dc.html" style="color: #1D1D1F; font-weight: 600">About</a>
+      <a href="Roadmap.dc.html" style="color: #5E5E64">Roadmap</a>
+    </div>
+  </div>
+
+  <div style="max-width: 880px; width: 100%; box-sizing: border-box; margin: 0 auto; padding: 72px 28px 80px; display: flex; flex-direction: column; gap: 56px">
+
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h1 style="margin: 0; font-size: 56px; line-height: 1.04; font-weight: 700; letter-spacing: -0.04em">A photo in.<br>A printable part out.</h1>
+      <p style="margin: 0; font-size: 21px; line-height: 1.4; color: #5E5E64; max-width: 660px">SnapPart turns photos of a simple flat or round part into a 3D file in millimetres, so a broken bracket or a lost wheel can be printed again.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">The problem</h2>
+      <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3C3C43; max-width: 680px">Small plastic parts break and replacements are hard to find. Modelling one from scratch in CAD takes skills and time most people do not have. A phone camera is already in every pocket.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">How it works</h2>
+      <div style="display: flex; gap: 16px">
+        <div style="flex: 1; background: #FFFFFF; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 13px; font-weight: 600; color: #0A63D8">1</span>
+          <p style="margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em">Guided photos</p>
+          <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5E5E64">Top and front views next to a bank card or coin of known size.</p>
+        </div>
+        <div style="flex: 1; background: #FFFFFF; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 13px; font-weight: 600; color: #0A63D8">2</span>
+          <p style="margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em">Measure</p>
+          <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5E5E64">The part is cut out of each photo, and sizes come from pixels and the reference.</p>
+        </div>
+        <div style="flex: 1; background: #FFFFFF; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 13px; font-weight: 600; color: #0A63D8">3</span>
+          <p style="margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em">Build</p>
+          <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5E5E64">A model writes a CAD script. It runs in a sandbox and exports an STL.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">Which model does what</h2>
+      <div style="background: #FFFFFF; border-radius: 22px; padding: 6px 24px">
+        <div style="display: flex; align-items: center; gap: 16px; min-height: 64px; border-bottom: 1px solid #EDEDF0">
+          <span style="width: 130px; flex: none; font-size: 13px; font-weight: 600; color: #0A63D8; background: #E8F0FD; border-radius: 8px; padding: 4px 10px; text-align: center">Muse Spark 1.3</span>
+          <span style="font-size: 16px; line-height: 1.45">Checks the photos, identifies a coin with search and your confirmation, and writes the CAD script.</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px; min-height: 64px; border-bottom: 1px solid #EDEDF0">
+          <span style="width: 130px; flex: none; font-size: 13px; font-weight: 600; color: #0A63D8; background: #E8F0FD; border-radius: 8px; padding: 4px 10px; text-align: center">SAM 3.1</span>
+          <span style="font-size: 16px; line-height: 1.45">Cuts the part, the reference and any hand out of each photo.</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px; min-height: 64px; border-bottom: 1px solid #EDEDF0">
+          <span style="width: 130px; flex: none; font-size: 13px; font-weight: 600; color: #0A63D8; background: #E8F0FD; border-radius: 8px; padding: 4px 10px; text-align: center">Muse Wonder 1.0</span>
+          <span style="font-size: 16px; line-height: 1.45">Steps in to repair the script when the first attempts fail.</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px; min-height: 64px">
+          <span style="width: 130px; flex: none; font-size: 13px; font-weight: 600; color: #5E5E64; background: #EDEDF0; border-radius: 8px; padding: 4px 10px; text-align: center">No AI</span>
+          <span style="font-size: 16px; line-height: 1.45">Measuring from pixels with OpenCV, and building the solid with CadQuery.</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">Measured accuracy</h2>
+      <div style="background: #FFFFFF; border-radius: 22px; padding: 22px 24px; max-width: 680px">
+        <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3C3C43">Typical error against calipers: [MEASURED ERROR]. This is filled in only after real tests on real parts.</p>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">Limits, said plainly</h2>
+      <ul style="margin: 0; padding-left: 22px; font-size: 17px; line-height: 1.7; color: #3C3C43; max-width: 680px">
+        <li>Simple flat and round parts only.</li>
+        <li>Shiny, clear or very dark parts photograph badly.</li>
+        <li>Hidden details are not guessed. Add more views.</li>
+        <li>Design mode handles simple shapes and short names only.</li>
+      </ul>
+    </div>
+
+    <p style="margin: 0; font-size: 14px; color: #5E5E64">Built during the Meta Global AI Developer Hackathon.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1150}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
