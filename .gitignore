@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SnapPart
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.DS_Store
+backend/storage/
