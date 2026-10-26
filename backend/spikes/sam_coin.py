@@ -50,7 +50,7 @@ async def segment(image_path: Path, concept: str, raw_name: str):
     first = None
     async for _ in parsed:
         first = first or time.perf_counter() - t0
-    result = await parsed.final_result
+    result = await parsed.final_result()
     total = time.perf_counter() - t0
     (OUT / raw_name).write_text(result.raw_output)
     print(f"outcome={result.outcome.status} first_snapshot={first or 0:.2f}s total={total:.2f}s "
