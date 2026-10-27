@@ -143,20 +143,6 @@ def filled(mask):
     return out
 
 
-def unstretch_fn(coin):
-    """Fit the coin ellipse; return a point mapper that stretches the minor-axis direction until the coin is a circle."""
-    cnts, _ = cv2.findContours((coin > 0).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    (cx, cy), (a, b), ang = cv2.fitEllipse(max(cnts, key=cv2.contourArea))
-    major, minor = max(a, b), min(a, b)
-    th = math.radians((ang if a >= b else ang + 90) + 90)  # direction of the minor axis
-    u, k = np.array([math.cos(th), math.sin(th)]), major / minor
-
-    def f(pts):
-        p = np.asarray(pts, float).reshape(-1, 2)
-        return p + (k - 1) * np.outer((p - [cx, cy]) @ u, u)
-    return f, major, minor, math.degrees(math.acos(min(1.0, minor / major))), ((cx, cy), (a, b), ang)
-
-
 def poly_area(p):
     return abs(cv2.contourArea(p.astype(np.float32)))
 

@@ -21,10 +21,14 @@ dependencies:
   - cairo=1.18.6
   - casadi=3.7.2
   - cli11=2.7.2
+  - click=8.5.0
+  - cloudpickle=3.1.2
   - contourpy=1.3.3
   - cpython=3.11.17
   - cycler=0.12.1
   - cyrus-sasl=2.1.28
+  - cytoolz=1.2.0
+  - dask-core=2026.8.0
   - dbus=1.16.2
   - double-conversion=3.4.0
   - eigen=5.0.1
@@ -46,6 +50,7 @@ dependencies:
   - freetype=2.14.3
   - fribidi=1.0.17
   - frozenlist=1.8.0
+  - fsspec=2026.9.0
   - gdk-pixbuf=2.44.8
   - glew=2.3.0
   - glslang=16.6.0
@@ -55,7 +60,10 @@ dependencies:
   - hdf5=1.14.6
   - icu=78.3
   - idna=3.20
+  - imagecodecs-lite=2019.12.3
+  - imageio=2.38.1
   - imath=3.2.3
+  - importlib-metadata=10.0.0
   - ipopt=3.14.19
   - ipython=9.17.1
   - ipython_pygments_lexers=1.1.1
@@ -66,6 +74,8 @@ dependencies:
   - kiwisolver=1.5.1
   - krb5=1.22.2
   - lame=4.0
+  - lazy-loader=0.6
+  - lazy_loader=0.6
   - lcms2=2.19.1
   - lerc=4.2.0
   - libabseil=20260526.0
@@ -155,6 +165,7 @@ dependencies:
   - libzlib=1.3.2
   - llvm-openmp=23.1.4
   - llvmlite=0.50.0
+  - locket=1.0.0
   - lz4-c=1.10.0
   - matplotlib-base=3.11.2
   - matplotlib-inline=0.2.2
@@ -169,10 +180,11 @@ dependencies:
   - mumps-seq=5.8.2
   - munkres=1.1.4
   - ncurses=6.6
+  - networkx=3.6.1
   - nlohmann_json=3.12.0
   - nlopt=2.11.0
   - numba=0.68.0
-  - numpy=2.4.6
+  - numpy=1.26.4
   - occt=7.9.3
   - ocp=7.9.3.1
   - openexr=3.5.2
@@ -184,6 +196,7 @@ dependencies:
   - packaging=26.3
   - pango=1.58.2
   - parso=0.8.7
+  - partd=1.4.2
   - path=17.1.1
   - pcre2=10.47
   - pexpect=4.9.0
@@ -207,12 +220,14 @@ dependencies:
   - python-gil=3.11.17
   - python-tzdata=2026.5
   - python_abi=3.11
+  - pywavelets=1.9.0
   - pyyaml=6.0.3
   - qhull=2020.2
   - qt6-main=6.11.2
   - rapidjson=1.1.0.post20250205
   - readline=8.3
   - runtype=0.5.3
+  - scikit-image=0.20.0
   - scipy=1.17.1
   - sdl2=2.32.56
   - sdl3=3.4.18
@@ -226,8 +241,10 @@ dependencies:
   - svt-av1=4.2.0
   - tbb=2023.1.0
   - tbb-devel=2023.1.0
+  - tifffile=2020.6.3
   - tinyxml2=11.0.0
   - tk=8.6.13
+  - toolz=1.2.0
   - traitlets=5.16.1
   - trame=4.0.0
   - trame-client=4.1.4
@@ -254,6 +271,7 @@ dependencies:
   - yaml=0.2.5
   - yarl=1.25.1
   - zfp=1.0.1
+  - zipp=4.1.2
   - zlib-ng=2.3.3
   - zstd=1.5.7
   - pip:
@@ -263,7 +281,6 @@ dependencies:
       - certifi==2026.10.23
       - cffi==2.1.1
       - charset-normalizer==3.5.2
-      - click==8.5.0
       - cryptography==50.0.2
       - distro==1.9.0
       - fastapi==0.162.0

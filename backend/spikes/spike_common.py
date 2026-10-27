@@ -1,4 +1,5 @@
 """Small helpers shared by the phase 1 spikes."""
+import math
 from pathlib import Path
 
 import cv2
@@ -32,3 +33,24 @@ def tint(img, mask, color, alpha=0.5):
     out = img.copy()
     out[mask > 0] = ((1 - alpha) * out[mask > 0] + alpha * np.array(color)).astype(np.uint8)
     return out
+
+
+def unstretch_fn(coin):
+    """Fit the coin ellipse; return (mapper, major_px, minor_px, tilt_deg, raw ellipse).
+
+    The mapper stretches the minor-axis direction until the coin is a circle; mapper.inv undoes it.
+    """
+    cnts, _ = cv2.findContours((coin > 0).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    (cx, cy), (a, b), ang = cv2.fitEllipse(max(cnts, key=cv2.contourArea))
+    major, minor = max(a, b), min(a, b)
+    th = math.radians((ang if a >= b else ang + 90) + 90)  # direction of the minor axis
+    u, k = np.array([math.cos(th), math.sin(th)]), major / minor
+
+    def stretch(pts, factor):
+        p = np.asarray(pts, float).reshape(-1, 2)
+        return p + (factor - 1) * np.outer((p - [cx, cy]) @ u, u)
+
+    def f(pts):
+        return stretch(pts, k)
+    f.inv = lambda pts: stretch(pts, 1 / k)
+    return f, major, minor, math.degrees(math.acos(min(1.0, minor / major))), ((cx, cy), (a, b), ang)
