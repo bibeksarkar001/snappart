@@ -22,7 +22,7 @@ from meta_sam_parser import decode_mask_to_raster
 
 import spark_describe
 from sam_coin import segment
-from spike_common import COIN_MM, OUT, ROOT, full_mask, save_overlay, tint
+from spike_common import OUT, ROOT, full_mask, save_overlay, tint, unstretch_fn
 
 PHOTOS = ROOT / "assets" / "private" / "lock_set"
 OUTD = OUT / "lock_set"
