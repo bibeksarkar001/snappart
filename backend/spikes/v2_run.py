@@ -275,8 +275,127 @@ def stage1():
     print("\n".join(L))
 
 
+def groove_face(v, fc):
+    """The face stage 1 chose (the horizontal face holding the openings) and the openings' plane offset from it (mean, mm, + outward)."""
+    import numpy as np
+    from capture import features as F
+    ops = json.loads((SEND / "results.json").read_text())["1_grooves"]["openings"]
+    cen = np.mean([o["centre"] for o in ops], 0)
+    faces = [f for f in F.candidate_faces(v, fc) if f["kind"] == "horizontal"]
+    face = min(faces, key=lambda f: abs(cen @ f["n"] + f["d"]) + 100 * (np.linalg.norm(cen - (f["O"] + f["len_s"] / 2 * f["e1"] + f["len_t"] / 2 * f["e2"])) > 25))
+    return face, float(np.mean([o["dist_from_face_mm"] for o in ops])), ops
+
+
+def height_lsq(obs, face):
+    """Height h (mm along the face normal, relative to the rectification plane) and in-plane position u (along e2) of a line parallel to e1,
+    from its observed t in several rectified views: t_obs = u - h * (d.e2)/(d.n) for each view ray d. Needs views of different tilt."""
+    import numpy as np
+    A = np.array([[1.0, -(d @ face["e2"]) / (d @ face["n"])] for _, d in obs])
+    b = np.array([t for t, _ in obs])
+    x = np.linalg.lstsq(A, b, rcond=None)[0]
+    return float(x[0]), float(x[1]), float(np.sqrt(((b - A @ x) ** 2).mean())), float(np.ptp(A[:, 1]))
+
+
+def stage2():
+    import cv2
+    import numpy as np
+    from capture import features as F
+    t0, d0 = time.time(), date()
+    v, fc = load_mesh(V1 / "A_final.stl")
+    vv, imgs = all_views()
+    face, dl, ops = groove_face(v, fc)
+    L = [f"STAGE 2: lock bump on the ledge above the grooves. start {d0}.",
+         f"Every view facing the groove face (cos >= 0.5) is rectified onto the opening plane ({dl:+.2f} mm from the hull face, from stage 1). The openings give the "
+         "reference row; above it (0.3..3.2 mm from the openings' top edge) the strongest vertical-gradient edge per column traces a line t(s); a 3-segment step fit finds a "
+         "middle segment that differs from both sides (a raised block), its ends refined on the horizontal gradient. A view agrees if its length is within 1 mm of its video's median length.",
+         "Attempt history: attempt 1 searched 0.2..4.0 mm above the openings and locked onto the recess edge (ends inconsistent: 5.6 to 25 mm); attempt 2 (this) narrows the band."]
+    per, ends, obs = {}, {}, {}
+    nface = 0
+    for (vid, vw), im in zip(vv, imgs):
+        if F.facing(vw, face) < 0.5:
+            continue
+        nface += 1
+        g = F.rectify(vw, im, face, dl, 20)
+        oo = F.openings(g, 20)
+        if len(oo) < 3:
+            continue
+        top = float(np.median([o[1] + o[3] / 2 for o in oo]))
+        r = F.step_band(g, 20, top + 0.3, top + 3.2, min(o[0] - o[2] / 2 for o in oo), max(o[0] + o[2] / 2 for o in oo), w_lo=top - 0.3, w_hi=top + 3.2)
+        if r is None:
+            continue
+        r.update({"view": vw.name, "top": top, "len": r["s1"] - r["s0"], "C": -vw.R.T @ vw.t})
+        per.setdefault(vid, []).append(r)
+    base = face["O"] + dl * face["n"]
+    for vid, lst in per.items():
+        med = float(np.median([r["len"] for r in lst]))
+        for r in lst:
+            r["agree"] = abs(r["len"] - med) <= 1.0
+            if not r["agree"]:
+                continue
+            for key, (ss, tt) in {"end0": (r["s0"], r["t_edge"]), "end1": (r["s1"], r["t_edge"]), "ridge": ((r["s0"] + r["s1"]) / 2, r["t_edge"]),
+                                  "open_top": ((r["s0"] + r["s1"]) / 2, r["top"])}.items():
+                P = base + ss * face["e1"] + tt * face["e2"]
+                d = (P - r["C"]) / np.linalg.norm(P - r["C"])
+                (ends if key.startswith("end") else obs).setdefault((vid, key), []).append((r["C"], d) if key.startswith("end") else (tt, d))
+    res = {"views_facing": nface, "per_video": {}}
+    L.append(f"{nface} views face it. Detections (block found / agreeing: length within 1 mm of that video's median; no caliper value is used):")
+    for vid, lst in per.items():
+        ok = [r for r in lst if r["agree"]]
+        e0 = F.triangulate(ends[(vid, "end0")]) if len(ok) >= 3 else None
+        e1 = F.triangulate(ends[(vid, "end1")]) if len(ok) >= 3 else None
+        rec = {"found": len(lst), "agree": len(ok)}
+        line = f"  {vid}: block found in {len(lst)} views, {len(ok)} agree"
+        if ok:
+            ls = [r["len"] for r in ok]
+            rec.update({"len_rect_median": float(np.median(ls)), "len_rect_iqr": [float(np.percentile(ls, 25)), float(np.percentile(ls, 75))],
+                        "ridge_to_opening_edge_median": float(np.median([r["t_edge"] - r["top"] for r in ok]))})
+            line += f"; rectified length median {np.median(ls):.2f} mm (IQR {np.percentile(ls, 25):.2f}..{np.percentile(ls, 75):.2f}); ridge {rec['ridge_to_opening_edge_median']:.2f} mm from the openings' top edge"
+        if e0 is not None:
+            L3 = float(np.linalg.norm(e1[0] - e0[0]))
+            rec.update({"end0": e0[0].tolist(), "end1": e1[0].tolist(), "len_3d": L3, "end_ray_res_max": float(max(e0[1] + e1[1]))})
+            line += f"; triangulated ends ({e0[0][0]:.2f},{e0[0][1]:.2f},{e0[0][2]:.2f}) and ({e1[0][0]:.2f},{e1[0][1]:.2f},{e1[0][2]:.2f}), 3D length {L3:.2f} mm (ray residual max {max(e0[1] + e1[1]):.2f})"
+            hr = height_lsq(obs[(vid, "ridge")], face)
+            ho = height_lsq(obs[(vid, "open_top")], face)
+            rec.update({"ridge_h": hr[1], "open_top_h": ho[1], "tilt_range": hr[3], "ridge_rms": hr[2]})
+            line += f"; parallax height of the ridge line {hr[1]:+.2f} mm vs the openings' top edge {ho[1]:+.2f} mm (relative {hr[1] - ho[1]:+.2f}; tilt range {hr[3]:.2f}, rms {hr[2]:.3f} mm)"
+        res["per_video"][vid] = rec
+        L.append(line)
+    good = {k: r for k, r in res["per_video"].items() if "len_3d" in r}
+    if good:
+        prim = max(good, key=lambda k: good[k]["agree"])
+        Lb = good[prim]["len_3d"]
+        rel = {k: r["ridge_h"] - r["open_top_h"] for k, r in good.items()}
+        res.update({"detected": True, "length_mm": Lb, "primary": prim, "protrusion_rel_by_video": rel})
+        L += [f"LOCK BUMP: DETECTED, {sum(r['agree'] for r in good.values())} agreeing views in {len(good)} video(s). Length {Lb:.2f} mm (3D, {prim}; caliper 19.9: {Lb - 19.9:+.2f}).",
+              "  width: NOT MEASURED. Across the block, the edge opposite the ridge coincides with the openings' top edge, so the bump's own lower edge is not separable; "
+              f"ridge to opening edge is {good[prim]['ridge_to_opening_edge_median']:.2f} mm, an upper bound (caliper 2.3 in chat / 2.6 on image 5).",
+              "  protrusion: NOT MEASURED. Parallax height of the ridge relative to the openings' top edge: " + ", ".join(f"{k[-2:]} {x:+.2f} mm" for k, x in rel.items())
+              + ("; the videos disagree in sign" if len(rel) > 1 and min(rel.values()) * max(rel.values()) < 0 else "")
+              + "; a raised rail would sit ABOVE the opening edge (positive); a result within +-0.3 mm (the ridge fit rms is ~0.1 mm, registration between videos is worse) "
+              "is not a measured protrusion. The ledge is not on the silhouette in any video, so low-angle frames cannot show it either. (Attempt 1 of this stage, with "
+              "agreement judged against 19.5 mm, also had video 2 at +0.30 mm: opposite sign.)",
+              "  NO GEOMETRY ADDED: without a measured width and height the bump would be invented."]
+    else:
+        res["detected"] = False
+        L.append("LOCK BUMP: NOT DETECTED (no video with >= 3 agreeing views). No geometry added.")
+    # picture: one frontal rectified view with the detected block
+    best = min((r for r in per.get(prim, []) if r["agree"]), key=lambda r: abs(r["len"] - np.median([q["len"] for q in per[prim] if q["agree"]])), default=None) if good else None
+    if best:
+        i = next(j for j, (_, x) in enumerate(vv) if x.name == best["view"])
+        col = F.rectify(vv[i][1], cv2.imread(str(CACHE / "crops" / f"{best['view']}.jpg")), face, dl, 20)
+        H = col.shape[0]
+        y0, y1 = int(H - 1 - best["t_edge"] * 20), int(H - 1 - best["top"] * 20)
+        cv2.rectangle(col, (int(best["s0"] * 20), y0), (int(best["s1"] * 20), y1), (255, 255, 0), 2)
+        cv2.putText(col, f"{best['view']}: bump ends {best['s0']:.1f}..{best['s1']:.1f} mm (cyan), rectified 20 px/mm", (6, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.imwrite(str(SEND / "bump_rectified.png"), col)
+        L.append(f"picture: bump_rectified.png ({best['view']} rectified onto the opening plane; cyan box = detected block ends, ridge to openings' edge).")
+    L.append(f"end {date()}; elapsed {time.time() - t0:.0f} s")
+    save_stage("2_bump", "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"base": stage_base, "1": stage1}[a.stage]()
+    {"base": stage_base, "1": stage1, "2": stage2}[a.stage]()

@@ -217,3 +217,51 @@ def render_shaded(verts, faces, view, light=(0.3, -0.4, -1.0)):
         cv2.fillConvexPoly(img, pts[i], col, cv2.LINE_8, 4)
         cv2.fillConvexPoly(mask, pts[i], 255, cv2.LINE_8, 4)
     return img, mask
+
+
+def step_band(g, ppm, t_lo, t_hi, s_lo, s_hi, min_len=8.0, min_step=0.25, w_lo=None, w_hi=None):
+    """A raised rail along e1 in a rectified gray image: per column, the row of the strongest vertical-gradient edge inside the band
+    t_lo..t_hi gives an edge line t(s); a 3-segment piecewise-constant fit (least absolute deviation, breakpoints on a 0.25 mm grid) finds
+    where the edge steps. The middle segment is the rail if it differs from BOTH sides by >= min_step mm in the same direction.
+    Returns {"s0", "s1" (ends, mm), "t_edge" (middle segment), "step" (mm, middle minus sides), "width" (mm, between the two strongest
+    opposite-polarity edges across the middle segment, rows w_lo..w_hi, default t_lo..t_hi)}. The ends are refined to the strongest
+    horizontal-gradient column within 1 mm of each breakpoint (gradient averaged over the band rows). None if no such step."""
+    H = g.shape[0]
+    r0, r1 = int(H - 1 - t_hi * ppm), int(H - 1 - t_lo * ppm)
+    c0, c1 = int(s_lo * ppm), int(s_hi * ppm)
+    if r0 < 0 or r1 >= H or c1 - c0 < 4 * ppm:
+        return None
+    gs = cv2.GaussianBlur(g.astype(np.float32), (0, 0), 2)
+    gy = cv2.Sobel(gs, cv2.CV_32F, 0, 1, ksize=3)[r0:r1, c0:c1]
+    rows = np.abs(gy).argmax(0)
+    t = (H - 1 - (r0 + rows)) / ppm
+    from scipy.ndimage import median_filter
+    t = median_filter(t, int(ppm) | 1)
+    s = (c0 + np.arange(c1 - c0)) / ppm
+    step = int(0.25 * ppm)
+    cuts = np.arange(step, len(s) - step, step)
+    cs = np.r_[0, np.cumsum(t)]
+    best = None
+    for i in cuts:
+        for j in cuts[cuts > i + min_len * ppm]:
+            segs = [t[:i], t[i:j], t[j:]]
+            if min(len(x) for x in segs) < ppm:
+                continue
+            meds = [np.median(x) for x in segs]
+            cost = sum(np.abs(x - m).sum() for x, m in zip(segs, meds))
+            if best is None or cost < best[0]:
+                best = (cost, i, j, meds)
+    if best is None:
+        return None
+    _, i, j, (ma, mb, mc) = best
+    if not ((mb - ma) * (mb - mc) > 0 and min(abs(mb - ma), abs(mb - mc)) >= min_step):
+        return None
+    gx = np.abs(cv2.Sobel(gs, cv2.CV_32F, 1, 0, ksize=3)[r0:r1, c0:c1]).mean(0)
+    win = int(ppm)
+    i = max(i - win, 0) + int(np.argmax(gx[max(i - win, 0):i + win]))
+    j = max(j - win, 0) + int(np.argmax(gx[max(j - win, 0):j + win]))
+    q0, q1 = (r0, r1) if w_lo is None else (int(H - 1 - w_hi * ppm), int(H - 1 - w_lo * ppm))
+    prof = cv2.Sobel(gs, cv2.CV_32F, 0, 1, ksize=3)[q0:q1, c0 + i:c0 + j].mean(1)
+    a, b = int(np.argmax(prof)), int(np.argmin(prof))
+    return {"s0": float(s[i]), "s1": float(s[j]), "t_edge": float(mb), "step": float(mb - (ma + mc) / 2), "width": abs(a - b) / ppm,
+            "t_a": float((H - 1 - (q0 + a)) / ppm), "t_b": float((H - 1 - (q0 + b)) / ppm), "fit_mad": float(best[0] / len(t))}
