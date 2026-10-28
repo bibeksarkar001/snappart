@@ -113,3 +113,12 @@ def test_empty_part_and_bad_reference():
         extract_outline(img, m["part"], np.zeros_like(m["ref"]), COIN_MM)
     with pytest.raises(ValueError):
         extract_outline(img, m["part"], m["ref"], COIN_MM, ref_kind="ruler")
+
+
+def test_card_corners_of_a_rotated_card():
+    from measure.outline import card_corners
+    m = np.zeros((600, 800), np.uint8)
+    box = np.round(cv2.boxPoints(((400, 300), (428, 270), 12))).astype(np.float32)     # integer corners: exact polygon
+    cv2.fillConvexPoly(m, box.astype(np.int32), 255)
+    got = card_corners(m)
+    assert all(np.linalg.norm(box - g, axis=1).min() < 1.0 for g in got)

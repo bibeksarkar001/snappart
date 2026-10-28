@@ -60,6 +60,8 @@ class Params:
     hole_ring_min: float = 0.9           # fraction of the surrounding ring that must lie inside the part, in every sector
     exclude_margin_mm: float = 0.7       # keep-out around the exclusion mask (hand)
     contact_mm: float = 1.1              # outline this close to the exclusion mask counts as hand contact
+    card_frame: str = "homography"       # card reference: "homography" (four corners, perspective), "similarity" (rotation + one scale from the corners), "axes" (old: minAreaRect, one scale per side)
+    coin_unstretch_min_ratio: float = 1.02  # coin ellipse major/minor below this = level camera: the ellipse is the coin's side wall, no un-stretch
     scale_correction: float = 1.0        # multiplies every mm result after measurement; plug in a calibrated value here
 
 
@@ -108,13 +110,14 @@ class OutlineResult:
     quality_parts: dict[str, float]
     warnings: list[str] = field(default_factory=list)
     frame: Frame | None = None
+    ref_axis_ratio: float | None = None  # coin ellipse major/minor as measured (before deciding whether to un-stretch)
 
     def to_dict(self) -> dict:
         def part(p: Part) -> dict:
             return {"primitives": p.primitives, "long_mm": p.long_mm, "short_mm": p.short_mm, "area_mm2": p.area_mm2,
                     "max_dev_mm": p.max_dev_mm, "p95_dev_mm": p.p95_dev_mm, "hand_contact_mm": p.hand_contact_mm,
                     "holes": [h.__dict__ for h in p.holes]}
-        return {"parts": [part(p) for p in self.parts], "mm_per_px": self.mm_per_px, "tilt_deg": self.tilt_deg,
+        return {"parts": [part(p) for p in self.parts], "mm_per_px": self.mm_per_px, "tilt_deg": self.tilt_deg, "ref_axis_ratio": self.ref_axis_ratio,
                 "ref_kind": self.ref_kind, "quality": self.quality, "quality_parts": self.quality_parts, "warnings": self.warnings}
 
 
@@ -129,13 +132,18 @@ def _reference_contour(mask: np.ndarray) -> np.ndarray:
     return max(cs, key=lambda c: cv2.contourArea(c.astype(np.float32)))
 
 
-def _coin_frame(mask: np.ndarray, diameter_mm: float):
-    """Un-stretch mapping from a coin mask. Returns (to_mm, to_px, mm_per_px, tilt_deg, fit_rms_rel)."""
+def _coin_frame(mask: np.ndarray, diameter_mm: float, min_ratio: float = 1.02):
+    """Mapping from a coin mask. Returns (to_mm, to_px, mm_per_px, tilt_deg, fit_rms_rel, axis_ratio).
+
+    The scale is diameter / major axis. Only if major/minor >= min_ratio is the minor axis direction stretched until the coin is
+    a circle (a tilted plane); below it the camera counts as level and the small ellipse as the coin's side wall (no stretch, tilt 0).
+    """
     c = _reference_contour(mask)
     (cx, cy), (a, b), ang = cv2.fitEllipse(c.astype(np.float32))
     major, minor = max(a, b), min(a, b)
     th = math.radians((ang if a >= b else ang + 90) + 90)       # direction of the minor axis
-    u, k = np.array([math.cos(th), math.sin(th)]), major / minor
+    u, ratio = np.array([math.cos(th), math.sin(th)]), major / minor
+    k = ratio if ratio >= min_ratio else 1.0
     s = diameter_mm / major
 
     def stretch(p, f):
@@ -143,23 +151,80 @@ def _coin_frame(mask: np.ndarray, diameter_mm: float):
         return p + (f - 1) * np.outer((p - [cx, cy]) @ u, u)
 
     # rms distance of the mask boundary from the fitted ellipse, relative to the diameter
-    rel = stretch(c, k) - [cx, cy]
+    rel = stretch(c, ratio) - [cx, cy]
     rms = float(np.sqrt(np.mean((np.linalg.norm(rel, axis=1) - major / 2) ** 2)) / major)
     return (lambda p: stretch(p, k) * s, lambda m: stretch(np.asarray(m, float) / s, 1 / k), s,
-            math.degrees(math.acos(min(1.0, minor / major))), rms)
+            math.degrees(math.acos(min(1.0, 1 / k))), rms, ratio)
 
 
-def _card_frame(mask: np.ndarray, size_mm: tuple[float, float]):
-    """Stretch along the card's own two sides so it becomes size_mm. Returns the same tuple as _coin_frame (tilt = None)."""
+def card_corners(mask: np.ndarray) -> np.ndarray:
+    """The four corners (4x2 px, in order around the card) of a card mask: a line is fitted to the middle of each side and
+    neighbours are intersected, so rounded corners and bevel do not pull the corners inwards."""
+    c = _reference_contour(mask)
+    hull = cv2.convexHull(c.astype(np.float32))
+    peri = cv2.arcLength(hull, True)
+    quad = next((q.reshape(4, 2) for q in (cv2.approxPolyDP(hull, e * peri, True) for e in np.linspace(0.005, 0.1, 60)) if len(q) == 4), None)
+    if quad is None:
+        raise ValueError("card mask is not a four-sided shape")
+    lines = []
+    for i in range(4):
+        a, b = quad[i], quad[(i + 1) % 4]
+        d = (b - a) / np.linalg.norm(b - a)
+        t, off = (c - a) @ d, (c - a) @ np.array([-d[1], d[0]])
+        side = np.linalg.norm(b - a)
+        pts = c[(t > 0.2 * side) & (t < 0.8 * side) & (np.abs(off) < 0.05 * side)]
+        if len(pts) < 10:
+            raise ValueError("card side has too few contour points")
+        vx, vy, x0, y0 = cv2.fitLine(pts.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).ravel()
+        lines.append((np.array([x0, y0]), np.array([vx, vy])))
+    out = []
+    for i in range(4):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        t = np.cross(p2 - p1, d2) / np.cross(d1, d2)
+        out.append(p1 + t * d1)
+    return np.array(out)
+
+
+def _card_frame(mask: np.ndarray, size_mm: tuple[float, float], mode: str = "homography"):
+    """Card -> mm frame, x along the side between corners 0 and 1. Returns the same tuple as _coin_frame (tilt and axis ratio None).
+
+    "homography": the four corners map to the card rectangle (corrects perspective of the paper plane, extrapolated from a small card);
+    "similarity": rotation and one uniform scale fitted to the four corners; "axes": minAreaRect, one scale per side (the first version).
+    The fit error is how far the mask area is from the corner quad area (axes: from the rectangle area)."""
+    if mode == "axes":
+        return _card_frame_axes(mask, size_mm)
+    q = card_corners(mask)
+    if np.cross(q[1] - q[0], q[2] - q[1]) < 0:           # keep handedness: a mirrored frame would flip the CAD part
+        q = q[[0, 3, 2, 1]]
+    long_mm, short_mm = max(size_mm), min(size_mm)
+    w, h = (long_mm, short_mm) if np.linalg.norm(q[1] - q[0]) >= np.linalg.norm(q[2] - q[1]) else (short_mm, long_mm)
+    dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], np.float32)
+    quad_area = float(cv2.contourArea(q.astype(np.float32)))
+    area_err = abs(float(cv2.contourArea(_reference_contour(mask).astype(np.float32))) / quad_area - 1)
+    if mode == "homography":
+        H = cv2.getPerspectiveTransform(q.astype(np.float32), dst)
+        Hi = np.linalg.inv(H)
+
+        def warp(M, p):
+            return cv2.perspectiveTransform(np.asarray(p, np.float64).reshape(-1, 1, 2), M).reshape(-1, 2)
+        return (lambda p: warp(H, p), lambda m: warp(Hi, m), math.sqrt(long_mm * short_mm / quad_area), None, area_err, None)
+    if mode != "similarity":
+        raise ValueError(f"unknown card_frame {mode!r}")
+    M, _ = cv2.estimateAffinePartial2D(q.astype(np.float32), dst, method=cv2.LMEDS)
+    A, t = M[:, :2], M[:, 2]
+    Ai = np.linalg.inv(A)
+    return (lambda p: np.asarray(p, float).reshape(-1, 2) @ A.T + t, lambda m: (np.asarray(m, float).reshape(-1, 2) - t) @ Ai.T,
+            math.sqrt(abs(np.linalg.det(A))), None, area_err, None)
+
+
+def _card_frame_axes(mask, size_mm):
     c = _reference_contour(mask)
     (cx, cy), (w, h), ang = cv2.minAreaRect(c.astype(np.float32))
     long_mm, short_mm = max(size_mm), min(size_mm)
     if w >= h:
-        u_long, u_short = np.array([math.cos(math.radians(ang)), math.sin(math.radians(ang))]), None
-        long_px, short_px = w, h
+        u_long, long_px, short_px = np.array([math.cos(math.radians(ang)), math.sin(math.radians(ang))]), w, h
     else:
-        u_long, u_short = np.array([-math.sin(math.radians(ang)), math.cos(math.radians(ang))]), None
-        long_px, short_px = h, w
+        u_long, long_px, short_px = np.array([-math.sin(math.radians(ang)), math.cos(math.radians(ang))]), h, w
     u_short = np.array([-u_long[1], u_long[0]])
     sl, ss = long_mm / long_px, short_mm / short_px
 
@@ -170,8 +235,8 @@ def _card_frame(mask: np.ndarray, size_mm: tuple[float, float]):
     def to_px(m):
         m = np.asarray(m, float).reshape(-1, 2)
         return [cx, cy] + np.outer(m[:, 0] / sl, u_long) + np.outer(m[:, 1] / ss, u_short)
-    area_err = abs(float(cv2.contourArea(c.astype(np.float32))) / (long_px * short_px) - 1)   # how rectangular the mask is
-    return to_mm, to_px, math.sqrt(sl * ss), None, area_err
+    area_err = abs(float(cv2.contourArea(c.astype(np.float32))) / (long_px * short_px) - 1)
+    return to_mm, to_px, math.sqrt(sl * ss), None, area_err, None
 
 
 # ---------------------------------------------------------------- mask refinement
@@ -581,9 +646,9 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
     """
     p = params
     if ref_kind == "coin":
-        to_mm, to_px, mm_per_px, tilt, ref_err = _coin_frame(ref_mask, float(ref_mm))
+        to_mm, to_px, mm_per_px, tilt, ref_err, axis_ratio = _coin_frame(ref_mask, float(ref_mm), p.coin_unstretch_min_ratio)
     elif ref_kind == "card":
-        to_mm, to_px, mm_per_px, tilt, ref_err = _card_frame(ref_mask, tuple(ref_mm))
+        to_mm, to_px, mm_per_px, tilt, ref_err, axis_ratio = _card_frame(ref_mask, tuple(ref_mm), p.card_frame)
     else:
         raise ValueError(f"unknown ref_kind {ref_kind!r}")
     ppm = 1.0 / mm_per_px                # pixel-space work (bands, kernels) uses the uncorrected scale
@@ -632,7 +697,7 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
         part_.holes.sort(key=lambda h: -h.area_mm2)
 
     comps = _quality(parts, refined, part, tilt, ref_err, exclude is not None, ref_kind, warnings)
-    return OutlineResult(parts, mm_per_px, tilt, ref_kind, min(comps.values()), comps, warnings, frame)
+    return OutlineResult(parts, mm_per_px, tilt, ref_kind, min(comps.values()), comps, warnings, frame, axis_ratio)
 
 
 def _quality(parts, refined, part_mask, tilt, ref_err, has_exclude, ref_kind, warnings) -> dict[str, float]:
