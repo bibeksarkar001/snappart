@@ -240,6 +240,9 @@ def compare_image(rec, ctx, path):
         pts = sample_primitives(p.primitives, 0.05)
         px = np.round(res.frame.to_px(pts)).astype(np.int32)
         cv2.polylines(right, [px.reshape(-1, 1, 2)], False, (0, 0, 255), t, cv2.LINE_AA)
+        for hole in p.holes:    # detected holes and slots in cyan (BGR)
+            hp = np.round(res.frame.to_px(sample_primitives(hole.primitives, 0.05))).astype(np.int32)
+            cv2.polylines(right, [hp.reshape(-1, 1, 2)], True, (255, 255, 0), 5, cv2.LINE_AA)
         x, y = px.min(0)
         d = rec["parts"][lab]
         txt = f"{lab} {d['long_mm']:.1f} x {d['short_mm']:.1f}" + (f" (truth {d['truth']['long']} x {d['truth']['short']})" if "truth" in d else "")
