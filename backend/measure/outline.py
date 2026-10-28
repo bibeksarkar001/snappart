@@ -36,10 +36,10 @@ class Params:
     mask_smooth_mm: float = 0.3          # blur of the (stretched, low-res) SAM mask before the band is cut
     min_part_mm2: float = 32.0           # smaller blobs are not parts
     contour_smooth_mm: float = 0.10      # smoothing along the contour
-    fit_tol_mm: float = 0.07             # lines/arcs fit the smoothed contour this closely before closing
+    fit_tol_mm: float = 0.10             # lines/arcs fit the smoothed contour this closely before cleanup
     min_segment_mm: float = 0.3          # shorter primitives are dropped
-    corner_mm: float = 1.2               # a run of small primitives shorter than this between two long lines becomes a sharp corner
-    min_arc_radius_mm: float = 0.5       # smaller arcs are smoothing-rounded corners, not features: dropped (corner stays sharp)
+    corner_mm: float = 0.0               # OFF. >0: a run of small primitives shorter than this between two long lines becomes a sharp corner
+    min_arc_radius_mm: float = 0.0       # OFF. >0: smaller arcs are dropped. Both raise the deviation from the smoothed contour a lot on real photos
     merge_tol_mm: float = 0.1            # merged lines/arcs stay this close to what they replace
     collinear_deg: float = 3.0           # lines closer than this in direction may merge
     snap_deg: float = 3.0                # lines this close to the main axes are rotated onto them ...
@@ -394,9 +394,11 @@ def _close_vertices(prims, max_move):
     for p in prims:
         if p["type"] != "arc":
             continue
-        cc = _circumcircle(np.array(p["p0"]), mids[id(p)], np.array(p["p1"]))
+        a0, m0, a1 = np.array(p["p0"]), mids[id(p)], np.array(p["p1"])
+        cc = _circumcircle(a0, m0, a1)
         if cc is not None:
             p["c"], p["r"] = cc[0].tolist(), cc[1]
+            p["ccw"] = bool((m0 - a0)[0] * (a1 - m0)[1] - (m0 - a0)[1] * (a1 - m0)[0] > 0)   # turning direction of p0 -> mid -> p1
         c = np.array(p["c"])
         b0, b1 = (math.atan2(p[k][1] - c[1], p[k][0] - c[0]) for k in ("p0", "p1"))
         sw = math.degrees(b1 - b0)

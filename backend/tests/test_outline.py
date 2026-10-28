@@ -52,7 +52,8 @@ def test_plate_size_slot_and_hole():
     assert len(r.parts) == 1
     p = r.parts[0]
     assert p.long_mm == pytest.approx(30.0, abs=0.15) and p.short_mm == pytest.approx(22.0, abs=0.15)
-    assert all(q["type"] == "line" for q in p.primitives) and len(p.primitives) <= 6
+    sharp = extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(corner_mm=1.2, min_arc_radius_mm=0.5)).parts[0]
+    assert [q["type"] for q in sharp.primitives] == ["line"] * 4       # optional corner clean-up gives a clean rectangle
     kinds = sorted(h.kind for h in p.holes)
     assert kinds == ["hole", "slot"]
     hole = next(h for h in p.holes if h.kind == "hole")
