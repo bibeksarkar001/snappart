@@ -134,3 +134,28 @@ def refine(views_by_video, T_init, free, X, centre, k=2, vs=0.5, log=print, maxi
         if abs(hist[-1] - hist[-1 - len(free)]) < 0.002 * hist[-1]:
             break
     return T, hist
+
+
+def candidates_fast(src, dst, coarse_n=800, yaw_step=60, topn=3, coarse_iters=12, fine_iters=30, trim=0.7, seed=0):
+    """Coarse-to-fine version of candidates(): ICP from 24 axis rotations x (360 / yaw_step) yaws on coarse_n random points of each cloud
+    (coarse_iters iterations), then the topn distinct results re-run on all points (fine_iters). Sorted by the fine trimmed chamfer."""
+    rng = np.random.default_rng(seed)
+    s = src[rng.choice(len(src), min(coarse_n, len(src)), replace=False)]
+    d = dst[rng.choice(len(dst), min(coarse_n, len(dst)), replace=False)]
+    tree = cKDTree(d)
+    cs, cd = s.mean(0), d.mean(0)
+    sols = []
+    for Rc in cube_rotations():
+        for yaw in range(0, 360, yaw_step):
+            R0 = rz(yaw) @ Rc
+            sols.append(icp(s, d, tree, R0, cd - R0 @ cs, iters=coarse_iters, trim=trim))
+    sols.sort(key=lambda q: q[2])
+    keep = []
+    for R, t, c in sols:
+        if all(np.degrees(Rotation.from_matrix(R @ o[0].T).magnitude()) > 8 or np.linalg.norm(t - o[1]) > 2 for o in keep):
+            keep.append((R, t, c))
+        if len(keep) >= topn:
+            break
+    full = cKDTree(dst)
+    out = [icp(src, dst, full, R, t, iters=fine_iters, trim=trim) for R, t, _ in keep]
+    return sorted([(c, R, t) for R, t, c in out], key=lambda q: q[0])

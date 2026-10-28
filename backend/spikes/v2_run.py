@@ -146,21 +146,6 @@ def joint_field(vv, vs=None):
     return carve.carve_adaptive([v for _, v in vv], H.LO, H.HI, vs or PARAMS["vs"], PARAMS["k"], floors=floors, grow_mm=PARAMS["grow"])
 
 
-def groove_boxes(ops, face, depth_mm, out_mm=3.0):
-    """Pocket boxes: the triangulated opening rectangle (centre, long axis from its corners), axis = the face normal, depth_mm into the part
-    from the opening plane and out_mm outward so the pocket breaks through whatever hull material lies outside the opening plane."""
-    import numpy as np
-    out = []
-    for o in ops:
-        c = o["corners"]
-        lng = (c[1] - c[0]) + (c[2] - c[3])
-        lng -= face["n"] * (lng @ face["n"])
-        lng /= np.linalg.norm(lng)
-        axes = np.stack([lng, np.cross(face["n"], lng), face["n"]])
-        out.append((o["centre"] + face["n"] * (out_mm - depth_mm) / 2, axes, np.array([o["L"] / 2, o["S"] / 2, (depth_mm + out_mm) / 2])))
-    return out
-
-
 def overlay(img, fv, v, fc, ops, title):
     """Frame | model rendered in the frame's camera pose (shaded, orange) with the triangulated opening rectangles (cyan), cropped to the part."""
     import cv2
@@ -180,28 +165,6 @@ def overlay(img, fv, v, fc, ops, title):
     return both
 
 
-def find_grooves(v, fc, vv, imgs, log=lambda m: None, max_angle_deg=15.0):
-    """Openings on the candidate face whose triangulated corner planes agree with it (within max_angle_deg) and that has the most view detections.
-    Returns (face, fused openings, per-video detections, per-face table)."""
-    import numpy as np
-    from capture import features as F
-    table, found = [], None
-    for fi, face in enumerate(F.candidate_faces(v, fc)):
-        per = F.detect_on_face(vv, imgs, face)
-        ops = F.fuse(per, face)
-        nview = sum(o["n_views"] for o in ops)
-        ang = float(np.degrees(np.arccos(np.clip(np.mean([o["normal"] for o in ops], 0) @ face["n"] / np.linalg.norm(np.mean([o["normal"] for o in ops], 0)), -1, 1)))) if ops else None
-        row = {"face": fi, "kind": face["kind"], "n": face["n"].tolist(), "centre_x": float(face["O"][0] + face["len_s"] / 2 * face["e1"][0] + face["len_t"] / 2 * face["e2"][0]),
-               "inliers": face["inliers"], "rms": face["plane_rms"], "openings_per_video": {k: len(o) for k, o in per.items()}, "fused": len(ops), "view_detections": nview, "corner_plane_angle_deg": ang}
-        table.append(row)
-        log(f"face #{fi} ({face['kind']}, near x={row['centre_x']:.0f}): n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}), {face['inliers']} samples, rms {face['plane_rms']:.3f} mm, "
-            f"{sum(F.facing(x, face) >= 0.3 for _, x in vv)} views facing it; openings (>= 3 views in one video): " + (", ".join(f"{k[-2:]}: {len(o)}" for k, o in per.items()) or "none")
-            + (f"; fused {len(ops)}, {nview} view detections, triangulated corner planes {ang:.1f} deg from this plane" if ops else ""))
-        if ops and ang < max_angle_deg and (found is None or nview > found[3]):
-            found = (face, ops, per, nview)
-    return (found[:3] if found else (None, [], {})) + (table,)
-
-
 def stage1():
     import cv2
     import numpy as np
@@ -216,7 +179,7 @@ def stage1():
          "Attempt history: attempt 1 assumed the vertical end face and rectified onto it only; the corners triangulated there give a plane 67 deg off it (table below), i.e. the "
          "openings are NOT in the vertical face. Attempt 2 picked by distance to the plane and chose a spurious 1-opening face. This is attempt 3 (corner planes)."]
     res = {}
-    face, ops, per, table = find_grooves(v, fc, vv, imgs, L.append)
+    face, ops, per, table = F.find_grooves(v, fc, vv, imgs, L.append)
     res["faces"] = table
     if face is None:
         L.append("NO OPENINGS FOUND.")
@@ -247,7 +210,7 @@ def stage1():
              "this face is on top).")
     res["mean_size"] = [float(np.mean(Ls)), float(np.mean(Ss))]
     fieldg, field, _ = joint_field(vv)
-    boxes = groove_boxes(ops, face, GROOVE_DEPTH_USER)
+    boxes = F.groove_boxes(ops, face, GROOVE_DEPTH_USER)
     cut = F.cut_pockets(field, fieldg, boxes)
     v0, f0 = carve.to_mesh(field, fieldg)
     v0 = carve.taubin(v0, f0, 5)
@@ -453,8 +416,66 @@ def stage3():
     print("\n".join(L))
 
 
+FRESH_S = {"scan markers": 77.4, "mat self-calibration": 14.7, "poses, selection, frame extraction": 36.7}   # measured in speed attempt 2 with no cache (parallel scan/extract)
+
+
+def stage4():
+    """Production path timing. Scans, mat and frames come from the out/v2 cache made by the uncached speed-attempt-2 run (their uncached times are in
+    FRESH_S); SAM from the v1 cache; everything else runs here. Log with wall clock per stage: out/v2/pipeline/run.log."""
+    from capture import pipeline as P
+    from spike_common import ROOT
+    t0, d0 = time.time(), date()
+    vids = {n: ROOT / "assets" / "private" / "lock_set" / "Video" / f"{n}.mov" for n in NAMES}
+    roles = {"ref": NAMES[0], "flat": NAMES[2], "stand": NAMES[1]}
+    logf = V2 / "pipeline" / "run.log"
+    logf.parent.mkdir(parents=True, exist_ok=True)
+    logf.write_text(f"pipeline run start {d0}\n")
+
+    def log(m):
+        with logf.open("a") as fh:
+            fh.write(m + "\n")
+        print(m, flush=True)
+
+    rep = P.run(vids, roles, V2 / "pipeline", cache=V2 / "cache", sam_dir=CACHE / "sam", log=log)
+    T1 = load_T()
+    pts = load_mesh(V1 / "A_final.stl")[0]
+    gaps = {n: P.transform_gap(P.run.T[n], T1[n], pts) for n in NAMES}
+    sel_same = {}
+    for n in NAMES:
+        old = set(int(k) for k in json.loads((CACHE / f"sel_{n}.json").read_text())["frames"])
+        new = set(int(v.name.rsplit("_", 1)[1]) for v in P.run.views[n])
+        sel_same[n] = (len(new & old), len(new), len(old))
+    sec = dict(rep["seconds"])
+    user = {k: (FRESH_S[k] if k in FRESH_S else s) for k, s in sec.items()}
+    sam_per_call_conc4 = 201.0 / 228                       # measured: 228 SAM calls written in 201 s with 4 concurrent requests (v1 run, cache file times)
+    n_calls = rep["masks"]["frames"] + 36                  # one call per frame + the fallback-concept calls v1 needed (36)
+    est = {c: n_calls * sam_per_call_conc4 * 4 / c for c in (4, 8, 16)}
+    tot = sum(user.values())
+    L = [f"STAGE 4: production path (backend/capture/pipeline.py). start {d0}. Log: out/v2/pipeline/run.log.",
+         "Attempt history: (1) serial: 482 s without SAM (scan 121, mat 15, extract 44, masks 15, registration 138, carve 92, grooves 57). "
+         "(2) scan/extract one process per video, carve and groove detection over 8 forked workers, registration refined on a 1 mm grid: scan 77, mat 15, extract 37, "
+         "masks 14, registration 29 s, then the forked carve workers DEADLOCKED (0 % CPU; OpenCV thread pool + fork) and the run was stopped. "
+         "(3) this run: OpenCV thread pool disabled; scans, mat and frames reused from attempt 2's uncached run.",
+         "wall clock per stage, this run (s):"] + [f"  {k}: {s:.1f}" + (f"   (cached here; uncached {FRESH_S[k]:.1f} s in attempt 2)" if k in FRESH_S else "") for k, s in sec.items()] + [
+         f"  USER RUN without SAM (uncached times for scan/mat/extract): {tot:.0f} s ({tot / 60:.1f} min)",
+         f"SAM estimate: {n_calls} calls. Measured in v1: 228 calls in 201 s with 4 concurrent requests = {sam_per_call_conc4:.2f} s per call (~{4 * sam_per_call_conc4:.1f} s each). "
+         + ", ".join(f"{c} in parallel ~{est[c]:.0f} s" for c in est) + " (8 and 16 extrapolated linearly, NOT measured; the API may rate-limit).",
+         f"ESTIMATED USER TOTAL: {(tot + est[4]) / 60:.1f} min with 4 parallel SAM calls; {(tot + est[16]) / 60:.1f} min with 16 (unverified). Target 5 min: "
+         + ("REACHED" if tot + est[4] < 300 else ("reached only with >= 16 parallel SAM calls (unverified)" if tot + est[16] < 300 else "NOT REACHED")) + ".",
+         "slowest: " + ", ".join(f"{k} {s:.0f} s" for k, s in sorted(user.items(), key=lambda kv: -kv[1])[:3]) + f"; SAM {est[4]:.0f} s at 4 parallel",
+         "registration vs the cached v1 transform (largest displacement of any A_final vertex): " + ", ".join(f"{n[-2:]} {g:.3f} mm" for n, g in gaps.items())
+         + f" (limit 0.3 mm: {'OK' if max(gaps.values()) <= 0.3 else 'EXCEEDED'})",
+         "accepted views vs the v1 selection (in both / accepted now / v1 selected): " + ", ".join(f"{n[-2:]} {a}/{b}/{c}" for n, (a, b, c) in sel_same.items()),
+         f"masks: {rep['masks']['frames']} frames, {rep['masks']['accepted']} accepted (v1: 229), {rep['masks']['calls']} new SAM calls",
+         f"result part.stl: footprint {rep['footprint_mm'][0]:.2f} x {rep['footprint_mm'][1]:.2f}, height {rep['height_mm']:.2f} mm, watertight {rep['watertight']}, "
+         f"{len(rep['grooves'])} grooves (" + ", ".join(f"{g['long_mm']:.2f} x {g['short_mm']:.2f}" for g in rep["grooves"]) + ")",
+         f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("4_speed", "\n".join(L), {"pipeline": rep, "user_seconds": user, "registration_gap_mm": gaps, "selection": sel_same, "sam_estimate_s": est, "sam_calls": n_calls})
+    log("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"base": stage_base, "1": stage1, "2": stage2, "3": stage3}[a.stage]()
+    {"base": stage_base, "1": stage1, "2": stage2, "3": stage3, "4": stage4}[a.stage]()

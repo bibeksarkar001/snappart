@@ -265,3 +265,39 @@ def step_band(g, ppm, t_lo, t_hi, s_lo, s_hi, min_len=8.0, min_step=0.25, w_lo=N
     a, b = int(np.argmax(prof)), int(np.argmin(prof))
     return {"s0": float(s[i]), "s1": float(s[j]), "t_edge": float(mb), "step": float(mb - (ma + mc) / 2), "width": abs(a - b) / ppm,
             "t_a": float((H - 1 - (q0 + a)) / ppm), "t_b": float((H - 1 - (q0 + b)) / ppm), "fit_mad": float(best[0] / len(t))}
+
+
+def find_grooves(v, fc, vv, imgs, log=lambda m: None, max_angle_deg=15.0, faces=None, pers=None):
+    """Openings on the candidate face whose triangulated corner planes agree with it (within max_angle_deg) and that has the most view detections.
+    faces / pers: candidate faces and their detect_on_face results when computed elsewhere (in parallel).
+    Returns (face, fused openings, per-video detections, per-face table)."""
+    table, found = [], None
+    faces = candidate_faces(v, fc) if faces is None else faces
+    for fi, face in enumerate(faces):
+        per = detect_on_face(vv, imgs, face) if pers is None else pers[fi]
+        ops = fuse(per, face)
+        nview = sum(o["n_views"] for o in ops)
+        ang = float(np.degrees(np.arccos(np.clip(np.mean([o["normal"] for o in ops], 0) @ face["n"] / np.linalg.norm(np.mean([o["normal"] for o in ops], 0)), -1, 1)))) if ops else None
+        row = {"face": fi, "kind": face["kind"], "n": face["n"].tolist(), "centre_x": float(face["O"][0] + face["len_s"] / 2 * face["e1"][0] + face["len_t"] / 2 * face["e2"][0]),
+               "inliers": face["inliers"], "rms": face["plane_rms"], "openings_per_video": {k: len(o) for k, o in per.items()}, "fused": len(ops), "view_detections": nview, "corner_plane_angle_deg": ang}
+        table.append(row)
+        log(f"face #{fi} ({face['kind']}, near x={row['centre_x']:.0f}): n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}), {face['inliers']} samples, rms {face['plane_rms']:.3f} mm, "
+            f"{sum(facing(x, face) >= 0.3 for _, x in vv)} views facing it; openings (>= 3 views in one video): " + (", ".join(f"{k[-2:]}: {len(o)}" for k, o in per.items()) or "none")
+            + (f"; fused {len(ops)}, {nview} view detections, triangulated corner planes {ang:.1f} deg from this plane" if ops else ""))
+        if ops and ang < max_angle_deg and (found is None or nview > found[3]):
+            found = (face, ops, per, nview)
+    return (found[:3] if found else (None, [], {})) + (table,)
+
+
+def groove_boxes(ops, face, depth_mm, out_mm=3.0):
+    """Pocket boxes: the triangulated opening rectangle (centre, long axis from its corners), axis = the face normal, depth_mm into the part
+    from the opening plane and out_mm outward so the pocket breaks through whatever hull material lies outside the opening plane."""
+    out = []
+    for o in ops:
+        c = o["corners"]
+        lng = (c[1] - c[0]) + (c[2] - c[3])
+        lng -= face["n"] * (lng @ face["n"])
+        lng /= np.linalg.norm(lng)
+        axes = np.stack([lng, np.cross(face["n"], lng), face["n"]])
+        out.append((o["centre"] + face["n"] * (out_mm - depth_mm) / 2, axes, np.array([o["L"] / 2, o["S"] / 2, (depth_mm + out_mm) / 2])))
+    return out
