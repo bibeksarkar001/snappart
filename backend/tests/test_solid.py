@@ -32,3 +32,14 @@ def test_check_notices_a_missing_hole(tmp_path):
     p.holes.clear()                                       # solid without holes: the section must show none
     export_stl(extrude_part(p, 4.0), tmp_path / "p.stl")
     assert section_holes(tmp_path / "p.stl", 2.0) == []
+
+
+def test_height_profile_of_a_stepped_silhouette():
+    import numpy as np
+    from measure.profile import height_profile
+    poly = [(0, 0), (50, 0), (50, 10), (20, 10), (20, 6), (0, 6)]                    # 6 mm high for x 0..20, 10 mm for x 20..50
+    prims = [{"type": "line", "p0": list(poly[i]), "p1": list(poly[(i + 1) % len(poly)])} for i in range(len(poly))]
+    r = height_profile(prims, direction=np.array([1.0, 0.0]))
+    assert r["max_height_mm"] == pytest.approx(10.0, abs=0.1) and r["length_mm"] == pytest.approx(50.0, abs=0.1)
+    assert [round(s["height_mm"]) for s in r["steps"]] == [6, 10]
+    assert r["steps"][1]["x0_mm"] == pytest.approx(20.0, abs=0.7)

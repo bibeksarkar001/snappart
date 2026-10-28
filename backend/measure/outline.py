@@ -45,7 +45,12 @@ class Params:
     snap_deg: float = 3.0                # lines this close to the main axes are rotated onto them ...
     snap_tol_mm: float = 0.15            # ... if they still lie this close to the contour
     vertex_move_mm: float = 0.3          # a closed vertex may move this far from where the primitives ended
-    hole_min_mm2: float = 3.0
+    sliver_open_mm: float = 0.4          # radius of the opening that removes thin slivers from the part mask (0 = off)
+    hole_min_mm2: float = 4.0            # a hole smaller than this, or thinner than hole_min_short_mm, is noise
+    hole_min_short_mm: float = 1.5
+    hole_rect_tol_mm: float = 0.3        # hole within this of its min-area rectangle (corners up to hole_rect_corner_mm ignored) becomes that rectangle
+    hole_rect_corner_mm: float = 1.0
+    hole_edge_clean_mm: float = 0.12     # an edge whose points lie this close to a fitted line is 'clean'; two clean parallel edges fix a ragged hole's rectangle
     slot_elongation: float = 2.0         # long/short above this = slot
     hole_solidity: float = 0.8           # region area / convex hull area
     hole_open_mm: float = 0.66           # opening that cuts glint speckle away from real openings
@@ -72,6 +77,7 @@ class Hole:
     short_mm: float
     area_mm2: float
     primitives: list[Primitive]
+    shape: str = "fit"                   # "fit", "circle", "rect", "rect-from-clean-edges"
 
 
 @dataclass
@@ -290,7 +296,17 @@ def _refine(img, part, ref_mask, exclude, ppm, p: Params):
     for i in range(1, n):
         if stats[i, cv2.CC_STAT_AREA] >= p.min_part_mm2 * ppm ** 2:
             keep[cc == i] = 255
-    return _fill_external(keep), blur, paper, keep_out, thr
+    keep = _fill_external(keep)
+    if p.sliver_open_mm > 0:      # each blob keeps only its largest piece after an opening: thin strips along an edge fall away
+        out = np.zeros_like(keep)
+        n, cc = cv2.connectedComponents(keep)
+        for i in range(1, n):
+            comp = (cc == i).astype(np.uint8) * 255
+            op = cv2.morphologyEx(comp, cv2.MORPH_OPEN, _kernel(2 * p.sliver_open_mm * ppm + 1, ellipse=True))
+            m, oc, st, _ = cv2.connectedComponentsWithStats(op)
+            out[(oc == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))) if m > 1 else (comp > 0)] = 255
+        keep = out
+    return keep, blur, paper, keep_out, thr
 
 
 def _contours(mask: np.ndarray, min_area_px: float, sigma_px: float):
@@ -634,6 +650,53 @@ def _enclosed(comp, part_mask, ppm, p: Params, sectors: int = 24) -> bool:
     return True
 
 
+def _rect_prims(corners):
+    c = np.asarray(corners, float)
+    return [{"type": "line", "p0": c[i].tolist(), "p1": c[(i + 1) % 4].tolist()} for i in range(4)]
+
+
+def _hole_shape(hm, p: Params):
+    """Primitives for a hole contour (mm): the outline cleanup, then a rectangle if the hole is one.
+    Returns (primitives, note). note: "fit", "circle", "rect" (within hole_rect_tol_mm of its min-area rectangle, corners up to
+    hole_rect_corner_mm ignored, or all four edges clean) or "rect-from-clean-edges" (two clean parallel edges fix the direction
+    and the width; the other edges are ragged, so the ends are taken at the contour's extremes)."""
+    prims = _outline_primitives(hm, p)
+    if prims[0]["type"] == "circle":
+        return prims, "circle"
+    box = cv2.boxPoints(cv2.minAreaRect(hm.astype(np.float32)))
+    sides = []                                           # per side: (distance of its points from the rectangle side, residual about their own line, direction)
+    for i in range(4):
+        a, b = box[i], box[(i + 1) % 4]
+        L = np.linalg.norm(b - a)
+        d = (b - a) / L
+        t, off = (hm - a) @ d, (hm - a) @ np.array([-d[1], d[0]])
+        lo = min(p.hole_rect_corner_mm, 0.3 * L)
+        pts = hm[(t > lo) & (t < L - lo) & (np.abs(off) < 0.3 * min(L, np.linalg.norm(box[(i + 2) % 4] - box[(i + 1) % 4])))]
+        if len(pts) < 5:
+            sides.append((9.9, 9.9, d))
+            continue
+        vx, vy, x0, y0 = cv2.fitLine(pts.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).ravel()
+        n = np.array([-vy, vx])
+        res = np.abs((pts - [x0, y0]) @ n)
+        sides.append((float(np.abs((pts - a) @ np.array([-d[1], d[0]])).max()), float(np.percentile(res, 95)), np.array([vx, vy])))
+    if max(s_[0] for s_ in sides) <= p.hole_rect_tol_mm:
+        return _rect_prims(box), "rect"
+    clean = [s_[1] <= p.hole_edge_clean_mm for s_ in sides]
+    if all(clean):
+        return _rect_prims(box), "rect"
+    for pair in ((0, 2), (1, 3)):
+        if all(clean[i] for i in pair) and cv2.contourArea(hm.astype(np.float32)) >= 0.75 * cv2.contourArea(box.astype(np.float32)):
+            u = sides[pair[0]][2] * (1 if sides[pair[0]][2] @ sides[pair[1]][2] >= 0 else -1) + sides[pair[1]][2]
+            u = u / np.linalg.norm(u)                    # direction of the clean pair
+            v = np.array([-u[1], u[0]])
+            pu, pv = hm @ u, hm @ v
+            # the clean edges sit at the two extremes across u (v-coordinates); the ragged ends are taken at the contour's extremes along u
+            v0, v1 = pv.min(), pv.max()
+            c = np.array([[pu.min(), v0], [pu.max(), v0], [pu.max(), v1], [pu.min(), v1]])
+            return _rect_prims(c[:, 0:1] * u + c[:, 1:2] * v), "rect-from-clean-edges"
+    return prims, "fit"
+
+
 # ---------------------------------------------------------------- public API
 
 def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarray, ref_mm: float | tuple[float, float], *,
@@ -691,8 +754,16 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
         if owner is None:
             continue
         L, S = _rect(hm)
-        parts[owner].holes.append(Hole("slot" if L / max(S, 1e-6) > p.slot_elongation else "hole", L, S,
-                                       float(cv2.contourArea(hm.astype(np.float32))), _fit_closed(hm, p.fit_tol_mm)))
+        if S < p.hole_min_short_mm or cv2.contourArea(hm.astype(np.float32)) < p.hole_min_mm2:
+            continue                                     # noise: too small or too thin
+        hprims, note = _hole_shape(hm, p)
+        if note.startswith("rect"):
+            hpts = sample_primitives(hprims, 0.05)
+            L, S = _rect(hpts)
+            area = float(cv2.contourArea(np.asarray(hpts, np.float32)))
+        else:
+            area = float(cv2.contourArea(hm.astype(np.float32)))
+        parts[owner].holes.append(Hole("slot" if L / max(S, 1e-6) > p.slot_elongation else "hole", L, S, area, hprims, note))
     for part_ in parts:
         part_.holes.sort(key=lambda h: -h.area_mm2)
 

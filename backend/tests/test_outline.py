@@ -52,7 +52,7 @@ def test_plate_size_slot_and_hole():
     assert len(r.parts) == 1
     p = r.parts[0]
     assert p.long_mm == pytest.approx(30.0, abs=0.15) and p.short_mm == pytest.approx(22.0, abs=0.15)
-    sharp = extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(corner_mm=1.2, min_arc_radius_mm=0.5)).parts[0]
+    sharp = extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(corner_mm=1.2, min_arc_radius_mm=0.6, sliver_open_mm=0.0)).parts[0]
     assert [q["type"] for q in sharp.primitives] == ["line"] * 4       # optional corner clean-up gives a clean rectangle
     kinds = sorted(h.kind for h in p.holes)
     assert kinds == ["hole", "slot"]
@@ -122,3 +122,22 @@ def test_card_corners_of_a_rotated_card():
     cv2.fillConvexPoly(m, box.astype(np.int32), 255)
     got = card_corners(m)
     assert all(np.linalg.norm(box - g, axis=1).min() < 1.0 for g in got)
+
+
+def test_thin_sliver_is_opened_away():
+    img, m = scene()
+    x1, y1 = 500 + int(30 * PPM), 600 + 40
+    tab = (slice(y1, y1 + int(0.6 * PPM)), slice(x1 - 5, x1 + int(6 * PPM)))        # 0.6 mm wide, 6 mm long strip sticking out of the plate
+    img[tab] = BROWN
+    m["part"][tab] = 255
+    thin = extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(sliver_open_mm=0.0)).parts[0]
+    opened = extract_outline(img, m["part"], m["ref"], COIN_MM).parts[0]
+    assert thin.long_mm > 35 and opened.long_mm == pytest.approx(30.0, abs=0.35)
+
+
+def test_noise_holes_are_dropped_and_slot_becomes_a_rectangle():
+    img, m = scene()
+    p = extract_outline(img, m["part"], m["ref"], COIN_MM).parts[0]
+    slot = next(h for h in p.holes if h.kind == "slot")
+    assert slot.shape.startswith("rect") and [q["type"] for q in slot.primitives] == ["line"] * 4
+    assert all(h.short_mm >= 1.5 and h.area_mm2 >= 4.0 for h in p.holes)

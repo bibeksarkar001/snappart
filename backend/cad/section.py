@@ -56,3 +56,19 @@ def section_holes(path, z) -> list[dict]:
             holes.append({"cx": m["m10"] / m["m00"], "cy": m["m01"] / m["m00"], "long": max(w, h), "short": min(w, h),
                           "area": float(cv2.contourArea(l.astype(np.float32)))})
     return holes
+
+
+def mesh_edges(path) -> dict:
+    """Edge census of an STL without trimesh: every edge of a watertight manifold appears in exactly two triangles."""
+    tris = read_stl(path)
+    key = lambda v: tuple(np.round(v, 4))
+    count = {}
+    for t in tris:
+        for i in range(3):
+            e = tuple(sorted((key(t[i]), key(t[(i + 1) % 3]))))
+            count[e] = count.get(e, 0) + 1
+    vals = np.array(list(count.values()))
+    degenerate = int(sum(1 for t in tris if np.linalg.norm(np.cross(t[1] - t[0], t[2] - t[0])) < 1e-12))
+    return {"triangles": len(tris), "edges": len(count), "boundary_edges": int((vals == 1).sum()),
+            "non_manifold_edges": int((vals > 2).sum()), "degenerate_triangles": degenerate,
+            "watertight": bool((vals == 2).all()), "volume_mm3": float(np.einsum("ij,ij->", tris[:, 0], np.cross(tris[:, 1], tris[:, 2])) / 6)}
