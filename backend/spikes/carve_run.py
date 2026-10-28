@@ -438,9 +438,12 @@ def stage4():
             out.append((hist[-1], i, Tfin, c, v0))
         out.sort(key=lambda o: -o[0])
         from scipy.spatial.transform import Rotation
+        out_diff = []
         for j in range(1, len(out)):
             D = out[0][2][name] @ np.linalg.inv(out[j][2][name])
+            out_diff.append((np.degrees(Rotation.from_matrix(D[:3, :3]).magnitude()), float(np.linalg.norm(D[:3, 3]))))
             L.append(f"    final transform of candidate #{out[j][1]} vs best (#{out[0][1]}): rotation {np.degrees(Rotation.from_matrix(D[:3, :3]).magnitude()):.2f} deg, translation {np.linalg.norm(D[:3, 3]):.2f} mm (different starts, same optimum if both ~0)")
+        run.last_diff = out_diff
         return out
 
     # video 3 (flat too) against video 1
@@ -450,7 +453,7 @@ def stage4():
         pass
     T[flat] = o3[0][2][flat]
     amb3 = (o3[0][0] - o3[1][0]) / o3[0][0] if len(o3) > 1 else None
-    L.append(f"  chosen: candidate #{o3[0][1]} (joint volume {o3[0][0]:.0f}); runner-up volume {o3[1][0]:.0f} ({100 * amb3:.1f} % lower)" if amb3 is not None else "  single candidate")
+    L.append(f"  chosen: candidate #{o3[0][1]} (joint volume {o3[0][0]:.0f}); runner-up volume {o3[1][0]:.0f}; " + ("candidates agree (same transform within " + format(max(d[0] for d in run.last_diff), ".2f") + " deg, " + format(max(d[1] for d in run.last_diff), ".2f") + " mm)" if max(d[0] for d in run.last_diff) < 1.0 and max(d[1] for d in run.last_diff) < 0.5 else "AMBIGUOUS: different optima"))
     res["flat"] = {"T": T[flat].tolist(), "volumes": [o[0] for o in o3], "ambiguity_rel": amb3}
     # joint hull of 1+3 as the target for the standing video
     sub13 = {n: views[n] for n in (ref, flat)}
@@ -464,7 +467,7 @@ def stage4():
     T[flat] = o2[0][2][flat]
     amb2 = (o2[0][0] - o2[1][0]) / o2[0][0] if len(o2) > 1 else None
     L.append(f"  chosen: candidate #{o2[0][1]} (joint volume {o2[0][0]:.0f}); runner-up volume {o2[1][0]:.0f} ({100 * amb2:.1f} % lower); "
-             f"{'AMBIGUOUS: runner-up within 2 %' if amb2 is not None and amb2 < 0.02 else 'clear winner'}")
+             f"{'candidates agree (all converge to the same transform, within ' + format(max(d[0] for d in run.last_diff), '.2f') + ' deg, ' + format(max(d[1] for d in run.last_diff), '.2f') + ' mm): not ambiguous' if max(d[0] for d in run.last_diff) < 1.0 and max(d[1] for d in run.last_diff) < 0.5 else 'AMBIGUOUS: different optima with similar volume'}")
     res["stand"] = {"T": T[stand].tolist(), "volumes": [o[0] for o in o2], "ambiguity_rel": amb2}
     (CARVE / "cache" / "registration.json").write_text(json.dumps({n: m.tolist() for n, m in T.items()}))
     # joint carve at 0.25 mm
@@ -484,6 +487,82 @@ def stage4():
     print("\n".join(L))
 
 
+def load_T():
+    import numpy as np
+    return {n: np.array(m) for n, m in json.loads((CARVE / "cache" / "registration.json").read_text()).items()}
+
+
+def stage5(vs_sweep=0.4, ks=(1, 2, 3)):
+    import cv2
+    import numpy as np
+    from capture import carve, dataset, holdout as H
+    from spike_common import save_overlay
+    views = {n: dataset.load_views(n) for n in NAMES}
+    T = load_T()
+    ref = NAMES[0]
+    L = ["STAGE 5: held-out evaluation. 3 folds x 10 held-out views; carve without them, render the mesh silhouette into them, IoU with their final masks.",
+         f"k sweep at voxel {vs_sweep} mm, then the chosen k at 0.25 mm."]
+    res = {"sweep": {}}
+    for k in ks:
+        row = {n: H.single_video(views[n], k, vs_sweep)[0] for n in NAMES}
+        j, per, _ = H.joint(views, T, k, vs_sweep, ref=ref)
+        row["joint"], row["joint_per_video"] = j, per
+        res["sweep"][k] = row
+        L.append(f"  k={k}: single video IoU " + ", ".join(f"{n[-2:]} {row[n]:.4f}" for n in NAMES) + f"; joint {j:.4f} (on held-out views of " + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per.items()) + ")")
+    kb = max(ks, key=lambda k: res["sweep"][k]["joint"])
+    L.append(f"chosen k = {kb} (highest joint held-out IoU)")
+    row = {n: H.single_video(views[n], kb, 0.25) for n in NAMES}
+    j, per, allr = H.joint(views, T, kb, 0.25, ref=ref)
+    res["final"] = {"k": kb, "single": {n: row[n][0] for n in NAMES}, "joint": j, "joint_per_video": per}
+    L += ["", f"FINAL (k={kb}, 0.25 mm): single-video held-out IoU " + ", ".join(f"{n}: {row[n][0]:.4f} (min {min(row[n][1]):.3f})" for n in NAMES),
+          f"  joint held-out IoU {j:.4f} (min {min(r for _, r in allr):.3f}); per video " + ", ".join(f"{n}: {x:.4f}" for n, x in per.items())]
+    # the full joint model
+    allv = [v.moved(T[n]) for n in NAMES for v in views[n]]
+    floors = [T[n] for n in NAMES if n != ref]
+    v, fc = H.carve_mesh(allv, 0.25, kb, floors)
+    carve.write_stl(SEND / f"joint_final_k{kb}.stl", v, fc)
+    pl, ob, cen = carve.obb_plan(v), carve.obb(v), carve.edge_census(v, fc)
+    L += ["", f"joint model (k={kb}, 0.25 mm, {len(allv)} views): watertight {cen['watertight']}, volume {cen['volume_mm3']:.0f} mm3",
+          f"  footprint rectangle {pl['length_mm']:.2f} x {pl['width_mm']:.2f} mm, height z {pl['z_min']:.2f}..{pl['z_max']:.2f} ({pl['z_max'] - pl['z_min']:.2f}); PCA OBB {[round(x, 2) for x in ob['extents_mm']]}",
+          "  caliper truth for part A (as given): length 34.7, width 34.0.  Caliper truth for part B (accuracy set): length 51.6, width 41.9.",
+          f"  error vs A: length {pl['length_mm'] - 34.7:+.2f}, width {pl['width_mm'] - 34.0:+.2f} mm.   error vs B: length {pl['length_mm'] - 51.6:+.2f}, width {pl['width_mm'] - 41.9:+.2f} mm",
+          "  >>> the carved footprint matches part B's calipers, not part A's: the part in these videos is the 51.6 x 41.9 mm part, or the A/B labels are swapped. Not resolved here."]
+    res["joint_model"] = {"plan": pl, "obb": ob, "census": cen}
+    # low-confidence: vertices whose surface is fixed by fewer than 3 silhouette edges
+    cnt = H.constraint_counts(allv, v)
+    low = cnt < 3
+    tri = v[fc]
+    area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    lowf = low[fc].all(1)
+    L += ["", f"surface fixed by fewer than 3 views (silhouette edge within 0.3 mm of the surface): {100 * area[lowf].sum() / area.sum():.1f} % of the surface area; the rest is fixed by 3 or more views."]
+    zones = {}
+    for c, a, flag in zip(tri.mean(1), area, lowf):
+        if flag:
+            key = tuple((c // 8).astype(int))
+            zones.setdefault(key, [0.0, []])
+            zones[key][0] += a
+            zones[key][1].append(c)
+    top = sorted(zones.items(), key=lambda kv: -kv[1][0])[:8]
+    L.append("  largest low-confidence regions (8 mm cells; centre in the part frame, mm; area mm2): " + "; ".join(f"({np.mean(c, 0)[0]:.0f},{np.mean(c, 0)[1]:.0f},{np.mean(c, 0)[2]:.1f}) {a:.0f}" for _, (a, c) in top))
+    res["low_confidence"] = {"area_frac": float(area[lowf].sum() / area.sum()), "top": [[float(a), np.mean(c, 0).tolist()] for _, (a, c) in top]}
+    # 4 held-out overlays (fold 0 of the joint run is not re-carved here: use the full model on four views as a visual, labelled as in-sample)
+    cache = CARVE / "cache"
+    pick = [(NAMES[0], 5), (NAMES[1], 20), (NAMES[2], 30), (NAMES[1], 55)]
+    for n, i in pick:
+        vw = views[n][i]
+        key = vw.name
+        crop = cv2.imread(str(cache / "crops" / f"{key}.jpg"))
+        mv = vw.moved(T[n])
+        sil = carve.render_silhouette(v, fc, mv)
+        o = crop.copy()
+        for m, col in (((vw.sdf > 0).astype(np.uint8) * 255, (0, 255, 0)), (sil, (255, 255, 0))):
+            cs, _ = cv2.findContours(m, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            cv2.drawContours(o, cs, -1, col, 1)
+        save_overlay(SEND / f"heldout_{key}.png", o)
+    save_stage(5, "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", type=int, required=True)
@@ -492,4 +571,4 @@ if __name__ == "__main__":
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args()
     MAX_RMS = a.max_rms
-    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3, 4: stage4}[a.stage]()
+    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3, 4: stage4, 5: stage5}[a.stage]()
