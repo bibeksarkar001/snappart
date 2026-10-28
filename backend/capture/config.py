@@ -29,3 +29,10 @@ BOX_HI = (148.5 + 35, 105 + 35, 45.0)
 
 # features (v2 stage 1)
 GROOVE_DEPTH_USER_MM = 3.7      # owner's caliper value, NOT measured from the videos
+
+# owner facts: USER-SUPPLIED (calipers), not measured from the videos; editable answers for model.rebuild()
+GROOVE_DEPTH_MM = GROOVE_DEPTH_USER_MM
+BUMP_LENGTH_USER_MM = 19.7
+BUMP_WIDTH_USER_MM = 2.3        # owner also said 2.2 once: to be confirmed
+BUMP_HEIGHT_USER_MM = 2.3       # height above the surface the grooves open in
+PLATE_THICKNESS_USER_MM = 2.6   # thin flat plate between the window and the groove column (re-measured; replaces 0.9-1.0)
