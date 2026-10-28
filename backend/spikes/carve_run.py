@@ -193,10 +193,169 @@ def stage1():
     print("\n".join(L))
 
 
+def load_sel(name):
+    d = json.loads((CARVE / "cache" / f"sel_{name}.json").read_text())
+    return d, sorted(d["frames"], key=int)
+
+
+async def sam_crops(jobs, refresh=False, conc=4, concept="brown plastic buckle"):
+    """jobs: [(key, crop_jpeg_path)] -> {key: [(conf, crop-space 0/255 mask)]}. Cached under cache/sam/ (one cache entry per frame; calls counted)."""
+    import asyncio
+    import contextlib
+    import io
+
+    import cv2
+    import numpy as np
+    from meta_sam_parser import decode_mask_to_raster
+    from sam_coin import segment
+    from spike_common import full_mask
+    d = CARVE / "cache" / "sam"
+    d.mkdir(parents=True, exist_ok=True)
+    sem, out, calls = asyncio.Semaphore(conc), {}, [0]
+
+    async def one(key, path):
+        meta = d / f"{key}.json"
+        if meta.exists() and not refresh:
+            out[key] = [(c, cv2.imread(str(d / f"{key}_{i}.png"), 0)) for i, c in enumerate(json.loads(meta.read_text())["confs"])]
+            return
+        async with sem:
+            for attempt in range(3):
+                try:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        _, w, h, boxes, masks, _ = await segment(Path(path), concept, f"carve/cache/sam/{key}_raw.txt")
+                    break
+                except Exception as e:           # noqa: BLE001  transient API errors: retry, then record the failure
+                    err = repr(e)[:200]
+                    boxes = None
+            calls[0] += 1
+        if boxes is None:
+            out[key] = None
+            (d / f"{key}.error").write_text(err)
+            return
+        res = []
+        for i, b in enumerate(boxes):
+            m = masks.get(b.object_id)
+            if m is None:
+                continue
+            raster = np.frombuffer(decode_mask_to_raster(m.mask), np.uint8).reshape(m.mask.height, m.mask.width)
+            res.append((b.confidence or 0.0, full_mask(b, raster, w, h)))
+            cv2.imwrite(str(d / f"{key}_{len(res) - 1}.png"), res[-1][1])
+        meta.write_text(json.dumps({"concept": concept, "confs": [c for c, _ in res]}))
+        out[key] = res
+
+    await asyncio.gather(*[one(k, p) for k, p in jobs])
+    return out, calls[0]
+
+
+def stage2(limit=None, refresh=False):
+    import asyncio
+
+    import cv2
+    import numpy as np
+    from capture import masks as M
+    from spike_common import save_overlay
+    cache = CARVE / "cache"
+    (cache / "crops").mkdir(exist_ok=True)
+    items = []                                           # (name, idx, crop box, crop image, colour mask)
+    jobs = []
+    for name in NAMES:
+        sel, keys = load_sel(name)
+        K = np.array(sel["K"])
+        if limit:
+            keys = keys[:: max(len(keys) // limit, 1)][:limit]
+        for k in keys:
+            fr = sel["frames"][k]
+            img = cv2.imread(fr["file"])
+            box = M.crop_box(K, fr["rvec"], fr["tvec"], sel["size"])
+            crop = img[box[1]:box[3], box[0]:box[2]]
+            cp = cache / "crops" / f"{name}_{k}.jpg"
+            cv2.imwrite(str(cp), crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            items.append((name, k, box, crop, M.colour_mask(crop)))
+            jobs.append((f"{name}_{k}", cp))
+    sam, ncalls = asyncio.run(sam_crops(jobs, refresh))
+    used = {k: "brown plastic buckle" for k in sam}
+    for fb in ("brown plastic part", "brown object"):          # fallback ladder, only for frames the main concept missed
+        missing = [(k, p) for k, p in jobs if not sam.get(k)]
+        if not missing:
+            break
+        r2, n2 = asyncio.run(sam_crops([(f"{k}__{fb.replace(' ', '_')}", p) for k, p in missing], refresh, concept=fb))
+        ncalls += n2
+        for k, _ in missing:
+            if r2.get(f"{k}__{fb.replace(' ', '_')}"):
+                sam[k] = r2[f"{k}__{fb.replace(' ', '_')}"]
+                used[k] = fb
+    L = [f"STAGE 2: masks (colour mask in Lab; SAM 3.1 concept 'brown plastic buckle' on a crop of the part, cached; {ncalls} new SAM calls this run, {len(jobs)} frames)"]
+    rows, res = [], {}
+    (cache / "masks").mkdir(exist_ok=True)
+    for name, k, box, crop, col in items:
+        r = sam.get(f"{name}_{k}")
+        pick = M.pick_component(r, col) if r else None
+        row = {"video": name, "idx": int(k), "box": box, "n_sam": len(r) if r else 0, "colour_area": int((col > 0).sum())}
+        fin = None
+        if pick is None:
+            row.update(status="no SAM mask")
+        else:
+            row.update(M.agreement(pick[1], col), sam_conf=pick[0], sam_area=int((pick[1] > 0).sum()))
+            fin = M.refine_sam(pick[1], crop)
+            row["final_area"] = int((fin > 0).sum())
+            row["edge_change_px2"] = int(((fin > 0) ^ (pick[1] > 0)).sum())
+            row["concept"] = used.get(f"{name}_{k}")
+            row["status"] = "ok" if row["colour_in_sam"] >= 0.85 and pick[0] >= 0.5 else "disagree"
+            row["fin"] = fin
+        rows.append((row, pick, col, crop, fin))
+    # the colour mask fails in some exposures (it picks up the pink note and the shadow); where it covers far more than SAM, judge SAM by plausibility instead:
+    # area in mm2 at the part's depth within 50 % of the video's median
+    for name in NAMES:
+        sel, _ = load_sel(name)
+        rs = [r for r, *_ in rows if r["video"] == name and "sam_area" in r]
+        for r in rs:
+            r["area_mm2"] = r["sam_area"] / (sel["K"][0][0] / sel["frames"][str(r["idx"])]["dist"]) ** 2
+        med = float(np.median([r["area_mm2"] for r in rs]))
+        for r in rs:
+            if r["status"] == "disagree" and r["colour_area"] > 1.5 * r["sam_area"] and 0.5 * med < r["area_mm2"] < 1.5 * med and r["sam_conf"] >= 0.5:
+                r["status"] = "ok (colour unreliable)"
+    for r, pick, col, crop, fin in rows:
+        r.pop("fin", None)
+        if r["status"].startswith("ok"):
+            cv2.imwrite(str(cache / "masks" / f"{r['video']}_{r['idx']}.png"), fin)
+    res["frames"] = [r for r, *_ in rows]
+    okr = [r for r in res["frames"] if "iou" in r]
+    ious = np.array([r["iou"] for r in okr])
+    L += [f"SAM vs colour mask IoU over {len(ious)} frames: min {ious.min():.3f}, p10 {np.percentile(ious, 10):.3f}, median {np.median(ious):.3f}, p90 {np.percentile(ious, 90):.3f}",
+          "(the colour mask is conservative: dark brown faces lose their hue, so IoU is low by construction; the test that matters is how much of the colour mask lies inside SAM)"]
+    cis = np.array([r["colour_in_sam"] for r in okr])
+    L.append(f"colour mask inside SAM: min {cis.min():.3f}, p10 {np.percentile(cis, 10):.3f}, median {np.median(cis):.3f}")
+    for name in NAMES:
+        v = [r for r in okr if r["video"] == name]
+        n_all = [r for r in res["frames"] if r["video"] == name]
+        L.append(f"  {name}: frames {len(n_all)}, SAM found {len(v)}, no SAM mask {sum(r['status'] == 'no SAM mask' for r in n_all)}, "
+                 f"colour-in-SAM median {np.median([r['colour_in_sam'] for r in v]):.3f}, DISAGREE (<0.85) {sum(r['status'] == 'disagree' for r in v)}, accepted {sum(r['status'].startswith('ok') for r in v)} "
+                 f"(of which colour unreliable, judged by area: {sum(r['status'] == 'ok (colour unreliable)' for r in v)}); fallback concepts used: {sum(r.get('concept') != 'brown plastic buckle' for r in v)}")
+        L.append(f"     edge refinement changed median {int(np.median([r['edge_change_px2'] for r in v]))} px2 per frame ({100 * np.median([r['edge_change_px2'] / r['sam_area'] for r in v]):.2f} % of the SAM area)")
+    bad = [r for r in res["frames"] if not r["status"].startswith("ok")]
+    L.append("excluded frames (video idx status colour_in_sam iou): " + "; ".join(f"{r['video'][-2:]} {r['idx']} {r['status']} {r.get('colour_in_sam', float('nan')):.2f} {r.get('iou', float('nan')):.2f}" for r in bad))
+    # 6 overlays: the lowest-agreeing and a median frame of each video: SAM (cyan), colour (orange), final (green)
+    for name in NAMES:
+        cand = sorted([(r["colour_in_sam"], r, p, c, cr, f) for r, p, c, cr, f in rows if r["video"] == name and "iou" in r], key=lambda t: t[0])
+        for tag, (v, r, p, c, cr, f) in (("worst", cand[0]), ("median", cand[len(cand) // 2])):
+            if f is None:
+                continue
+            o = cr.copy()
+            for m, col in ((c, (0, 200, 255)), (p[1], (255, 255, 0)), (f, (0, 255, 0))):
+                cs, _ = cv2.findContours(m, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+                cv2.drawContours(o, cs, -1, col, 1)
+            cv2.putText(o, f"SAM cyan, colour orange, final green; colour-in-SAM {v:.2f}; {name} f{r['idx']} ({tag})", (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            save_overlay(SEND / f"mask_{name}_{tag}.png", o)
+    save_stage(2, "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", type=int, required=True)
     ap.add_argument("--max-rms", type=float, default=1.0)
+    ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args()
     MAX_RMS = a.max_rms
-    {0: stage0, 1: stage1}[a.stage]()
+    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh)}[a.stage]()
