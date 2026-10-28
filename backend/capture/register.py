@@ -81,13 +81,15 @@ def hom(R, t):
 
 
 def apply_delta(T, x, centre):
-    """T composed with a small rigid change x = (rotvec, translation) applied about `centre` (part frame) before T."""
-    D = hom(Rotation.from_rotvec(x[:3]).as_matrix(), np.zeros(3))
-    D[:3, 3] = x[3:] + centre - D[:3, :3] @ centre
+    """T composed with a small change x = (rotvec, translation[, log scale]) applied about `centre` (part frame) before T. A scale makes T a similarity:
+    the video's mat scale (marker size, intrinsics) may differ from the others by a few tenths of a percent."""
+    s = np.exp(x[6]) if len(x) > 6 else 1.0
+    D = hom(s * Rotation.from_rotvec(x[:3]).as_matrix(), np.zeros(3))
+    D[:3, 3] = x[3:6] + centre - D[:3, :3] @ centre
     return T @ D
 
 
-def joint_volume(views_by_video, T_by_video, X, k=2, vs=0.5, min_seen=0.8):
+def joint_volume(views_by_video, T_by_video, X, k=2, vs=0.5, min_seen=0.8, grow=0.0):
     """Soft volume (mm3) of the joint hull over candidate points X (part frame), views moved by T_v, floors enforced, unseen = outside."""
     n_views = sum(len(v) for v in views_by_video.values())
     best = np.full((k, len(X)), carve.INF, np.float32)
@@ -99,6 +101,8 @@ def joint_volume(views_by_video, T_by_video, X, k=2, vs=0.5, min_seen=0.8):
         for v in views:
             val = carve.view_values(v.moved(T), X)
             seen += val < carve.INF
+            if grow:
+                val = np.where(val < carve.INF, val + grow, val)
             for j in range(k):
                 sw = val < best[j]
                 best[j], val = np.where(sw, val, best[j]), np.where(sw, best[j], val)
@@ -110,23 +114,23 @@ def joint_volume(views_by_video, T_by_video, X, k=2, vs=0.5, min_seen=0.8):
     return float(np.clip(f / vs + 0.5, 0, 1).sum() * vs ** 3)
 
 
-def refine(views_by_video, T_init, free, X, centre, k=2, vs=0.5, log=print, maxiter=3):
+def refine(views_by_video, T_init, free, X, centre, k=2, vs=0.5, log=print, maxiter=3, grow=0.0, with_scale=False):
     """Powell refinement of the free videos' transforms (6 parameters each) against the joint volume. Returns (T_by_video, history)."""
     T = {n: m.copy() for n, m in T_init.items()}
-    hist = [joint_volume(views_by_video, T, X, k, vs)]
-    scale = np.array([0.01, 0.01, 0.01, 0.2, 0.2, 0.2])
+    hist = [joint_volume(views_by_video, T, X, k, vs, grow=grow)]
+    scale = np.array([0.01, 0.01, 0.01, 0.2, 0.2, 0.2] + ([0.002] if with_scale else []))
     for rnd in range(maxiter):
         for n in free:
             base = T[n].copy()
 
             def cost(x):
                 T[n] = apply_delta(base, x * scale, centre)
-                return -joint_volume(views_by_video, T, X, k, vs)
+                return -joint_volume(views_by_video, T, X, k, vs, grow=grow)
 
-            r = minimize(cost, np.zeros(6), method="Powell", options={"xtol": 0.05, "ftol": 1e-4, "maxiter": 6})
+            r = minimize(cost, np.zeros(len(scale)), method="Powell", options={"xtol": 0.05, "ftol": 1e-4, "maxiter": 6})
             T[n] = apply_delta(base, r.x * scale, centre)
             hist.append(-r.fun)
-            log(f"   round {rnd} {n}: joint volume {hist[-2]:.0f} -> {hist[-1]:.0f} mm3, step rot {np.degrees(np.linalg.norm(r.x[:3] * scale[:3])):.2f} deg, trans {np.linalg.norm(r.x[3:] * scale[3:]):.2f} mm")
+            log(f"   round {rnd} {n}: joint volume {hist[-2]:.0f} -> {hist[-1]:.0f} mm3, step rot {np.degrees(np.linalg.norm(r.x[:3] * scale[:3])):.2f} deg, trans {np.linalg.norm(r.x[3:6] * scale[3:6]):.2f} mm" + (f", scale {np.exp(r.x[6] * scale[6]):.4f}" if with_scale else ""))
         if abs(hist[-1] - hist[-1 - len(free)]) < 0.002 * hist[-1]:
             break
     return T, hist

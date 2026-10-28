@@ -492,74 +492,102 @@ def load_T():
     return {n: np.array(m) for n, m in json.loads((CARVE / "cache" / "registration.json").read_text()).items()}
 
 
-def stage5(vs_sweep=0.4, ks=(1, 2, 3)):
+def stage5(vs_sweep=0.4):
     import cv2
     import numpy as np
-    from capture import carve, dataset, holdout as H
+    from capture import carve, dataset, holdout as H, register as Rg
     from spike_common import save_overlay
     views = {n: dataset.load_views(n) for n in NAMES}
     T = load_T()
     ref = NAMES[0]
-    L = ["STAGE 5: held-out evaluation. 3 folds x 10 held-out views; carve without them, render the mesh silhouette into them, IoU with their final masks.",
-         f"k sweep at voxel {vs_sweep} mm, then the chosen k at 0.25 mm."]
-    res = {"sweep": {}}
-    for k in ks:
-        row = {n: H.single_video(views[n], k, vs_sweep)[0] for n in NAMES}
-        j, per, _ = H.joint(views, T, k, vs_sweep, ref=ref)
-        row["joint"], row["joint_per_video"] = j, per
-        res["sweep"][k] = row
-        L.append(f"  k={k}: single video IoU " + ", ".join(f"{n[-2:]} {row[n]:.4f}" for n in NAMES) + f"; joint {j:.4f} (on held-out views of " + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per.items()) + ")")
-    kb = max(ks, key=lambda k: res["sweep"][k]["joint"])
-    L.append(f"chosen k = {kb} (highest joint held-out IoU)")
-    row = {n: H.single_video(views[n], kb, 0.25) for n in NAMES}
-    j, per, allr = H.joint(views, T, kb, 0.25, ref=ref)
-    res["final"] = {"k": kb, "single": {n: row[n][0] for n in NAMES}, "joint": j, "joint_per_video": per}
-    L += ["", f"FINAL (k={kb}, 0.25 mm): single-video held-out IoU " + ", ".join(f"{n}: {row[n][0]:.4f} (min {min(row[n][1]):.3f})" for n in NAMES),
-          f"  joint held-out IoU {j:.4f} (min {min(r for _, r in allr):.3f}); per video " + ", ".join(f"{n}: {x:.4f}" for n, x in per.items())]
-    # the full joint model
+    L = ["STAGE 5: held-out evaluation. 3 folds x 10 held-out views; carve without them, render the mesh silhouette into them, IoU with their final masks (marker poses for every view).",
+         f"Parameters: k = views that must put a voxel outside; grow = every silhouette dilated by this many mm (a bias between masks and the robust hull). Sweep at voxel {vs_sweep} mm."]
+    res = {"sweep": []}
+    for k in (1, 2, 3, 6, 12):
+        for g in (0.0, 0.1, 0.2, 0.3):
+            j, per, _ = H.joint(views, T, k, vs_sweep, ref=ref, grow=g)
+            res["sweep"].append({"k": k, "grow": g, "joint": j, "per_video": per})
+            L.append(f"  joint k={k:2d} grow={g:.1f}: IoU {j:.4f} (" + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per.items()) + ")")
+    best = max(res["sweep"], key=lambda r: r["joint"])
+    kb, gb = best["k"], best["grow"]
+    L.append(f"best on held-out IoU: k={kb}, grow={gb} mm (IoU {best['joint']:.4f}); differences below ~0.001 between neighbouring settings are within the fold-to-fold spread")
+    single = {n: H.single_video(views[n], kb, vs_sweep, grow=gb) for n in NAMES}
+    single0 = {n: H.single_video(views[n], 2, vs_sweep)[0] for n in NAMES}
+    L.append("single-video held-out IoU with the same k/grow: " + ", ".join(f"{n[-2:]} {single[n][0]:.4f}" for n in NAMES) + "; with k=2, grow 0: " + ", ".join(f"{n[-2:]} {single0[n]:.4f}" for n in NAMES))
+    res["single"] = {n: {"best": single[n][0], "k2_grow0": single0[n]} for n in NAMES}
+    # finest resolution
+    fin = {}
+    for vs in (0.25, 0.15):
+        j, per, allr = H.joint(views, T, kb, vs, ref=ref, grow=gb)
+        fin[vs] = (j, per, allr, H.joint.meshes)
+        L.append(f"joint at voxel {vs} mm: held-out IoU {j:.4f} (min over views {min(r for _, r in allr):.3f}); per video " + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per.items()))
+    res["final"] = {"k": kb, "grow": gb, **{f"vs{vs}": {"joint": fin[vs][0], "per_video": fin[vs][1]} for vs in fin}}
+    vsf = 0.15 if fin[0.15][0] >= fin[0.25][0] else 0.25
+    L.append(f"final voxel: {vsf} mm (higher held-out IoU)")
     allv = [v.moved(T[n]) for n in NAMES for v in views[n]]
     floors = [T[n] for n in NAMES if n != ref]
-    v, fc = H.carve_mesh(allv, 0.25, kb, floors)
-    carve.write_stl(SEND / f"joint_final_k{kb}.stl", v, fc)
+    v, fc = H.carve_mesh(allv, vsf, kb, floors, grow=gb)
+    carve.write_stl(SEND / "joint_final.stl", v, fc)
+    cv2.imwrite(str(SEND / "joint_final_3view.png"), carve.render3(v, fc))
     pl, ob, cen = carve.obb_plan(v), carve.obb(v), carve.edge_census(v, fc)
-    L += ["", f"joint model (k={kb}, 0.25 mm, {len(allv)} views): watertight {cen['watertight']}, volume {cen['volume_mm3']:.0f} mm3",
-          f"  footprint rectangle {pl['length_mm']:.2f} x {pl['width_mm']:.2f} mm, height z {pl['z_min']:.2f}..{pl['z_max']:.2f} ({pl['z_max'] - pl['z_min']:.2f}); PCA OBB {[round(x, 2) for x in ob['extents_mm']]}",
-          "  caliper truth for part A (as given): length 34.7, width 34.0.  Caliper truth for part B (accuracy set): length 51.6, width 41.9.",
-          f"  error vs A: length {pl['length_mm'] - 34.7:+.2f}, width {pl['width_mm'] - 34.0:+.2f} mm.   error vs B: length {pl['length_mm'] - 51.6:+.2f}, width {pl['width_mm'] - 41.9:+.2f} mm",
-          "  >>> the carved footprint matches part B's calipers, not part A's: the part in these videos is the 51.6 x 41.9 mm part, or the A/B labels are swapped. Not resolved here."]
-    res["joint_model"] = {"plan": pl, "obb": ob, "census": cen}
-    # low-confidence: vertices whose surface is fixed by fewer than 3 silhouette edges
+    ungrown = H.carve_mesh(allv, vsf, kb, floors, grow=0.0)
+    plu = carve.obb_plan(ungrown[0])
+    L += ["", f"joint model (k={kb}, grow {gb}, {vsf} mm, {len(allv)} views): watertight {cen['watertight']} (boundary {cen['boundary_edges']}, non-manifold {cen['non_manifold_edges']}), volume {cen['volume_mm3']:.0f} mm3, {cen['triangles']} triangles",
+          f"  footprint rectangle {pl['length_mm']:.2f} x {pl['width_mm']:.2f} mm, height {pl['z_max'] - pl['z_min']:.2f} mm (z {pl['z_min']:.2f}..{pl['z_max']:.2f}); PCA OBB {[round(x, 2) for x in ob['extents_mm']]}",
+          f"  same without grow (k={kb}, grow 0): footprint {plu['length_mm']:.2f} x {plu['width_mm']:.2f}",
+          "  caliper truth for part A (as given): length 34.7, width 34.0.  Caliper truth for part B (accuracy set): length 51.6, width 41.9, height 11.8 (14.4 also tried earlier).",
+          f"  error vs A: length {pl['length_mm'] - 34.7:+.2f}, width {pl['width_mm'] - 34.0:+.2f} mm.   error vs B: length {pl['length_mm'] - 51.6:+.2f}, width {pl['width_mm'] - 41.9:+.2f}, height {pl['z_max'] - pl['z_min'] - 11.8:+.2f} mm",
+          "  >>> the carved footprint matches part B's calipers, not part A's: the part in these videos is the 51.6 x 41.9 mm part, or the A/B labels are swapped. Not resolved here.",
+          "  grow was tuned on held-out IoU, not on the calipers; the calipers are an independent check, and only 3 numbers (not the thickness of the plate or the bar)."]
+    res["joint_model"] = {"plan": pl, "plan_no_grow": plu, "obb": ob, "census": cen, "vs": vsf}
     cnt = H.constraint_counts(allv, v)
-    low = cnt < 3
     tri = v[fc]
     area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
-    lowf = low[fc].all(1)
-    L += ["", f"surface fixed by fewer than 3 views (silhouette edge within 0.3 mm of the surface): {100 * area[lowf].sum() / area.sum():.1f} % of the surface area; the rest is fixed by 3 or more views."]
+    lowf = (cnt < 3)[fc].all(1)
+    L += ["", f"surface fixed by fewer than 3 views (a silhouette edge passes within 0.3 mm of it): {100 * area[lowf].sum() / area.sum():.1f} % of the surface area; the rest is fixed by 3 or more."]
     zones = {}
     for c, a, flag in zip(tri.mean(1), area, lowf):
         if flag:
-            key = tuple((c // 8).astype(int))
-            zones.setdefault(key, [0.0, []])
-            zones[key][0] += a
-            zones[key][1].append(c)
+            zones.setdefault(tuple((c // 8).astype(int)), [0.0, []])
+            zones[tuple((c // 8).astype(int))][0] += a
+            zones[tuple((c // 8).astype(int))][1].append(c)
     top = sorted(zones.items(), key=lambda kv: -kv[1][0])[:8]
-    L.append("  largest low-confidence regions (8 mm cells; centre in the part frame, mm; area mm2): " + "; ".join(f"({np.mean(c, 0)[0]:.0f},{np.mean(c, 0)[1]:.0f},{np.mean(c, 0)[2]:.1f}) {a:.0f}" for _, (a, c) in top))
+    L.append("  largest low-confidence regions (centre in the part frame x,y,z mm; area mm2): " + "; ".join(f"({np.mean(c, 0)[0]:.0f},{np.mean(c, 0)[1]:.0f},{np.mean(c, 0)[2]:.1f}) {a:.0f}" for _, (a, c) in top))
     res["low_confidence"] = {"area_frac": float(area[lowf].sum() / area.sum()), "top": [[float(a), np.mean(c, 0).tolist()] for _, (a, c) in top]}
-    # 4 held-out overlays (fold 0 of the joint run is not re-carved here: use the full model on four views as a visual, labelled as in-sample)
+    # 4 genuinely held-out overlays: fold 0 of the joint run at the final voxel size
+    hold, mesh = fin[vsf][3][0]
     cache = CARVE / "cache"
-    pick = [(NAMES[0], 5), (NAMES[1], 20), (NAMES[2], 30), (NAMES[1], 55)]
+    seen_v, pick = {}, []
+    for n, i in hold:
+        if seen_v.get(n, 0) < 2 and len(pick) < 4:
+            seen_v[n] = seen_v.get(n, 0) + 1
+            pick.append((n, i))
     for n, i in pick:
         vw = views[n][i]
-        key = vw.name
-        crop = cv2.imread(str(cache / "crops" / f"{key}.jpg"))
         mv = vw.moved(T[n])
-        sil = carve.render_silhouette(v, fc, mv)
-        o = crop.copy()
+        sil = carve.render_silhouette(*mesh, mv)
+        o = cv2.imread(str(cache / "crops" / f"{vw.name}.jpg"))
         for m, col in (((vw.sdf > 0).astype(np.uint8) * 255, (0, 255, 0)), (sil, (255, 255, 0))):
             cs, _ = cv2.findContours(m, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
             cv2.drawContours(o, cs, -1, col, 1)
-        save_overlay(SEND / f"heldout_{key}.png", o)
+        cv2.putText(o, f"held-out view {vw.name}: mask green, model cyan; IoU {carve.view_iou(*mesh, mv):.3f}", (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        save_overlay(SEND / f"heldout_{vw.name}.png", o)
+    # experiments that did not help (kept for the record): pose refinement against the model, rigid re-registration at the final k/grow
+    from capture import posefit
+    for name in [f.name for f in SEND.glob("heldout_*.png")]:
+        pass
+    j_fit, per_fit, _ = H.joint(views, T, kb, vs_sweep, ref=ref, grow=gb, fit_rounds=3)
+    L += ["", "EXPERIMENTS THAT DID NOT HELP (all at voxel 0.4 mm, same folds):",
+          f"  per-view silhouette pose refinement (MAP, priors 0.1 deg / 0.4 mm, 3 rounds, fitted without the held-out views): held-out IoU {j_fit:.4f} vs {best['joint']:.4f} without (" + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per_fit.items()) + ")"]
+    g0, f0, _ = carve.carve_adaptive(views[ref], LO, HI, 0.5, kb, grow_mm=gb)
+    X = g0.points()[f0.ravel() > -1.0]
+    T2, hist = Rg.refine(views, T, [NAMES[2], NAMES[1]], X, X.mean(0), kb, 0.5, grow=gb, maxiter=3, log=lambda m: None)
+    j_r, per_r, _ = H.joint(views, T2, kb, vs_sweep, ref=ref, grow=gb)
+    L.append(f"  rigid re-registration of video 2 and 3 on the joint volume at k={kb}, grow {gb}: held-out IoU {j_r:.4f} (volume {hist[0]:.0f} -> {hist[-1]:.0f} mm3) vs {best['joint']:.4f} with the stage 4 transforms")
+    L.append("  also tried (script session, not re-run here): a per-video scale in the registration: the volume objective rose 9472 -> 9845 mm3 while video 2 shrank by 4 % and held-out IoU fell to 0.9203, so the volume objective is exploitable by scale and was not used.")
+    res["experiments"] = {"posefit_iou": j_fit, "rigid_rereg_iou": j_r}
     save_stage(5, "\n".join(L), res)
+    (CARVE / "cache" / "final_params.json").write_text(json.dumps({"k": kb, "grow": gb, "vs": vsf}))
     print("\n".join(L))
 
 

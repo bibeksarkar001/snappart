@@ -74,7 +74,7 @@ class Grid:
 
 
 def carve_field(views: list[View], X: np.ndarray, k: int = 2, floor_mm: float | None = 0.0, clip_mm: float = 3.0,
-                return_count: bool = False, floors=()):
+                return_count: bool = False, floors=(), grow_mm: float = 0.0):
     """Robust field at points X (N, 3): the k-th smallest per-view distance (mm, >0 inside), clipped to +-clip_mm.
 
     floor_mm: voxels with z below this are outside (the mat plane), a hard constraint, not a vote. None disables it.
@@ -85,6 +85,8 @@ def carve_field(views: list[View], X: np.ndarray, k: int = 2, floor_mm: float | 
     for v in views:
         val = view_values(v, X)
         n_seen += val < INF
+        if grow_mm:
+            val = np.where(val < INF, val + grow_mm, val)       # grow every silhouette by grow_mm (masks dilated)
         for j in range(k):                                  # insert into the sorted k smallest
             swap = val < best[j]
             best[j], val = np.where(swap, val, best[j]), np.where(swap, best[j], val)
@@ -97,14 +99,14 @@ def carve_field(views: list[View], X: np.ndarray, k: int = 2, floor_mm: float | 
     return (f, n_seen) if return_count else f
 
 
-def carve(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, chunk=2_000_000, floors=()):
+def carve(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, chunk=2_000_000, floors=(), grow_mm=0.0):
     """Carve a box. Returns (Grid, field (nx, ny, nz) float32, seen-count (nx, ny, nz))."""
     g = Grid(lo, hi, vs)
     X = g.points()
     f = np.empty(len(X), np.float32)
     n = np.empty(len(X), np.int16)
     for s in range(0, len(X), chunk):
-        f[s:s + chunk], n[s:s + chunk] = carve_field(views, X[s:s + chunk], k, floor_mm, return_count=True, floors=floors)
+        f[s:s + chunk], n[s:s + chunk] = carve_field(views, X[s:s + chunk], k, floor_mm, return_count=True, floors=floors, grow_mm=grow_mm)
     return g, f.reshape(g.shape), n.reshape(g.shape)
 
 
@@ -203,15 +205,15 @@ def obb(verts) -> dict:
     return {"extents_mm": [float(e) for e in ext[order]], "axes": vec[:, order].T.tolist()}
 
 
-def carve_adaptive(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, coarse=1.0, pad=3.0, floors=()):
+def carve_adaptive(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, coarse=1.0, pad=3.0, floors=(), grow_mm=0.0):
     """Coarse carve over the whole box, then a fine carve over the bounding box of what survived (+pad mm)."""
-    g, f, _ = carve(views, lo, hi, coarse, k, floor_mm, floors=floors)
+    g, f, _ = carve(views, lo, hi, coarse, k, floor_mm, floors=floors, grow_mm=grow_mm)
     idx = np.argwhere(f > 0)
     if len(idx) == 0:
         raise RuntimeError("nothing survived the coarse carve")
     lo2 = np.maximum(np.asarray(lo, float), g.lo + idx.min(0) * g.vs - pad)
     hi2 = np.minimum(np.asarray(hi, float), g.lo + idx.max(0) * g.vs + pad)
-    return carve(views, lo2, hi2, vs, k, floor_mm, floors=floors)
+    return carve(views, lo2, hi2, vs, k, floor_mm, floors=floors, grow_mm=grow_mm)
 
 
 def render_silhouette(verts, faces, view: View) -> np.ndarray:
