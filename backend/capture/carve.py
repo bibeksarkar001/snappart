@@ -74,7 +74,7 @@ class Grid:
 
 
 def carve_field(views: list[View], X: np.ndarray, k: int = 2, floor_mm: float | None = 0.0, clip_mm: float = 3.0,
-                return_count: bool = False):
+                return_count: bool = False, floors=()):
     """Robust field at points X (N, 3): the k-th smallest per-view distance (mm, >0 inside), clipped to +-clip_mm.
 
     floor_mm: voxels with z below this are outside (the mat plane), a hard constraint, not a vote. None disables it.
@@ -92,17 +92,19 @@ def carve_field(views: list[View], X: np.ndarray, k: int = 2, floor_mm: float | 
     f = np.where(best[k - 1] >= INF, clip_mm, f)
     if floor_mm is not None:
         f = np.minimum(f, np.clip(X[:, 2] - floor_mm, -clip_mm, clip_mm))
+    for T in floors:                                      # other videos' mat planes, T: part -> that video's mat frame: its z must stay >= 0
+        f = np.minimum(f, np.clip(X @ T[2, :3] + T[2, 3], -clip_mm, clip_mm))
     return (f, n_seen) if return_count else f
 
 
-def carve(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, chunk=2_000_000):
+def carve(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, chunk=2_000_000, floors=()):
     """Carve a box. Returns (Grid, field (nx, ny, nz) float32, seen-count (nx, ny, nz))."""
     g = Grid(lo, hi, vs)
     X = g.points()
     f = np.empty(len(X), np.float32)
     n = np.empty(len(X), np.int16)
     for s in range(0, len(X), chunk):
-        f[s:s + chunk], n[s:s + chunk] = carve_field(views, X[s:s + chunk], k, floor_mm, return_count=True)
+        f[s:s + chunk], n[s:s + chunk] = carve_field(views, X[s:s + chunk], k, floor_mm, return_count=True, floors=floors)
     return g, f.reshape(g.shape), n.reshape(g.shape)
 
 
@@ -201,15 +203,15 @@ def obb(verts) -> dict:
     return {"extents_mm": [float(e) for e in ext[order]], "axes": vec[:, order].T.tolist()}
 
 
-def carve_adaptive(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, coarse=1.0, pad=3.0):
+def carve_adaptive(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, coarse=1.0, pad=3.0, floors=()):
     """Coarse carve over the whole box, then a fine carve over the bounding box of what survived (+pad mm)."""
-    g, f, _ = carve(views, lo, hi, coarse, k, floor_mm)
+    g, f, _ = carve(views, lo, hi, coarse, k, floor_mm, floors=floors)
     idx = np.argwhere(f > 0)
     if len(idx) == 0:
         raise RuntimeError("nothing survived the coarse carve")
     lo2 = np.maximum(np.asarray(lo, float), g.lo + idx.min(0) * g.vs - pad)
     hi2 = np.minimum(np.asarray(hi, float), g.lo + idx.max(0) * g.vs + pad)
-    return carve(views, lo2, hi2, vs, k, floor_mm)
+    return carve(views, lo2, hi2, vs, k, floor_mm, floors=floors)
 
 
 def render_silhouette(verts, faces, view: View) -> np.ndarray:

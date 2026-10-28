@@ -385,6 +385,105 @@ def stage3():
     print("\n".join(L))
 
 
+def stl_points(path, n=4000):
+    import numpy as np
+    from capture import carve
+    from cad.section import read_stl
+    tris = read_stl(path)
+    return carve.sample_surface(tris.reshape(-1, 3), np.arange(len(tris) * 3).reshape(-1, 3), n=n)
+
+
+def rot_info(R):
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+    tilt = float(np.degrees(np.arccos(np.clip(R[2, 2], -1, 1))))
+    return f"angle {np.degrees(Rotation.from_matrix(R).magnitude()):.0f} deg, z-axis tilt {tilt:.0f} deg"
+
+
+def stage4():
+    import time
+
+    import cv2
+    import numpy as np
+    from capture import carve, dataset, register as Rg
+    ref, flat, stand = NAMES[0], NAMES[2], NAMES[1]
+    views = {n: dataset.load_views(n) for n in NAMES}
+    L = ["STAGE 4: joint model. Part frame = video 1's mat frame. T_v maps the part frame to video v's mat frame."]
+    res = {}
+    # candidate set X: video 1's hull, dilated 0.7 mm, at 0.5 mm voxels
+    g, f, _ = carve.carve_adaptive(views[ref], LO, HI, 0.5, 2)
+    X = g.points()[(f.ravel() > -0.7)]
+    centre = X.mean(0)
+    L.append(f"video 1 hull candidate points: {len(X)} at 0.5 mm; centroid {np.round(centre, 1).tolist()}")
+    hull1 = stl_points(SEND / f"{ref}_carve_k2.stl")
+    T = {ref: np.eye(4)}
+    chosen = {}
+
+    def run(name, dst, vset, free_extra=()):
+        src = stl_points(SEND / f"{name}_carve_k2.stl")
+        t0 = time.time()
+        cands = Rg.candidates(src, dst)
+        L.append(f"  {name}: ICP from 24 axis rotations x 18 yaw steps took {time.time() - t0:.0f} s; distinct best solutions (trimmed chamfer mm, mapping {name} -> part):")
+        out = []
+        for i, (c, R, t) in enumerate(cands):
+            L.append(f"    #{i}: chamfer {c:.3f}, {rot_info(R)}, shift {np.round(t, 1).tolist()}")
+        for i, (c, R, t) in enumerate(cands[:3]):
+            Tv = np.linalg.inv(Rg.hom(R, t))                           # part -> video v
+            Tset = dict(T)
+            Tset[name] = Tv
+            sub = {n: views[n] for n in vset}
+            v0 = Rg.joint_volume(sub, Tset, X, 2, 0.5)
+            Tfin, hist = Rg.refine(sub, Tset, [name, *free_extra], X, centre, 2, 0.5, log=lambda m: L.append(m))
+            L.append(f"    candidate #{i}: joint volume before {v0:.0f}, after refinement {hist[-1]:.0f} mm3")
+            out.append((hist[-1], i, Tfin, c, v0))
+        out.sort(key=lambda o: -o[0])
+        from scipy.spatial.transform import Rotation
+        for j in range(1, len(out)):
+            D = out[0][2][name] @ np.linalg.inv(out[j][2][name])
+            L.append(f"    final transform of candidate #{out[j][1]} vs best (#{out[0][1]}): rotation {np.degrees(Rotation.from_matrix(D[:3, :3]).magnitude()):.2f} deg, translation {np.linalg.norm(D[:3, 3]):.2f} mm (different starts, same optimum if both ~0)")
+        return out
+
+    # video 3 (flat too) against video 1
+    L += ["", f"Registering {flat} (flat) to {ref}:"]
+    o3 = run(flat, hull1, [ref, flat])
+    for v, i, Tf, c, v0 in o3:
+        pass
+    T[flat] = o3[0][2][flat]
+    amb3 = (o3[0][0] - o3[1][0]) / o3[0][0] if len(o3) > 1 else None
+    L.append(f"  chosen: candidate #{o3[0][1]} (joint volume {o3[0][0]:.0f}); runner-up volume {o3[1][0]:.0f} ({100 * amb3:.1f} % lower)" if amb3 is not None else "  single candidate")
+    res["flat"] = {"T": T[flat].tolist(), "volumes": [o[0] for o in o3], "ambiguity_rel": amb3}
+    # joint hull of 1+3 as the target for the standing video
+    sub13 = {n: views[n] for n in (ref, flat)}
+    allv13 = list(views[ref]) + [v.moved(T[flat]) for v in views[flat]]
+    g13, f13, _ = carve.carve_adaptive(allv13, LO, HI, 0.25, 2, floors=[T[flat]])
+    v13, fc13 = carve.to_mesh(f13, g13)
+    pts13 = carve.sample_surface(v13, fc13, 4000)
+    L += ["", f"Registering {stand} (standing) to the joint hull of {ref}+{flat}:"]
+    o2 = run(stand, pts13, NAMES, free_extra=(flat,))
+    T[stand] = o2[0][2][stand]
+    T[flat] = o2[0][2][flat]
+    amb2 = (o2[0][0] - o2[1][0]) / o2[0][0] if len(o2) > 1 else None
+    L.append(f"  chosen: candidate #{o2[0][1]} (joint volume {o2[0][0]:.0f}); runner-up volume {o2[1][0]:.0f} ({100 * amb2:.1f} % lower); "
+             f"{'AMBIGUOUS: runner-up within 2 %' if amb2 is not None and amb2 < 0.02 else 'clear winner'}")
+    res["stand"] = {"T": T[stand].tolist(), "volumes": [o[0] for o in o2], "ambiguity_rel": amb2}
+    (CARVE / "cache" / "registration.json").write_text(json.dumps({n: m.tolist() for n, m in T.items()}))
+    # joint carve at 0.25 mm
+    allv = [v.moved(T[n]) for n in NAMES for v in views[n]]
+    floors = [T[n] for n in NAMES if n != ref]
+    g, f, nseen = carve.carve_adaptive(allv, LO, HI, 0.25, 2, floors=floors)
+    v, fc = carve.to_mesh(f, g)
+    v = carve.taubin(v, fc, 5)
+    cen = carve.edge_census(v, fc)
+    ob, pl = carve.obb(v), carve.obb_plan(v)
+    carve.write_stl(SEND / "joint_k2.stl", v, fc)
+    cv2.imwrite(str(SEND / "joint_k2_3view.png"), carve.render3(v, fc))
+    L += ["", f"joint carve (k=2, 0.25 mm, {len(allv)} views): watertight {cen['watertight']}, volume {cen['volume_mm3']:.0f} mm3, {cen['triangles']} triangles",
+          f"  OBB (PCA) {[round(x, 2) for x in ob['extents_mm']]}; footprint rectangle {pl['length_mm']:.2f} x {pl['width_mm']:.2f}, z {pl['z_min']:.2f}..{pl['z_max']:.2f}"]
+    res["joint"] = {"census": cen, "obb": ob, "plan": pl}
+    save_stage(4, "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", type=int, required=True)
@@ -393,4 +492,4 @@ if __name__ == "__main__":
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args()
     MAX_RMS = a.max_rms
-    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3}[a.stage]()
+    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3, 4: stage4}[a.stage]()
