@@ -65,7 +65,10 @@ class Params:
     hole_ring_min: float = 0.9           # fraction of the surrounding ring that must lie inside the part, in every sector
     exclude_margin_mm: float = 0.7       # keep-out around the exclusion mask (hand)
     contact_mm: float = 1.1              # outline this close to the exclusion mask counts as hand contact
-    card_frame: str = "homography"       # card reference: "homography" (four corners, perspective), "similarity" (rotation + one scale from the corners), "axes" (old: minAreaRect, one scale per side)
+    card_frame: str = "axes"             # card reference: "axes" (minAreaRect, one scale per side) or "similarity" (rotation + one scale from the four corners)
+    card_homography: bool = False        # EXPERIMENTAL, off: four-corner homography. Measured worse than "axes" on the accuracy set (+2.5 against +1.0 mm mean error)
+    part_height_mm: float | None = None  # height of the part above the reference plane; with focal_px, sizes are corrected for parallax. None = uncorrected, flagged
+    focal_px: float | None = None        # focal length in pixels (f35 / 43.27 * image diagonal), needed with part_height_mm
     coin_unstretch_min_ratio: float = 1.02  # coin ellipse major/minor below this = level camera: the ellipse is the coin's side wall, no un-stretch
     scale_correction: float = 1.0        # multiplies every mm result after measurement; plug in a calibrated value here
 
@@ -117,13 +120,14 @@ class OutlineResult:
     warnings: list[str] = field(default_factory=list)
     frame: Frame | None = None
     ref_axis_ratio: float | None = None  # coin ellipse major/minor as measured (before deciding whether to un-stretch)
+    parallax_k: float | None = None      # d/(d-h) divided out of every mm value; None = no part height given, sizes uncorrected
 
     def to_dict(self) -> dict:
         def part(p: Part) -> dict:
             return {"primitives": p.primitives, "long_mm": p.long_mm, "short_mm": p.short_mm, "area_mm2": p.area_mm2,
                     "max_dev_mm": p.max_dev_mm, "p95_dev_mm": p.p95_dev_mm, "hand_contact_mm": p.hand_contact_mm,
                     "holes": [h.__dict__ for h in p.holes]}
-        return {"parts": [part(p) for p in self.parts], "mm_per_px": self.mm_per_px, "tilt_deg": self.tilt_deg, "ref_axis_ratio": self.ref_axis_ratio,
+        return {"parts": [part(p) for p in self.parts], "mm_per_px": self.mm_per_px, "tilt_deg": self.tilt_deg, "ref_axis_ratio": self.ref_axis_ratio, "parallax_k": self.parallax_k,
                 "ref_kind": self.ref_kind, "quality": self.quality, "quality_parts": self.quality_parts, "warnings": self.warnings}
 
 
@@ -191,10 +195,10 @@ def card_corners(mask: np.ndarray) -> np.ndarray:
     return np.array(out)
 
 
-def _card_frame(mask: np.ndarray, size_mm: tuple[float, float], mode: str = "homography"):
+def _card_frame(mask: np.ndarray, size_mm: tuple[float, float], mode: str = "axes"):
     """Card -> mm frame, x along the side between corners 0 and 1. Returns the same tuple as _coin_frame (tilt and axis ratio None).
 
-    "homography": the four corners map to the card rectangle (corrects perspective of the paper plane, extrapolated from a small card);
+    "homography" (experimental, only via Params.card_homography): the four corners map to the card rectangle (corrects perspective of the paper plane, extrapolated from a small card);
     "similarity": rotation and one uniform scale fitted to the four corners; "axes": minAreaRect, one scale per side (the first version).
     The fit error is how far the mask area is from the corner quad area (axes: from the rectangle area)."""
     if mode == "axes":
@@ -711,12 +715,22 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
     if ref_kind == "coin":
         to_mm, to_px, mm_per_px, tilt, ref_err, axis_ratio = _coin_frame(ref_mask, float(ref_mm), p.coin_unstretch_min_ratio)
     elif ref_kind == "card":
-        to_mm, to_px, mm_per_px, tilt, ref_err, axis_ratio = _card_frame(ref_mask, tuple(ref_mm), p.card_frame)
+        to_mm, to_px, mm_per_px, tilt, ref_err, axis_ratio = _card_frame(ref_mask, tuple(ref_mm), "homography" if p.card_homography else p.card_frame)
     else:
         raise ValueError(f"unknown ref_kind {ref_kind!r}")
     ppm = 1.0 / mm_per_px                # pixel-space work (bands, kernels) uses the uncorrected scale
-    sc = p.scale_correction
-    if not sc > 0:
+    if p.card_frame not in ("axes", "similarity"):
+        raise ValueError(f"card_frame must be 'axes' or 'similarity', got {p.card_frame!r} (homography: Params.card_homography, experimental)")
+    k_par = None
+    if p.part_height_mm is not None:                     # parallax: the part's top is nearer the camera, so it looks k = d / (d - h) times too big
+        if p.focal_px is None:
+            raise ValueError("part_height_mm needs focal_px (f35 / 43.27 * image diagonal in px) to get the camera distance")
+        d = p.focal_px * mm_per_px
+        if not 0 <= p.part_height_mm < d:
+            raise ValueError("part_height_mm must be between 0 and the camera distance")
+        k_par = d / (d - p.part_height_mm)
+    sc = p.scale_correction / (k_par or 1.0)
+    if not p.scale_correction > 0:
         raise ValueError("scale_correction must be > 0")
     if sc != 1.0:
         to_mm, to_px = (lambda f: lambda q: f(q) * sc)(to_mm), (lambda g: lambda m: g(np.asarray(m, float) / sc))(to_px)
@@ -725,6 +739,8 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
     if exclude is not None:
         part = cv2.bitwise_and(part, cv2.bitwise_not(cv2.dilate(exclude, _kernel(2 * p.exclude_margin_mm * ppm + 1, ellipse=True))))
     warnings: list[str] = []
+    if k_par is None:
+        warnings.append("height unknown, up to +3% at 14 mm")      # parallax is not corrected without a part height
     if not part.any():
         return OutlineResult([], mm_per_px, tilt, ref_kind, 0.0, {"part": 0.0}, ["no part mask"])
     refined, blur, paper, keep_out, edge_thr = _refine(image, part, (ref_mask > 0).astype(np.uint8) * 255, exclude, ppm, p)
@@ -768,7 +784,7 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
         part_.holes.sort(key=lambda h: -h.area_mm2)
 
     comps = _quality(parts, refined, part, tilt, ref_err, exclude is not None, ref_kind, warnings)
-    return OutlineResult(parts, mm_per_px, tilt, ref_kind, min(comps.values()), comps, warnings, frame, axis_ratio)
+    return OutlineResult(parts, mm_per_px, tilt, ref_kind, min(comps.values()), comps, warnings, frame, axis_ratio, k_par)
 
 
 def _quality(parts, refined, part_mask, tilt, ref_err, has_exclude, ref_kind, warnings) -> dict[str, float]:

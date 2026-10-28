@@ -84,10 +84,8 @@ def main():
     card_names = [n for n in TOP if "card" in n]
 
     async def run_variant(mode):
-        return [(await acc.process(acc.PHOTOS / f"{n}.jpg", meta[f"{n}.jpg"], False, Params(card_frame=mode)))[0] for n in card_names]
-    variants = {"homography": [recs[n] for n in card_names]}
-    for mode in ("similarity", "axes"):
-        variants[mode] = asyncio.run(run_variant(mode))
+        return [(await acc.process(acc.PHOTOS / f"{n}.jpg", meta[f"{n}.jpg"], False, Params(card_homography=True) if mode == "homography" else Params(card_frame=mode)))[0] for n in card_names]
+    variants = {mode: asyncio.run(run_variant(mode)) for mode in ("homography", "similarity", "axes")}
     ctxs = {r["photo"]: c for r, c in runs}
     for r in recs.values():
         assert "parts" in r and set(r["parts"]) == {"A", "B"}, r.get("error")

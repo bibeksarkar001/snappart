@@ -141,3 +141,26 @@ def test_noise_holes_are_dropped_and_slot_becomes_a_rectangle():
     slot = next(h for h in p.holes if h.kind == "slot")
     assert slot.shape.startswith("rect") and [q["type"] for q in slot.primitives] == ["line"] * 4
     assert all(h.short_mm >= 1.5 and h.area_mm2 >= 4.0 for h in p.holes)
+
+
+def test_card_default_is_axes_and_homography_is_opt_in():
+    img, m = scene(card=True)
+    base = extract_outline(img, m["part"], m["ref"], (85.6, 53.98), ref_kind="card")
+    axes = extract_outline(img, m["part"], m["ref"], (85.6, 53.98), ref_kind="card", params=Params(card_frame="axes"))
+    assert base.parts[0].long_mm == axes.parts[0].long_mm
+    extract_outline(img, m["part"], m["ref"], (85.6, 53.98), ref_kind="card", params=Params(card_frame="similarity"))
+    extract_outline(img, m["part"], m["ref"], (85.6, 53.98), ref_kind="card", params=Params(card_homography=True))
+    with pytest.raises(ValueError):
+        extract_outline(img, m["part"], m["ref"], (85.6, 53.98), ref_kind="card", params=Params(card_frame="homography"))
+
+
+def test_parallax_only_with_a_height():
+    img, m = scene()
+    plain = extract_outline(img, m["part"], m["ref"], COIN_MM)
+    assert plain.parallax_k is None and "height unknown, up to +3% at 14 mm" in plain.warnings
+    fixed = extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(part_height_mm=14.0, focal_px=6000.0))
+    d = 6000.0 * plain.mm_per_px
+    assert fixed.parallax_k == pytest.approx(d / (d - 14.0)) and "height unknown, up to +3% at 14 mm" not in fixed.warnings
+    assert fixed.parts[0].long_mm == pytest.approx(plain.parts[0].long_mm / fixed.parallax_k, abs=0.03)
+    with pytest.raises(ValueError):
+        extract_outline(img, m["part"], m["ref"], COIN_MM, params=Params(part_height_mm=14.0))

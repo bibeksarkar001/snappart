@@ -272,7 +272,7 @@ def write_summary(rows, cmp_rows, solids, plan_long):
               "acc_card_edge_01 gives 18.0 mm for B raw (60.0 mm long): that photo's pose differs or the card frame (similarity) is off; not resolved",
               "profile uses the silhouette extent only: walls hidden behind the top edge, undercuts and the standing part's base line are not modelled; the stepped solid is the plan extrusion cut by x-region heights only",
               "step labels in the profile PNGs overlap where steps are closer than about 2 mm; the plan/profile alignment (same left-right direction in both photos) is assumed, not checked",
-              "card photos use the default card_frame='homography', which was measured to add about +1.5 mm over the axes frame; the hole checks are unaffected but plan sizes from card photos are inflated"]
+              "(resolved) card photos now use the default card_frame='axes'; re-run solid_check and this script to refresh the numbers"]
     L.append("")
     L.append("5. WHAT STILL FAILS (honest list)")
     L += [f"  - {f}" for f in fails]
