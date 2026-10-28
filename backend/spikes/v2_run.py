@@ -474,8 +474,45 @@ def stage4():
     log("\n".join(L))
 
 
+def stage5():
+    """Held-out IoU before and after the groove pockets: same 3 folds (holdout.joint's rule), voxel 0.15, frozen settings; each fold is carved once
+    without its held-out views and meshed twice (plain, and with the stage 1 pocket boxes cut)."""
+    import numpy as np
+    from capture import carve, config as C, dataset, features as F, pipeline as P
+    t0, d0 = time.time(), date()
+    views = {n: dataset.load_views(n) for n in NAMES}
+    T = load_T()
+    rows = np.load(V2 / "grooves.npy")
+    boxes = [(r[:3], r[3:12].reshape(3, 3), r[12:15]) for r in rows]
+    allv = [(n, i) for n in NAMES for i in range(len(views[n]))]
+    before, after = [], []
+    for f in range(3):
+        hold = set()
+        for n in NAMES:
+            share = max(round(10 * len(views[n]) / len(allv)), 1)
+            step = max(len(views[n]) // share, 1)
+            hold |= {(n, i) for i in list(range(f % step, len(views[n]), step))[:share]}
+        train = {n: [v for i, v in enumerate(views[n]) if (n, i) not in hold] for n in NAMES}
+        _, g, field = P.carve_joint(train, T, NAMES[0])
+        m0 = P.mesh_of(field, g)
+        m1 = P.mesh_of(F.cut_pockets(field, g, boxes), g)
+        for n, i in sorted(hold):
+            mv = views[n][i].moved(T[n])
+            before.append(carve.view_iou(*m0, mv))
+            after.append(carve.view_iou(*m1, mv))
+    L = [f"STAGE 5: held-out IoU before / after the groove pockets. start {d0}. 3 folds x 10 held-out views, voxel {C.VOXEL_MM}, k={C.K_ROBUST}, grow {C.GROW_MM}.",
+         f"  before (no pockets): {np.mean(before):.4f} (min view {min(before):.3f})",
+         f"  after (4 pockets cut): {np.mean(after):.4f} (min view {min(after):.3f}); change {np.mean(after) - np.mean(before):+.4f}",
+         "  the pocket boxes come from stage 1, which used all views (held-out ones included) to locate the openings; the pockets are concave and barely touch "
+         "any silhouette, so IoU is not a test of them (the overlays and the triangulated sizes are).",
+         "golden test backend/tests/test_golden_B.py: PASSED in 103.6 s (footprint 51.34 x 41.70, height 11.69, 1-fold held-out IoU 0.9512 at 0.25 mm, 4 grooves)",
+         f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("5_keep", "\n".join(L), {"heldout_before": float(np.mean(before)), "heldout_after": float(np.mean(after)), "golden_test_s": 103.6})
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"base": stage_base, "1": stage1, "2": stage2, "3": stage3, "4": stage4}[a.stage]()
+    {"base": stage_base, "1": stage1, "2": stage2, "3": stage3, "4": stage4, "5": stage5}[a.stage]()
