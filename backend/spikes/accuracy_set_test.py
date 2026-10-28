@@ -20,7 +20,7 @@ import numpy as np
 from meta_sam_parser import decode_mask_to_raster
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from measure.outline import extract_outline, sample_primitives  # noqa: E402
+from measure.outline import Params, extract_outline, sample_primitives  # noqa: E402
 from lock_set_test import spark  # noqa: E402  (Muse Spark photo check, JSON schema)
 from sam_coin import segment, slug  # noqa: E402
 from spike_common import OUT, ROOT, full_mask, tint  # noqa: E402
@@ -126,7 +126,7 @@ async def find_hand(path, refresh):
 
 # ---------------------------------------------------------------- measuring
 
-async def process(path, meta, refresh):
+async def process(path, meta, refresh, params=Params()):
     stem = path.stem
     kind = "coin" if "_coin_" in stem else "card"
     view = "top" if "_top" in stem else "edge" if "_edge" in stem else "hand"
@@ -154,7 +154,7 @@ async def process(path, meta, refresh):
     diag = math.hypot(w, h)
     try:
         t = time.perf_counter()
-        res = extract_outline(img, union, ref, COIN_MM if kind == "coin" else CARD_MM, ref_kind=kind, exclude_mask=hand)
+        res = extract_outline(img, union, ref, COIN_MM if kind == "coin" else CARD_MM, ref_kind=kind, exclude_mask=hand, params=params)
         rec["t_outline_s"] = round(time.perf_counter() - t, 2)
     except ValueError as e:
         rec["error"] = f"extract_outline: {e}"
