@@ -157,8 +157,124 @@ def stage1():
     print("\n".join(L))
 
 
+def plate_region(field, g, bump):
+    """Plate footprint from the carve: x from the window's far edge (first material along y=101 at mid height) to the bump's detected far edge;
+    y between the rails' inner faces (gap along x in the window, mid height)."""
+    import numpy as np
+    ix = lambda v, a: int(round((v - g.lo[a]) / g.vs))
+    zc = ix(6.0, 2)
+    row = field[:, ix(101, 1), zc] > 0
+    xs = g.lo[0] + np.where(row)[0] * g.vs
+    xw = xs[(xs > 140)].min()                                   # window far edge (material after the window)
+    col = field[ix(xw - 5, 0), :, zc] > 0
+    ys = g.lo[1] + np.where(col)[0] * g.vs
+    y0, y1 = ys[ys < 101].max() + g.vs, ys[ys > 101].min() - g.vs  # rails' inner faces
+    x1 = min(e[0] for e in bump["ends"])
+    return float(xw), float(x1), float(y0), float(y1)
+
+
+def face_rms(v, fc, box, up):
+    """RMS distance (mm) of the mesh's surface samples in box (x0, x1, y0, y1), facing up (+z) or down, to their least-squares plane."""
+    import numpy as np
+    from capture import snap
+    P, N = snap.oriented_points(v, fc, 200000)
+    m = (P[:, 0] > box[0] + 0.5) & (P[:, 0] < box[1] - 0.5) & (P[:, 1] > box[2] + 0.5) & (P[:, 1] < box[3] - 0.5) & ((N[:, 2] > 0.5) if up else (N[:, 2] < -0.5))
+    q = P[m]
+    c = q.mean(0)
+    n = np.linalg.svd(q - c)[2][2]
+    r = (q - c) @ n
+    return float(np.sqrt((r ** 2).mean())), int(m.sum()), float(c[2]), float(np.degrees(np.arccos(abs(n[2]))))
+
+
+def stage2():
+    import cv2
+    import numpy as np
+    from capture import carve, config as C, features as F, model as Mo, snap
+    t0, d0 = time.time(), date()
+    m = Mo.load(V3 / "model_B")
+    field, g, feats = m["field"], m["grid"], m["features"]
+    x0, x1, y0, y1 = plate_region(field, g, feats["bump"])
+    vv, imgs = V2R.all_views()
+
+    def face_z(z, up):
+        n = np.array([0, 0, 1.0 if up else -1.0])
+        return {"O": np.array([x0 + 1, y0 + 1.5, z]), "e1": np.array([0, 1.0, 0]), "e2": np.array([1.0, 0, 0]), "n": n, "len_s": y1 - y0 - 3, "len_t": x1 - x0 - 3}
+    zs = np.arange(6.0, 12.01, 0.1)
+    meas = {}
+    for key, vid, up in (("lower (faces -z)", "A_orbit_03", False), ("upper (faces +z)", "A_orbit_01", True)):
+        sel = [(v, im) for (n, v), im in zip(vv, imgs) if n == vid and F.facing(v, face_z(10, up)) > 0.6]
+        z, sd, sc = F.plane_sweep([v for v, _ in sel], [im for _, im in sel], lambda z: face_z(z, up), zs)
+        meas[key] = {"z": z, "boot_sd": sd, "views": len(sel), "video": vid, "contrast": float(sc.max() / sc.min())}
+    sep = meas["upper (faces +z)"]["z"] - meas["lower (faces -z)"]["z"]
+    use_meas = abs(sep - C.PLATE_THICKNESS_USER_MM) <= 0.3
+    th = sep if use_meas else C.PLATE_THICKNESS_USER_MM
+    zu = meas["upper (faces +z)"]["z"]
+    mask = np.zeros(field.shape[:2], bool)
+    X = g.lo[0] + np.arange(field.shape[0]) * g.vs
+    Y = g.lo[1] + np.arange(field.shape[1]) * g.vs
+    mask[np.ix_((X >= x0) & (X <= x1), (Y >= y0) & (Y <= y1))] = True
+    plate = {"normal": [0, 0, 1.0], "d": -zu, "mask": mask, "region_xy": [x0, x1, y0, y1], "anchor": "upper face, measured (video 1 plane sweep)",
+             "measured_faces": meas, "measured_separation_mm": sep}
+    feats["plate"] = plate
+    ans = {**Mo.default_answers(), "plate_thickness_mm": th}
+    f_before = Mo.apply(field, g, {k: feats[k] for k in ("grooves", "bump")}, ans)
+    vb, fb = Mo.mesh(f_before, g)
+    f_after = Mo.apply(field, g, feats, ans)
+    va, fa = Mo.mesh(f_after, g)
+    ca = carve.edge_census(va, fa)
+    carve.write_stl(SEND / "B_plate.stl", va, fa)
+    cv2.imwrite(str(SEND / "B_plate_3view.png"), carve.render3(va, fa))
+    box = (x0, x1, y0, y1)
+    rb = {k: face_rms(vb, fb, box, up) for k, up in (("lower", False), ("upper", True))}
+    ra = {k: face_rms(va, fa, box, up) for k, up in (("lower", False), ("upper", True))}
+    # cross-section at y = 101 through the plate
+    iy = int(round((101 - g.lo[1]) / g.vs))
+    runs = {}
+    for name, ff in (("before", f_before), ("after", f_after)):
+        out = []
+        for x in np.arange(x0 + 1, x1, 2.0):
+            colz = ff[int(round((x - g.lo[0]) / g.vs)), iy] > 0
+            zz = g.lo[2] + np.where(colz)[0] * g.vs
+            out.append((round(float(x), 1), round(float(zz.min()), 2) if len(zz) else None, round(float(zz.max()), 2) if len(zz) else None))
+        runs[name] = out
+    sec = ((f_after[:, iy, :].T[::-1] > 0) * 255).astype(np.uint8)
+    secb = ((f_before[:, iy, :].T[::-1] > 0) * 255).astype(np.uint8)
+    pic = cv2.resize(np.vstack([secb, np.full((4, sec.shape[1]), 128, np.uint8), sec]), None, fx=3, fy=3, interpolation=cv2.INTER_NEAREST)
+    cv2.imwrite(str(SEND / "plate_section_y101.png"), pic)
+    Mo.save(V3 / "model_B", field, g, feats)
+    L = [f"STAGE 2: thin flat plate. start {d0}.",
+         f"region (from the carve): x {x0:.2f}..{x1:.2f} (window far edge .. bump's detected far edge), y {y0:.2f}..{y1:.2f} (rails' inner faces).",
+         "RANSAC on the mesh cannot find the plate's two faces: the carve there is a wedge (bottom rising at ~33 deg from z 7.4 at the window to z 0.15 near the "
+         "groove column; top = video 3's floor plane). Silhouettes cannot carve under a plate that sits between two rails. So the faces are measured by "
+         "photo-consistency plane sweeps instead (horizontal planes z = 6..12 mm step 0.1; views facing the face, cos > 0.6; 20 bootstrap resamples of the views):"]
+    for k, r in meas.items():
+        L.append(f"  {k} face: z = {r['z']:.2f} mm (bootstrap sd {r['boot_sd']:.2f}), {r['views']} views of {r['video']}, score contrast {r['contrast']:.2f}")
+    L += [f"  MEASURED SEPARATION {sep:.2f} mm (the two faces come from different videos; their vertical registration is consistent to ~0.1 mm: the carved height "
+          f"between the two videos' floors is 11.69 vs 11.8 caliper).",
+          "  region sensitivity: an exploratory sweep over x 151..162.5, y 86..117 (same method) gave faces at 9.70 / 10.20 = 0.50 mm. So the measured "
+          "separation is 0.2-0.5 mm depending on the region; the bootstrap sd (<= 0.07) understates that.",
+          f"  owner's caliper: {C.PLATE_THICKNESS_USER_MM} mm. |difference| {abs(sep - C.PLATE_THICKNESS_USER_MM):.2f} mm "
+          + ("<= 0.3: the MEASURED value is used." if use_meas else "> 0.3: per the rule, 2.6 mm is used and labelled USER-SUPPLIED. THE MEASUREMENT CONTRADICTS IT: the "
+             "owner's caliper may have been taken at the plate's edge (the carve shows ~3.1 mm of material at the window edge), not in the middle; this needs the owner."),
+          f"  model: plate = slab between the measured upper face z={zu:.2f} and z={zu - th:.2f} (thickness {th:.2f} mm, {'measured' if use_meas else 'user-supplied'}); "
+          "anchored on the upper face because anchoring on the lower one would put the slab above video 3's floor plane (impossible).",
+          "roughness (RMS distance of the surface samples in the plate region, inset 0.5 mm, to their own least-squares plane; samples / mean z / tilt):"]
+    for k in ("lower", "upper"):
+        L.append(f"  {k} surface: before {rb[k][0]:.3f} mm ({rb[k][1]} samples, z {rb[k][2]:.2f}, tilt {rb[k][3]:.1f} deg)  after {ra[k][0]:.3f} mm ({ra[k][1]} samples, z {ra[k][2]:.2f}, tilt {ra[k][3]:.1f} deg)")
+    L += ["  ('before' lower = the hull wedge, not a plate face; 'before' upper = the hull's top there (video 3's floor plane plus the up-facing facets in the region). "
+          "'after' is 0 by construction: the slab faces are exact planes, so this shows the snap worked, not that the plate is flat.)",
+          f"B_plate.stl (grooves + bump + plate): watertight {ca['watertight']} (boundary {ca['boundary_edges']}, non-manifold {ca['non_manifold_edges']}), volume {ca['volume_mm3']:.0f} mm3, {ca['triangles']} triangles",
+          "cross-section y=101 (x: z_min..z_max of material), before: " + ", ".join(f"{x}:{a}..{b}" for x, a, b in runs["before"]),
+          "  after: " + ", ".join(f"{x}:{a}..{b}" for x, a, b in runs["after"]),
+          "  picture plate_section_y101.png (top: before, bottom: after; x to the right, z up)",
+          f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("2_plate", "\n".join(L), {"region": [x0, x1, y0, y1], "faces": meas, "separation_mm": sep, "used_mm": th, "used_source": "measured" if use_meas else "user-supplied",
+                                         "roughness_before": rb, "roughness_after": ra, "census": ca, "section": runs})
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"1": stage1}[a.stage]()
+    {"1": stage1, "2": stage2}[a.stage]()

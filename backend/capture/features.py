@@ -301,3 +301,20 @@ def groove_boxes(ops, face, depth_mm, out_mm=3.0):
         axes = np.stack([lng, np.cross(face["n"], lng), face["n"]])
         out.append((o["centre"] + face["n"] * (out_mm - depth_mm) / 2, axes, np.array([o["L"] / 2, o["S"] / 2, (depth_mm + out_mm) / 2])))
     return out
+
+
+def plane_sweep(views, images, face_at, zs, ppm=10, blur=4.0, boot=20, seed=0):
+    """Photo-consistency plane sweep: for each offset z, rectify every view onto face_at(z) and score the mean per-pixel variance of the
+    high-passed, normalised images (low = the views agree = a textured surface at that plane). Returns (best z, bootstrap sd, scores)."""
+    stacks = []
+    for z in zs:
+        R = []
+        for v, im in zip(views, images):
+            r = rectify(v, im, face_at(z), 0, ppm).astype(np.float32)
+            hp = r - cv2.GaussianBlur(r, (0, 0), blur)
+            R.append(hp / (hp.std() + 1e-6))
+        stacks.append(np.stack(R))
+    sc = np.array([s.var(0).mean() for s in stacks])
+    rng = np.random.default_rng(seed)
+    best = [zs[int(np.argmin([s[k].var(0).mean() for s in stacks]))] for k in (rng.choice(len(views), len(views)) for _ in range(boot))]
+    return float(zs[int(np.argmin(sc))]), float(np.std(best)), sc
