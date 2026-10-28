@@ -48,13 +48,14 @@ def detect(detector, gray: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return ids.ravel()[keep].astype(int), np.array([corners[i].reshape(4, 2) for i in keep]).reshape(-1, 4, 2)
 
 
-def correspondences(ids, corners):
-    """3D world points (4n, 3) and their 2D detections (4n, 2) for the given detections."""
-    return (np.concatenate([WORLD[int(i)] for i in ids]) if len(ids) else np.zeros((0, 3)),
+def correspondences(ids, corners, world=None):
+    """3D world points (4n, 3) and their 2D detections (4n, 2) for the given detections; `world` overrides the printed layout (calibrated mat)."""
+    world = world or WORLD
+    return (np.concatenate([world[int(i)] for i in ids]) if len(ids) else np.zeros((0, 3)),
             np.asarray(corners, float).reshape(-1, 2))
 
 
-def solve_pose(ids, corners, K, dist, outlier_px: float = 3.0):
+def solve_pose(ids, corners, K, dist, outlier_px: float = 3.0, world=None):
     """World -> camera pose (rvec, tvec) from the marker corners, with LM refinement and one outlier-marker pass.
 
     Returns (rvec, tvec, rms_px, used_ids) or None. rms is over the corners of the markers kept.
@@ -64,10 +65,13 @@ def solve_pose(ids, corners, K, dist, outlier_px: float = 3.0):
         return None
     keep = np.arange(len(ids))
     for _ in range(2):
-        P, p = correspondences(ids[keep], corners[keep])
+        P, p = correspondences(ids[keep], corners[keep], world)
         if len(P) < 4:
             return None
-        ok, rv, tv = cv2.solvePnP(P, p, K, dist, flags=cv2.SOLVEPNP_IPPE)
+        if world is None:
+            ok, rv, tv = cv2.solvePnP(P, p, K, dist, flags=cv2.SOLVEPNP_IPPE)
+        else:                                    # calibrated corners are not exactly planar: start from the planar layout of the same ids
+            ok, rv, tv = cv2.solvePnP(correspondences(ids[keep], corners[keep])[0], p, K, dist, flags=cv2.SOLVEPNP_IPPE)
         if not ok:
             return None
         rv, tv = cv2.solvePnPRefineLM(P, p, K, dist, rv, tv)
@@ -76,7 +80,7 @@ def solve_pose(ids, corners, K, dist, outlier_px: float = 3.0):
         if good.all() or good.sum() < 1:
             break
         keep = keep[good]
-    P, p = correspondences(ids[keep], corners[keep])
+    P, p = correspondences(ids[keep], corners[keep], world)
     e = np.linalg.norm(cv2.projectPoints(P, rv, tv, K, dist)[0].reshape(-1, 2) - p, axis=1)
     return rv, tv, float(np.sqrt((e ** 2).mean())), ids[keep]
 
