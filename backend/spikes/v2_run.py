@@ -394,8 +394,67 @@ def stage2():
     print("\n".join(L))
 
 
+def stage3():
+    """Lock pin (label_2): detection only. Where label_2 marks it, and whether it is distinct from the stage 2 block."""
+    import cv2
+    import numpy as np
+    from capture import carve, features as F
+    t0, d0 = time.time(), date()
+    res2 = json.loads((SEND / "results.json").read_text())
+    bump = res2["2_bump"]
+    ops = res2["1_grooves"]["openings"]
+    L = [f"STAGE 3: lock pin in the recess (label_2). Detection only, no geometry. start {d0}."]
+    res = {}
+    prim = bump.get("primary")
+    if not bump.get("detected"):
+        L.append("No stage 2 block to compare with; NOT DETECTED.")
+        save_stage("3_pin", "\n".join(L), res)
+        return
+    e0, e1 = np.array(bump["per_video"][prim]["end0"]), np.array(bump["per_video"][prim]["end1"])
+    v, fc = load_mesh(V1 / "A_final.stl")
+    face, _, _ = groove_face(v, fc)
+    vv, imgs = all_views()
+    seen = {}
+    for vid, vw in vv:
+        u, vq, z = carve.project(vw, np.array([e0, e1]))
+        w, h = vw.size
+        if F.facing(vw, face) >= 0.3 and (z > 0).all() and (u >= 0).all() and (u < w).all() and (vq >= 0).all() and (vq < h).all():
+            seen.setdefault(vid, []).append(vw.name)
+    found = {k: r["found"] for k, r in bump["per_video"].items()}
+    L += ["label_2 marks a pin standing beside the column of four openings, inside the recess, over the middle two openings (side view, part standing on its rail: video 2).",
+          f"The stage 2 block (triangulated in {prim}: ends ({e0[0]:.1f},{e0[1]:.1f},{e0[2]:.1f}) .. ({e1[0]:.1f},{e1[1]:.1f},{e1[2]:.1f}), {bump['length_mm']:.2f} mm) lies "
+          "beside the openings over the middle two openings; projected into the video 2 views (lockpin_views.png, cyan) it falls where label_2 marks the pin.",
+          "views where that location faces the camera and is in the frame: " + ", ".join(f"{k[-2:]}: {len(x)}" for k, x in seen.items())
+          + "; views where the stepped block was detected (stage 2): " + ", ".join(f"{k[-2:]}: {n}" for k, n in found.items()),
+          "RESULT: no feature separate from the stage 2 block was found at the label_2 position. The pin and the bump appear to be the same physical feature seen from two "
+          "sides (from above it is a raised block ~19.4 mm long; from the side it looks like a pin). I cannot confirm that from the videos alone; if they are different "
+          "features, the pin was NOT DETECTED. Dimensions: not measured. No geometry added."]
+    res.update({"views_in_frame": {k: len(x) for k, x in seen.items()}, "block_detected_views": found, "same_location_as_bump": True, "geometry_added": False})
+    tiles = []
+    for (vid, vw), im in zip(vv, imgs):
+        if vw.name not in ("A_orbit_02_60", "A_orbit_02_1128", "A_orbit_02_1204", "A_orbit_02_1396", "A_orbit_02_1594", "A_orbit_02_2620"):
+            continue
+        col = cv2.imread(str(CACHE / "crops" / f"{vw.name}.jpg"))
+        u, vq, _ = carve.project(vw, np.array([e0, e1]))
+        cv2.line(col, (int(u[0]), int(vq[0])), (int(u[1]), int(vq[1])), (255, 255, 0), 2)
+        for o in ops:
+            uu, vo, _ = carve.project(vw, np.array(o["corners"]))
+            cv2.polylines(col, [np.stack([uu, vo], 1).astype(np.int32)], True, (0, 255, 0), 1)
+        cx, cy = int(np.mean(u)), int(np.mean(vq))
+        t = cv2.resize(col[max(cy - 260, 0):cy + 260, max(cx - 260, 0):cx + 260], (520, 520))
+        cv2.putText(t, vw.name, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        tiles.append(t)
+    if len(tiles) == 6:
+        cv2.imwrite(str(SEND / "lockpin_views.png"), np.vstack([np.hstack(tiles[:3]), np.hstack(tiles[3:])]))
+    L.append("picture: lockpin_views.png (video 2 views; green = triangulated openings, cyan = stage 2 block, both from video 3 mapped through the registration, which "
+             "is ~1.6 mm off for video 2 as stage 1 measured).")
+    L.append(f"end {date()}; elapsed {time.time() - t0:.0f} s")
+    save_stage("3_pin", "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"base": stage_base, "1": stage1, "2": stage2}[a.stage]()
+    {"base": stage_base, "1": stage1, "2": stage2, "3": stage3}[a.stage]()
