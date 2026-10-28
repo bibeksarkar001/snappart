@@ -60,6 +60,7 @@ class Params:
     hole_ring_min: float = 0.9           # fraction of the surrounding ring that must lie inside the part, in every sector
     exclude_margin_mm: float = 0.7       # keep-out around the exclusion mask (hand)
     contact_mm: float = 1.1              # outline this close to the exclusion mask counts as hand contact
+    scale_correction: float = 1.0        # multiplies every mm result after measurement; plug in a calibrated value here
 
 
 @dataclass
@@ -100,7 +101,7 @@ class Frame:
 @dataclass
 class OutlineResult:
     parts: list[Part]
-    mm_per_px: float
+    mm_per_px: float                     # raw reference scale, before Params.scale_correction (which is already in all mm values)
     tilt_deg: float | None               # coin only
     ref_kind: str
     quality: float
@@ -585,7 +586,12 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
         to_mm, to_px, mm_per_px, tilt, ref_err = _card_frame(ref_mask, tuple(ref_mm))
     else:
         raise ValueError(f"unknown ref_kind {ref_kind!r}")
-    ppm = 1.0 / mm_per_px
+    ppm = 1.0 / mm_per_px                # pixel-space work (bands, kernels) uses the uncorrected scale
+    sc = p.scale_correction
+    if not sc > 0:
+        raise ValueError("scale_correction must be > 0")
+    if sc != 1.0:
+        to_mm, to_px = (lambda f: lambda q: f(q) * sc)(to_mm), (lambda g: lambda m: g(np.asarray(m, float) / sc))(to_px)
     part = (part_mask > 0).astype(np.uint8) * 255
     exclude = None if exclude_mask is None else (exclude_mask > 0).astype(np.uint8) * 255
     if exclude is not None:
@@ -612,7 +618,7 @@ def extract_outline(image: np.ndarray, part_mask: np.ndarray, ref_mask: np.ndarr
             dist = cv2.distanceTransform((exclude == 0).astype(np.uint8), cv2.DIST_L2, 3)
             near = dist[np.clip(np.round(c_px[:, 1]).astype(int), 0, dist.shape[0] - 1),
                         np.clip(np.round(c_px[:, 0]).astype(int), 0, dist.shape[1] - 1)] <= p.contact_mm * ppm
-            contact = float(near.sum()) * mm_per_px
+            contact = float(near.sum()) * mm_per_px * sc
         parts.append(Part(prims, [], L, S, float(cv2.contourArea(c.astype(np.float32))), dmax, d95, contact))
     for hc in _holes(refined, blur, paper, keep_out, edge_thr, ppm, p):
         hm = to_mm(hc) - origin
