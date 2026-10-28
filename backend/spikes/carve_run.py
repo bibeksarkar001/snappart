@@ -350,6 +350,41 @@ def stage2(limit=None, refresh=False):
     print("\n".join(L))
 
 
+LO, HI = [148.5 - 35, 105 - 35, -1.5], [148.5 + 35, 105 + 35, 45.0]
+TRUTH = {"length": 34.7, "width": 34.0, "corner_length": 32.4, "plate_thickness": "2.6-2.7"}
+
+
+def stage3():
+    import time
+
+    import cv2
+    import numpy as np
+    from capture import carve, dataset
+    L = ["STAGE 3: per-video robust carve (SDF field, voxel 0.25 mm, floor z >= 0, k = number of views that must put a voxel outside; marching cubes + Taubin 5 iterations)",
+         f"calipers for A: length {TRUTH['length']} (middle of the convex edge), width {TRUTH['width']}, corner length {TRUTH['corner_length']} (not computed here), plate/tab thickness {TRUTH['plate_thickness']} mm"]
+    res = {}
+    for name in NAMES:
+        views = dataset.load_views(name)
+        res[name] = {"n_views": len(views)}
+        L += ["", f"{name}: {len(views)} views"]
+        for k in (1, 2, 3):
+            t = time.time()
+            g, f, n = carve.carve_adaptive(views, LO, HI, 0.25, k)
+            v, fc = carve.to_mesh(f, g)
+            v = carve.taubin(v, fc, 5)
+            cen = carve.edge_census(v, fc)
+            ob, pl = carve.obb(v), carve.obb_plan(v)
+            res[name][f"k{k}"] = {"census": cen, "obb": ob, "plan": pl, "secs": time.time() - t, "grid": list(f.shape)}
+            L.append(f"  k={k}: watertight {cen['watertight']} (boundary {cen['boundary_edges']}, non-manifold {cen['non_manifold_edges']}), volume {cen['volume_mm3']:.0f} mm3, {cen['triangles']} triangles, {time.time() - t:.0f} s")
+            L.append(f"     OBB (PCA) extents {[round(x, 2) for x in ob['extents_mm']]}; footprint rectangle {pl['length_mm']:.2f} x {pl['width_mm']:.2f} mm, z {pl['z_min']:.2f}..{pl['z_max']:.2f}")
+            if k == 2:
+                carve.write_stl(SEND / f"{name}_carve_k2.stl", v, fc)
+                cv2.imwrite(str(SEND / f"{name}_carve_k2_3view.png"), carve.render3(v, fc))
+    L += ["", "NOTE: a flat video sees the part from above and the side at limited elevation, so its hull is inflated in z (see stage 0); the standing video's frame has a different part orientation."]
+    save_stage(3, "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", type=int, required=True)
@@ -358,4 +393,4 @@ if __name__ == "__main__":
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args()
     MAX_RMS = a.max_rms
-    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh)}[a.stage]()
+    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3}[a.stage]()

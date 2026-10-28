@@ -199,3 +199,67 @@ def obb(verts) -> dict:
     ext = (c @ vec).max(0) - (c @ vec).min(0)
     order = np.argsort(-ext)
     return {"extents_mm": [float(e) for e in ext[order]], "axes": vec[:, order].T.tolist()}
+
+
+def carve_adaptive(views, lo, hi, vs=0.25, k=2, floor_mm=0.0, coarse=1.0, pad=3.0):
+    """Coarse carve over the whole box, then a fine carve over the bounding box of what survived (+pad mm)."""
+    g, f, _ = carve(views, lo, hi, coarse, k, floor_mm)
+    idx = np.argwhere(f > 0)
+    if len(idx) == 0:
+        raise RuntimeError("nothing survived the coarse carve")
+    lo2 = np.maximum(np.asarray(lo, float), g.lo + idx.min(0) * g.vs - pad)
+    hi2 = np.minimum(np.asarray(hi, float), g.lo + idx.max(0) * g.vs + pad)
+    return carve(views, lo2, hi2, vs, k, floor_mm)
+
+
+def render_silhouette(verts, faces, view: View) -> np.ndarray:
+    """0/255 silhouette of a mesh (world coords) in a view's crop (triangles filled with 1/16 px precision)."""
+    c = verts @ view.R.T + view.t
+    z = np.where(c[:, 2] > 1e-6, c[:, 2], 1e-6)
+    uv = np.stack([view.K[0, 0] * c[:, 0] / z + view.K[0, 2], view.K[1, 1] * c[:, 1] / z + view.K[1, 2]], 1)
+    w, h = view.size
+    img = np.zeros((h, w), np.uint8)
+    ok = (c[faces, 2] > 1e-6).all(1)
+    pts = np.round(uv[faces[ok]] * 16).astype(np.int32)
+    for tri in pts:
+        cv2.fillConvexPoly(img, tri, 255, cv2.LINE_8, 4)
+    return img
+
+
+def view_iou(verts, faces, view: View) -> float:
+    s = render_silhouette(verts, faces, view) > 0
+    m = view.sdf > 0
+    return float((s & m).sum() / max((s | m).sum(), 1))
+
+
+def obb_plan(verts) -> dict:
+    """Part lying flat: min-area rectangle of the xy footprint (length >= width) and the z extent."""
+    r = cv2.minAreaRect(verts[:, :2].astype(np.float32))
+    return {"length_mm": float(max(r[1])), "width_mm": float(min(r[1])), "angle_deg": float(r[2]), "z_min": float(verts[:, 2].min()), "z_max": float(verts[:, 2].max())}
+
+
+def render3(verts, faces, size=380, n=120000):
+    """Three orthographic views (top, front, side) as one image: z-buffered, Lambert-shaded surface samples."""
+    tri = verts[faces]
+    nrm = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    area = np.linalg.norm(nrm, axis=1)
+    rng = np.random.default_rng(0)
+    i = rng.choice(len(faces), n, p=area / area.sum())
+    r1, r2 = np.sqrt(rng.random(n)), rng.random(n)
+    P = (1 - r1)[:, None] * tri[i, 0] + (r1 * (1 - r2))[:, None] * tri[i, 1] + (r1 * r2)[:, None] * tri[i, 2]
+    N = nrm[i] / np.maximum(area[i, None], 1e-12)
+    c = (verts.max(0) + verts.min(0)) / 2
+    scale = (size * 0.9) / (verts.max(0) - verts.min(0)).max()
+    panels = []
+    for ax_u, ax_v, ax_d, sign in ((0, 1, 2, 1), (0, 2, 1, -1), (1, 2, 0, 1)):      # top (look down z), front (look along y), side (look along x)
+        buf = np.full((size, size, 3), 255, np.uint8)
+        zb = np.full((size, size), -1e9)
+        u = ((P[:, ax_u] - c[ax_u]) * scale + size / 2).astype(int)
+        v = (size / 2 - (P[:, ax_v] - c[ax_v]) * scale).astype(int)
+        d = P[:, ax_d] * sign
+        shade = np.clip(0.35 + 0.65 * np.abs(N[:, ax_d]), 0, 1)
+        for j in np.argsort(d):
+            if 0 <= u[j] < size - 1 and 0 <= v[j] < size - 1:
+                buf[v[j]:v[j] + 2, u[j]:u[j] + 2] = (np.array([60, 110, 200]) * shade[j] + 40).astype(np.uint8)
+        panels.append(buf)
+    return np.hstack(panels)
