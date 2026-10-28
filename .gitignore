@@ -228,3 +228,6 @@ dist/
 .DS_Store
 backend/storage/
 backend/spikes/out/
+
+# Private test photos - never commit (golden/test sets)
+assets/
