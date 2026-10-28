@@ -159,3 +159,56 @@ def section_equivalent_diameter(verts, faces, centre, axis, at):
         if len(pts) == 2:
             segs.append(pts)
     return np.array(segs)
+
+
+def section_regions(tris, z, px_mm=0.08):
+    """Enclosed regions of the horizontal section of a closed mesh at height z: returns (holes, islands) as lists of dicts
+    (centre, min-area-rectangle long/short, area). A region enclosed by section lines is material if a ray to +x crosses the lines an odd number of times, a hole if even."""
+    import cv2
+    cross = tris[(tris[:, :, 2].min(1) < z) & (tris[:, :, 2].max(1) > z)]
+    segs = []
+    for t in cross:
+        d = t[:, 2] - z
+        pts = [t[i] + (t[(i + 1) % 3] - t[i]) * (d[i] / (d[i] - d[(i + 1) % 3])) for i in range(3) if (d[i] < 0) != (d[(i + 1) % 3] < 0)]
+        if len(pts) == 2:
+            segs.append([pts[0][:2], pts[1][:2]])
+    if not segs:
+        return [], []
+    S = np.array(segs)
+    lo = S.reshape(-1, 2).min(0) - 2
+    size = np.ceil((S.reshape(-1, 2).max(0) + 2 - lo) / px_mm).astype(int)
+    img = np.zeros((size[1], size[0]), np.uint8)
+    for a, b in np.round((S - lo) / px_mm * 16).astype(np.int32):
+        cv2.line(img, tuple(a), tuple(b), 255, 1, cv2.LINE_8, 4)
+    n, cc, st, cen = cv2.connectedComponentsWithStats((img == 0).astype(np.uint8), connectivity=4)
+    holes, islands = [], []
+    for i in range(1, n):
+        x, y, w, h, area = st[i]
+        if x == 0 or y == 0 or x + w >= size[0] or y + h >= size[1] or area < 20:
+            continue
+        m = (cc == i).astype(np.uint8)
+        dt = cv2.distanceTransform(m, cv2.DIST_L2, 3)
+        py, px = np.unravel_index(np.argmax(dt), dt.shape)
+        pt = lo + np.array([px, py]) * px_mm
+        # crossings of the +x ray from pt with the section segments
+        a, b = S[:, 0], S[:, 1]
+        cond = (a[:, 1] > pt[1]) != (b[:, 1] > pt[1])
+        xi = a[:, 0] + (pt[1] - a[:, 1]) * (b[:, 0] - a[:, 0]) / np.where(b[:, 1] != a[:, 1], b[:, 1] - a[:, 1], 1)
+        odd = int((cond & (xi > pt[0])).sum()) % 2 == 1
+        cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        (_, _), (rw, rh), _ = cv2.minAreaRect(max(cs, key=cv2.contourArea))
+        rec = {"cx": float(lo[0] + cen[i][0] * px_mm), "cy": float(lo[1] + cen[i][1] * px_mm), "long": float(max(rw, rh) * px_mm), "short": float(min(rw, rh) * px_mm), "area": float(area * px_mm ** 2)}
+        (islands if odd else holes).append(rec)
+    return holes, islands
+
+
+def parallel_pair_distances(P, plane_list, min_dot=0.99):
+    """Distance between two nearly parallel fitted planes, measured from the second plane's inlier centroid to the first plane."""
+    out = []
+    for i in range(len(plane_list)):
+        for j in range(i + 1, len(plane_list)):
+            n1, d1, m1 = plane_list[i]
+            n2, d2, m2 = plane_list[j]
+            if abs(n1 @ n2) > min_dot:
+                out.append((i, j, float(abs(P[m2].mean(0) @ n1 + d1)), float(np.degrees(np.arccos(min(1, abs(n1 @ n2)))))))
+    return out

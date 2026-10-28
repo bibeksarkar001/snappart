@@ -591,6 +591,79 @@ def stage5(vs_sweep=0.4):
     print("\n".join(L))
 
 
+def stage6():
+    import shutil
+
+    import cv2
+    import numpy as np
+    from cad.section import _loops, read_stl
+    from capture import carve, snap
+    params = json.loads((CARVE / "cache" / "final_params.json").read_text())
+    shutil.copy(SEND / "joint_final.stl", SEND / "A_final.stl")
+    tris = read_stl(SEND / "A_final.stl")
+    v, inv = np.unique(np.round(tris.reshape(-1, 3), 4), axis=0, return_inverse=True)
+    fc = inv.reshape(-1, 3)
+    P, N = snap.oriented_points(v, fc, 200000)
+    L = [f"STAGE 6: snapping on the joint mesh (k={params['k']}, grow {params['grow']} mm, voxel {params['vs']} mm; {len(fc)} triangles). A_final.stl = the unsnapped joint carve.",
+         "RANSAC: Open3D 0.20 is installed in the env but does not load without DYLD_FALLBACK_LIBRARY_PATH pointing at the env's libusb, and it has a plane model only (no cylinder).",
+         "So NEITHER planes NOR cylinders here use Open3D: both are my own RANSAC (planes from 3 points with normal agreement, cylinders from pairs of oriented points). 200000 surface samples, tolerance 0.12 mm."]
+    pls = snap.planes(P, N, tol=0.12, max_planes=8, min_frac=0.02)
+    res = {"planes": [], "cylinders": []}
+    L.append("planes (normal . x + d = 0; share of the surface samples):")
+    for n, d, m in pls:
+        r = np.abs(P[m] @ n + d)
+        res["planes"].append({"n": n.tolist(), "d": float(d), "share": float(m.mean()), "rms_mm": float(np.sqrt((r ** 2).mean())), "tilt_from_z_deg": float(np.degrees(np.arccos(abs(n[2]))))})
+        L.append(f"  n=({n[0]:+.3f},{n[1]:+.3f},{n[2]:+.3f}) d={d:+.2f}  share {100 * m.mean():.1f} %, rms {np.sqrt((r ** 2).mean()):.3f} mm, tilt from z {np.degrees(np.arccos(abs(n[2]))):.1f} deg")
+    for i, j, dist, ang in snap.parallel_pair_distances(P, pls):
+        L.append(f"  planes #{i} and #{j} are parallel within {ang:.1f} deg: {dist:.2f} mm apart")
+        res.setdefault("plane_pairs", []).append({"i": i, "j": j, "distance_mm": dist, "angle_deg": ang})
+    avail = np.ones(len(P), bool)
+    for _, _, m in pls:
+        avail &= ~m
+    cyl = snap.cylinders(P, N, avail=avail)
+    L.append("cylinders:")
+    for c in cyl:
+        ax = c["axis"] * (1 if c["axis"][np.argmax(np.abs(c["axis"]))] > 0 else -1)
+        res["cylinders"].append({"diameter_mm": 2 * c["r"], "axis": ax.tolist(), "length_mm": c["length"], "rms_mm": c["rms"], "inliers": int(c["inliers"].sum()), "centre": c["centre"].tolist()})
+        L.append(f"  diameter {2 * c['r']:.3f} mm, axis ({ax[0]:+.3f},{ax[1]:+.3f},{ax[2]:+.3f}), length {c['length']:.2f} mm, rms {c['rms']:.3f} mm, {int(c['inliers'].sum())} samples at {tuple(np.round(c['centre'], 1))}")
+    # cross-bar: the cylinder with the longest extent, axis nearly horizontal
+    bars = [c for c in cyl if abs(c["axis"][2]) < 0.3 and c["length"] > 15 and 2 * c["r"] < 8]       # a slender rod: the cross-bar (larger cylinders are rounded edges)
+    if bars:
+        bar = min(bars, key=lambda c: c["rms"])
+        mid = np.mean(bar["span"])
+        segs = snap.section_equivalent_diameter(v, fc, bar["centre"], bar["axis"], mid)
+        q = segs.reshape(-1, 2)
+        q = q[np.linalg.norm(q, axis=1) < bar["r"] + 1.2]
+        ext = [float(q[:, 0].max() - q[:, 0].min()), float(q[:, 1].max() - q[:, 1].min())] if len(q) > 10 else None
+        res["cross_bar"] = {"fit_diameter_mm": 2 * bar["r"], "length_mm": bar["length"], "section_extents_mm": ext}
+        L.append(f"CROSS-BAR: RANSAC cylinder diameter {2 * bar['r']:.3f} mm over a length of {bar['length']:.2f} mm (rms {bar['rms']:.3f}); section of the mesh at mid-length (points within r+1.2 mm of the axis): extents "
+                 + (f"{ext[0]:.2f} x {ext[1]:.2f} mm" if ext else "n/a") + ". No caliper value exists for the bar, so neither number is verified.")
+    else:
+        L.append("CROSS-BAR: no long near-horizontal cylinder found.")
+    # through-slots / windows: inner loops of horizontal sections
+    L.append("windows and slots (inner loops of horizontal sections of the unsnapped mesh; min-area rectangle long x short, mm; centre x,y in the part frame):")
+    res["sections"] = {}
+    for z in (0.6, 1.5, 2.5, 3.8, 5.0, 6.0, 9.0):
+        holes, islands = snap.section_regions(tris, z)
+        res["sections"][str(z)] = {"holes": holes, "islands": islands}
+        L.append(f"  z={z}: {len(holes)} hole(s): " + "; ".join(f"{h['long']:.2f} x {h['short']:.2f} at ({h['cx']:.1f},{h['cy']:.1f}), area {h['area']:.1f}" for h in holes) + (f"   [material islands inside: {len(islands)}]" if islands else ""))
+    L.append("  (the four small slots along the plate edge are not in the hull: the carve cannot see into them from outside)")
+    # snapped mesh
+    v2, st = snap.snap_vertices(v, [(n, d, m) for n, d, m in pls], cyl, tol=0.25)
+    before, after = carve.edge_census(v, fc), carve.edge_census(v2, fc)
+    carve.write_stl(SEND / "snapped_A.stl", v2, fc)
+    mv = np.linalg.norm(v2 - v, axis=1)
+    L += ["", f"snapped_A.stl: every vertex within 0.25 mm of a fitted plane or cylinder was moved onto it; {int((mv > 1e-6).sum())} of {len(v)} vertices moved, mean move {mv[mv > 1e-6].mean():.3f} mm, max {mv.max():.3f} mm",
+          f"  per primitive: " + "; ".join(f"{s['kind']} {s['moved']} verts, mean {s['mean_mm']:.3f}, max {s['max_mm']:.3f}" for s in st),
+          f"  A_final.stl: volume {before['volume_mm3']:.0f} mm3, watertight {before['watertight']}.  snapped_A.stl: volume {after['volume_mm3']:.0f} mm3, watertight {after['watertight']} (topology unchanged), boundary {after['boundary_edges']}, degenerate triangles {after['degenerate_triangles']}",
+          "  the unsnapped carve is kept as A_final.stl; snapped_A.stl is a derived file, no measured value above was replaced by a snapped one."]
+    res["snapped"] = {"moved": int((mv > 1e-6).sum()), "mean_move": float(mv[mv > 1e-6].mean()), "max_move": float(mv.max()), "before": before, "after": after}
+    cv2.imwrite(str(SEND / "A_final_3view.png"), carve.render3(v, fc))
+    cv2.imwrite(str(SEND / "snapped_A_3view.png"), carve.render3(v2, fc))
+    save_stage(6, "\n".join(L), res)
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", type=int, required=True)
@@ -599,4 +672,4 @@ if __name__ == "__main__":
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args()
     MAX_RMS = a.max_rms
-    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3, 4: stage4, 5: stage5}[a.stage]()
+    {0: stage0, 1: stage1, 2: lambda: stage2(a.limit, a.refresh), 3: stage3, 4: stage4, 5: lambda: stage5(), 6: stage6}[a.stage]()
