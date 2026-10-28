@@ -9,8 +9,9 @@ import cv2
 from . import carve, snap
 
 
-def end_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, seed=0):
-    """Near-vertical RANSAC planes at both ends of the footprint's long axis: the largest one per end, normal pointing outward."""
+def candidate_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, end_mm=20.0, seed=0):
+    """Faces where openings may sit, at both ends of the footprint's long axis: per end, the largest near-vertical RANSAC plane (normal along
+    the axis, outward) and every near-horizontal RANSAC plane, cropped to the last end_mm of the part. e1 runs along the end edge in every case."""
     P, N = snap.oriented_points(verts, faces, 200000, seed=seed)
     pls = snap.planes(P, N, tol=0.12, max_planes=14, min_frac=0.005)
     box = cv2.boxPoints(cv2.minAreaRect(verts[:, :2].astype(np.float32)))
@@ -20,26 +21,27 @@ def end_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, seed=0):
     proj = verts @ ax
     out = []
     for sign, ext in ((1, proj.max()), (-1, proj.min())):
-        best = None
-        for n, d, m in pls:
-            n = n * (1 if n @ ax * sign > 0 else -1)
-            d = -n @ P[m].mean(0)
-            if np.degrees(np.arccos(min(abs(n @ ax), 1))) > max_tilt_deg or abs(P[m].mean(0) @ ax - ext) > near_mm:
-                continue
-            if best is None or m.sum() > best[2].sum():
-                best = (n, d, m)
-        if best is None:
-            continue
-        n, d, m = best
-        e1 = np.cross([0, 0, 1.0], n)
-        e1 /= np.linalg.norm(e1)
-        e2 = np.cross(n, e1)
-        q = P[m]
-        span = q @ e1
-        O = q.mean(0) - (q.mean(0) @ e1 - span.min() + 2) * e1
-        O = O - (O[2] - verts[:, 2].min() + 2) * e2 / e2[2]     # t = 0 two mm below the part's lowest point
-        out.append({"n": n, "d": float(d), "O": O, "e1": e1, "e2": e2, "len_s": float(span.max() - span.min() + 4), "len_t": float(verts[:, 2].max() - verts[:, 2].min() + 4),
-                    "inliers": int(m.sum()), "x_extreme": float(ext), "plane_rms": float(np.sqrt(((q @ n + d) ** 2).mean()))})
+        out_ax = sign * ax
+        vert = [(n * np.sign(n @ out_ax), m) for n, d, m in pls
+                if np.degrees(np.arccos(min(abs(n @ ax), 1))) <= max_tilt_deg and abs(P[m].mean(0) @ ax - ext) <= near_mm]
+        horiz = [(n, m & (np.abs(P @ ax - ext) <= end_mm)) for n, d, m in pls if np.degrees(np.arccos(min(abs(n[2]), 1))) <= max_tilt_deg]
+        cands = ([max(vert, key=lambda q: q[1].sum())] if vert else []) + [h for h in horiz if h[1].sum() > 200]
+        for n, m in cands:
+            q = P[m]
+            if np.degrees(np.arccos(min(abs(n[2]), 1))) <= max_tilt_deg:     # horizontal: outward = away from the part's mid-height
+                n = n * (1 if (q.mean(0)[2] - verts[:, 2].mean()) * n[2] > 0 else -1)
+                e1 = np.cross(n, out_ax)
+            else:
+                e1 = np.cross([0, 0, 1.0], n)
+            e1 /= np.linalg.norm(e1)
+            e2 = np.cross(n, e1)
+            d = -float(n @ q.mean(0))
+            vt = verts @ e2 if abs(n[2]) < 0.5 else q @ e2
+            s0, t0 = (q @ e1).min() - 2, vt.min() - 2
+            O = q.mean(0) + (s0 - q.mean(0) @ e1) * e1 + (t0 - q.mean(0) @ e2) * e2
+            out.append({"n": n, "d": d, "O": O, "e1": e1, "e2": e2, "len_s": float((q @ e1).max() + 2 - s0), "len_t": float(vt.max() + 2 - t0),
+                        "inliers": int(m.sum()), "kind": "horizontal" if abs(n[2]) > 0.5 else "vertical", "end": sign,
+                        "plane_rms": float(np.sqrt(((q @ n + d) ** 2).mean()))})
     return out
 
 
@@ -107,16 +109,14 @@ def triangulate(rays):
     return p, [float(np.linalg.norm((np.eye(3) - np.outer(d, d)) @ (p - C))) for C, d in rays]
 
 
-def ray_plane(C, d, n, off):
-    """Point where ray C + l d meets the plane n.x + off = 0."""
-    return C + (-(off + n @ C) / (n @ d)) * d
-
-
 def detect_on_face(views, images, face, min_cos=0.3, ppm=20, cluster_mm=2.0, max_ray_mm=0.6, min_views=3):
     """Openings on one face. views: [(video, view in the part frame)], images: matching gray crops.
 
     Per video: detect on the rectified image (delta 0), cluster detections by s, triangulate each cluster from the rays through the detected
-    centres (dropping rays > max_ray_mm from the point, then re-fitting); a cluster needs min_views views. Returns {video: [{"p": 3D, "rays": n, "res": [...], "views": [...], "cos": mean}]}."""
+    centre (rays > max_ray_mm from the point dropped, then re-fitted) and through its 4 corners (axis-aligned rectangle in the face frame, corner
+    k in the same face-frame quadrant in every view). The corners give the opening's own plane and size without assuming the face plane.
+    Returns {video: [{"p", "corners" (4,3), "normal", "L", "S", "views", "res", "cos", "baseline_deg"}]}; a cluster needs min_views views."""
+    quad = ((-1, -1), (1, -1), (1, 1), (-1, 1))
     per = {}
     for (vid, v), img in zip(views, images):
         c = facing(v, face)
@@ -125,8 +125,9 @@ def detect_on_face(views, images, face, min_cos=0.3, ppm=20, cluster_mm=2.0, max
         g = rectify(v, img, face, 0.0, ppm)
         C = -v.R.T @ v.t
         for s, t, L, S in openings(g, ppm):
-            P = face["O"] + s * face["e1"] + t * face["e2"]
-            per.setdefault(vid, []).append({"s": s, "t": t, "L": L, "S": S, "view": v, "C": C, "d": (P - C) / np.linalg.norm(P - C), "cos": c})
+            pts = [face["O"] + (s + a * L / 2) * face["e1"] + (t + b * S / 2) * face["e2"] for a, b in ((0, 0), *quad)]
+            dirs = [(P - C) / np.linalg.norm(P - C) for P in pts]
+            per.setdefault(vid, []).append({"s": s, "view": v, "C": C, "d": dirs[0], "dc": dirs[1:], "cos": c})
     out = {}
     for vid, dets in per.items():
         dets.sort(key=lambda q: q["s"])
@@ -140,22 +141,26 @@ def detect_on_face(views, images, face, min_cos=0.3, ppm=20, cluster_mm=2.0, max
         for gr in groups:
             if len({x["view"].name for x in gr}) < min_views:
                 continue
-            rays = [(x["C"], x["d"]) for x in gr]
-            p, r = triangulate(rays)
+            p, r = triangulate([(x["C"], x["d"]) for x in gr])
             keep = [x for x, ri in zip(gr, r) if ri <= max_ray_mm]
             if len({x["view"].name for x in keep}) >= min_views and len(keep) < len(gr):
-                p, r = triangulate([(x["C"], x["d"]) for x in keep])
                 gr = keep
-            res.append({"p": p, "res": r, "views": sorted({x["view"].name for x in gr}), "dets": gr, "cos": float(np.mean([x["cos"] for x in gr])),
+                p, r = triangulate([(x["C"], x["d"]) for x in gr])
+            cor = np.array([triangulate([(x["C"], x["dc"][k]) for x in gr])[0] for k in range(4)])
+            nrm = np.cross(cor[1] - cor[0], cor[3] - cor[0])
+            nrm /= np.linalg.norm(nrm)
+            res.append({"p": p, "res": r, "corners": cor, "normal": nrm * np.sign(nrm @ face["n"]),
+                        "L": float((np.linalg.norm(cor[1] - cor[0]) + np.linalg.norm(cor[2] - cor[3])) / 2),
+                        "S": float((np.linalg.norm(cor[3] - cor[0]) + np.linalg.norm(cor[2] - cor[1])) / 2),
+                        "views": sorted({x["view"].name for x in gr}), "cos": float(np.mean([x["cos"] for x in gr])),
                         "baseline_deg": float(np.degrees(max(np.arccos(np.clip(a["d"] @ b["d"], -1, 1)) for a in gr for b in gr)))})
         out[vid] = res
     return out
 
 
 def fuse(per_video, face, match_mm=1.5):
-    """One record per opening seen in several videos. Lateral position (e1): mean over videos. Depth along the normal: from the video with the
-    widest ray baseline. Height (e2): rays of the most frontal video met with the plane at that depth. Sizes from the views of that video,
-    rectified at that depth (done by the caller). Returns a list sorted by e1 with every video's own numbers kept."""
+    """One record per opening, matched across videos by position along the face (e1). The primary video (most views) gives the centre, corners
+    and size; every video's own numbers are kept in by_video. Sorted along e1."""
     recs = []
     for vid, ops in per_video.items():
         for o in ops:
@@ -168,13 +173,10 @@ def fuse(per_video, face, match_mm=1.5):
             hit["e1"] = float(np.mean([x["p"] @ face["e1"] for x in hit["by_video"].values()]))
     for r in recs:
         bv = r["by_video"]
-        wide = max(bv, key=lambda k: bv[k]["baseline_deg"])
-        front = max(bv, key=lambda k: bv[k]["cos"])
-        depth = float(bv[wide]["p"] @ face["n"] + face["d"])           # signed distance of the opening plane from the RANSAC face (outward +)
-        off = face["d"] - depth
-        hits = [ray_plane(x["C"], x["d"], face["n"], off) for x in bv[front]["dets"]]
-        r.update({"depth_from_face_mm": depth, "depth_video": wide, "height_video": front, "centre": np.mean(hits, 0),
-                  "e2_by_video": {k: float(np.mean([ray_plane(x["C"], x["d"], face["n"], off) @ face["e2"] for x in o["dets"]])) for k, o in bv.items()}})
+        prim = max(bv, key=lambda k: len(bv[k]["views"]))
+        o = bv[prim]
+        r.update({"primary": prim, "centre": o["corners"].mean(0), "corners": o["corners"], "L": o["L"], "S": o["S"], "normal": o["normal"],
+                  "dist_from_face_mm": float(o["corners"].mean(0) @ face["n"] + face["d"]), "n_views": sum(len(x["views"]) for x in bv.values())})
     return sorted(recs, key=lambda r: r["e1"])
 
 

@@ -146,19 +146,23 @@ def joint_field(vv, vs=None):
     return carve.carve_adaptive([v for _, v in vv], H.LO, H.HI, vs or PARAMS["vs"], PARAMS["k"], floors=floors, grow_mm=PARAMS["grow"])
 
 
-def groove_boxes(ops, face, depth_mm):
-    """Pocket boxes: opening rectangle (measured) on the face plane at the measured depth, going depth_mm into the part and 3 mm outward."""
+def groove_boxes(ops, face, depth_mm, out_mm=3.0):
+    """Pocket boxes: the triangulated opening rectangle (centre, long axis from its corners), axis = the face normal, depth_mm into the part
+    from the opening plane and out_mm outward so the pocket breaks through whatever hull material lies outside the opening plane."""
     import numpy as np
-    axes = np.stack([face["e1"], face["e2"], face["n"]])
     out = []
     for o in ops:
-        c = o["centre"] + face["n"] * (3.0 - depth_mm) / 2
-        out.append((c, axes, np.array([o["L"] / 2, o["S"] / 2, (depth_mm + 3.0) / 2])))
+        c = o["corners"]
+        lng = (c[1] - c[0]) + (c[2] - c[3])
+        lng -= face["n"] * (lng @ face["n"])
+        lng /= np.linalg.norm(lng)
+        axes = np.stack([lng, np.cross(face["n"], lng), face["n"]])
+        out.append((o["centre"] + face["n"] * (out_mm - depth_mm) / 2, axes, np.array([o["L"] / 2, o["S"] / 2, (depth_mm + out_mm) / 2])))
     return out
 
 
-def overlay(img, fv, v, fc, ops, face, title):
-    """Frame | model rendered in the frame's camera pose (shaded, orange) with the opening rectangles (cyan), cropped to the part."""
+def overlay(img, fv, v, fc, ops, title):
+    """Frame | model rendered in the frame's camera pose (shaded, orange) with the triangulated opening rectangles (cyan), cropped to the part."""
     import cv2
     import numpy as np
     from capture import carve, features as F
@@ -167,82 +171,81 @@ def overlay(img, fv, v, fc, ops, face, title):
     sel = mk > 0
     o_img[sel] = (0.45 * img[sel] + 0.55 * sh[sel]).astype(np.uint8)
     for o in ops:
-        corners = np.array([o["centre"] + a * o["L"] / 2 * face["e1"] + b * o["S"] / 2 * face["e2"] for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
-        u, vq, _ = carve.project(fv, corners)
+        u, vq, _ = carve.project(fv, o["corners"])
         cv2.polylines(o_img, [np.round(np.stack([u, vq], 1) * 16).astype(np.int32)], True, (255, 255, 0), 2, cv2.LINE_AA, 4)
     ys, xs = np.nonzero(mk)
     y0, y1, x0, x1 = max(ys.min() - 150, 0), ys.max() + 150, max(xs.min() - 150, 0), xs.max() + 150
     both = np.hstack([img[y0:y1, x0:x1], o_img[y0:y1, x0:x1]])
-    cv2.putText(both, f"{title}: frame | model rendered in this camera pose (orange), opening rectangles cyan", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
+    cv2.putText(both, f"{title}: frame | model in this camera pose (orange), openings cyan", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
     return both
+
+
+def find_grooves(v, fc, vv, imgs, log=lambda m: None, max_angle_deg=15.0):
+    """Openings on the candidate face whose triangulated corner planes agree with it (within max_angle_deg) and that has the most view detections.
+    Returns (face, fused openings, per-video detections, per-face table)."""
+    import numpy as np
+    from capture import features as F
+    table, found = [], None
+    for fi, face in enumerate(F.candidate_faces(v, fc)):
+        per = F.detect_on_face(vv, imgs, face)
+        ops = F.fuse(per, face)
+        nview = sum(o["n_views"] for o in ops)
+        ang = float(np.degrees(np.arccos(np.clip(np.mean([o["normal"] for o in ops], 0) @ face["n"] / np.linalg.norm(np.mean([o["normal"] for o in ops], 0)), -1, 1)))) if ops else None
+        row = {"face": fi, "kind": face["kind"], "n": face["n"].tolist(), "centre_x": float(face["O"][0] + face["len_s"] / 2 * face["e1"][0] + face["len_t"] / 2 * face["e2"][0]),
+               "inliers": face["inliers"], "rms": face["plane_rms"], "openings_per_video": {k: len(o) for k, o in per.items()}, "fused": len(ops), "view_detections": nview, "corner_plane_angle_deg": ang}
+        table.append(row)
+        log(f"face #{fi} ({face['kind']}, near x={row['centre_x']:.0f}): n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}), {face['inliers']} samples, rms {face['plane_rms']:.3f} mm, "
+            f"{sum(F.facing(x, face) >= 0.3 for _, x in vv)} views facing it; openings (>= 3 views in one video): " + (", ".join(f"{k[-2:]}: {len(o)}" for k, o in per.items()) or "none")
+            + (f"; fused {len(ops)}, {nview} view detections, triangulated corner planes {ang:.1f} deg from this plane" if ops else ""))
+        if ops and ang < max_angle_deg and (found is None or nview > found[3]):
+            found = (face, ops, per, nview)
+    return (found[:3] if found else (None, [], {})) + (table,)
 
 
 def stage1():
     import cv2
     import numpy as np
-    from capture import carve, features as F, holdout as H
+    from capture import carve, features as F
     t0, d0 = time.time(), date()
     v, fc = load_mesh(V1 / "A_final.stl")
     vv, imgs = all_views()
-    L = [f"STAGE 1: end-face grooves. start {d0}. Baseline mesh A_final.stl; {len(vv)} views (crops, marker poses, v1 registration)."]
-    res = {"faces": []}
-    faces = F.end_faces(v, fc)
-    found = None
-    for fi, face in enumerate(faces):
-        per = F.detect_on_face(vv, imgs, face)
-        ops = F.fuse(per, face)
-        L.append(f"face #{fi}: RANSAC plane n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}), {face['inliers']} samples, rms {face['plane_rms']:.3f} mm, "
-                 f"{sum(F.facing(x, face) >= 0.3 for _, x in vv)} views facing it (cos >= 0.3); openings seen in >= 2 views of one video: "
-                 + (", ".join(f"{k}: {len(o)}" for k, o in per.items()) or "none"))
-        res["faces"].append({"n": face["n"].tolist(), "inliers": face["inliers"], "rms": face["plane_rms"], "openings_per_video": {k: len(o) for k, o in per.items()}})
-        if ops and (found is None or len(ops) > len(found[1])):
-            found = (face, ops, per)
-    if found is None:
-        L.append("NO OPENINGS FOUND on either end face.")
+    L = [f"STAGE 1: grooves. start {d0}. Baseline mesh A_final.stl; {len(vv)} views (crops, marker poses, v1 registration).",
+         "Candidate faces: RANSAC planes at both ends of the long axis (the vertical end plane and the horizontal planes within 20 mm of each end). On each: rectify every "
+         "view facing it (cos >= 0.3), detect dark rectangles, triangulate each opening's centre and 4 corners per video (>= 3 views). Kept: the face whose openings' "
+         "triangulated corner planes agree with it (< 15 deg) and that has the most view detections.",
+         "Attempt history: attempt 1 assumed the vertical end face and rectified onto it only; the corners triangulated there give a plane 67 deg off it (table below), i.e. the "
+         "openings are NOT in the vertical face. Attempt 2 picked by distance to the plane and chose a spurious 1-opening face. This is attempt 3 (corner planes)."]
+    res = {}
+    face, ops, per, table = find_grooves(v, fc, vv, imgs, L.append)
+    res["faces"] = table
+    if face is None:
+        L.append("NO OPENINGS FOUND.")
         save_stage("1_grooves", "\n".join(L), res)
         return
-    face, ops, per = found
-    depth = float(np.median([o["depth_from_face_mm"] for o in ops]))
-    L.append(f"openings on face n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}): {len(ops)}")
-    L.append("per video, triangulated centres (rays through the detected centre in every view of that video; ray residuals mm):")
+    L.append(f"CHOSEN: {face['kind']} face n=({face['n'][0]:+.3f},{face['n'][1]:+.3f},{face['n'][2]:+.3f}) (the face that rests on the mat in video 1 and faces up in video 3): {len(ops)} openings")
+    L.append("per video (triangulated; centre, ray residual max, corner-plane normal, size from the corners):")
     for vid, lst in per.items():
         for o in lst:
-            L.append(f"  {vid}: ({o['p'][0]:.2f}, {o['p'][1]:.2f}, {o['p'][2]:.2f}) from {len(o['views'])} views, ray baseline {o['baseline_deg']:.1f} deg, residual max {max(o['res']):.2f}")
-    L.append(f"depth of the opening plane below the RANSAC face (from the widest-baseline video): median {-depth:.2f} mm inside the hull face "
-             f"(per opening: " + ", ".join(f"{-o['depth_from_face_mm']:.2f}" for o in ops) + ")")
-    # sizes: views of the height video, rectified at the opening plane
-    for o in ops:
-        sz = {}
-        for vid, rec in o["by_video"].items():
-            Ls, Ss = [], []
-            for name in rec["views"]:
-                i = next(j for j, (_, x) in enumerate(vv) if x.name == name)
-                g = F.rectify(vv[i][1], imgs[i], face, depth, 20)
-                s_c = (o["centre"] - face["O"]) @ face["e1"]
-                ds = [q for q in F.openings(g, 20) if abs(q[0] - s_c) < 2.5]
-                if ds:
-                    q = min(ds, key=lambda q: abs(q[0] - s_c))
-                    Ls.append(q[2])
-                    Ss.append(q[3])
-            sz[vid] = (float(np.median(Ls)), float(np.median(Ss)), len(Ls)) if Ls else None
-        o["sizes"] = sz
-        o["L"], o["S"] = sz[o["height_video"]][:2]
-        o["n_views"] = sum(len(r["views"]) for r in o["by_video"].values())
-    L.append("OPENINGS (along the face, left to right in the face frame). Size = median over the views of the most frontal video, rectified at the opening plane:")
+            L.append(f"  {vid}: centre ({o['p'][0]:.2f}, {o['p'][1]:.2f}, {o['p'][2]:.2f}) from {len(o['views'])} views, baseline {o['baseline_deg']:.0f} deg, residual max {max(o['res']):.2f} mm, "
+                     f"normal ({o['normal'][0]:+.2f},{o['normal'][1]:+.2f},{o['normal'][2]:+.2f}), size {o['L']:.2f} x {o['S']:.2f}")
+    L.append("OPENINGS (size and centre from the video with the most views; caliper 7.4 x 2.6):")
     res["openings"] = []
     for k, o in enumerate(ops):
         c = o["centre"]
-        L.append(f"  #{k + 1}: centre ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) mm; {o['n_views']} agreeing views in {len(o['by_video'])} video(s); "
-                 f"size {o['L']:.2f} x {o['S']:.2f} mm (caliper 7.4 x 2.6: error {o['L'] - 7.4:+.2f}, {o['S'] - 2.6:+.2f}); "
-                 + "; ".join(f"{vid[-2:]}: {s[0]:.2f} x {s[1]:.2f} ({s[2]} views)" for vid, s in o["sizes"].items() if s)
-                 + "; height on face by video " + ", ".join(f"{vid[-2:]} {x - (face['O'] @ face['e2']) - 2:.2f}" for vid, x in o["e2_by_video"].items()) + " mm above the part's lowest point")
-        res["openings"].append({"centre": c.tolist(), "long_mm": o["L"], "short_mm": o["S"], "views": o["n_views"], "videos": list(o["by_video"]),
-                                "sizes_by_video": o["sizes"], "e2_by_video": o["e2_by_video"], "depth_from_face_mm": o["depth_from_face_mm"]})
-    pitch = np.diff([o["e1"] for o in ops])
-    L.append(f"pitch between neighbouring openings: " + ", ".join(f"{p:.2f}" for p in pitch) + " mm")
-    L.append("orientation: the openings are rectangles in the vertical end face, long side horizontal along the face, short side vertical; so 7.4 = length along the "
-             "face, 2.6 = height of the opening, and 3.7 (the third dimension, not visible as a face size) = depth into the part, as image 4 labels it.")
-    # cut
+        oth = {vid: (r["L"], r["S"], r["p"]) for vid, r in o["by_video"].items() if vid != o["primary"]}
+        L.append(f"  #{k + 1}: centre ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}); {o['n_views']} agreeing views in {len(o['by_video'])} video(s) (primary {o['primary'][-2:]}); "
+                 f"size {o['L']:.2f} x {o['S']:.2f} mm, error {o['L'] - 7.4:+.2f}, {o['S'] - 2.6:+.2f}; opening plane {o['dist_from_face_mm']:+.2f} mm from the hull face (+ outward)"
+                 + "".join(f"; {vid[-2:]}: {x[0]:.2f} x {x[1]:.2f}, centre offset ({x[2][0] - c[0]:+.2f}, {x[2][1] - c[1]:+.2f}, {x[2][2] - c[2]:+.2f})" for vid, x in oth.items()))
+        res["openings"].append({"centre": c.tolist(), "corners": o["corners"].tolist(), "long_mm": o["L"], "short_mm": o["S"], "views": o["n_views"], "primary": o["primary"],
+                                "videos": list(o["by_video"]), "dist_from_face_mm": o["dist_from_face_mm"],
+                                "by_video": {vid: {"L": r["L"], "S": r["S"], "centre": r["p"].tolist(), "views": len(r["views"])} for vid, r in o["by_video"].items()}})
+    Ls, Ss = [o["L"] for o in ops], [o["S"] for o in ops]
+    L.append(f"  mean size {np.mean(Ls):.2f} x {np.mean(Ss):.2f} mm (caliper 7.4 x 2.6: {np.mean(Ls) - 7.4:+.2f}, {np.mean(Ss) - 2.6:+.2f}); pitch "
+             + ", ".join(f"{p:.2f}" for p in np.diff([o["e1"] for o in ops])) + " mm")
+    L.append(f"orientation: the openings lie in the {face['kind']} face (normal {np.round(face['n'], 2).tolist()} in the part frame): long side along the end edge (7.4), "
+             "short side across it (2.6); 3.7 is along the normal, the depth into the part, as image 4 labels it ('Height/depth', drawn vertically in a video 3 frame where "
+             "this face is on top).")
+    res["mean_size"] = [float(np.mean(Ls)), float(np.mean(Ss))]
     fieldg, field, _ = joint_field(vv)
     boxes = groove_boxes(ops, face, GROOVE_DEPTH_USER)
     cut = F.cut_pockets(field, fieldg, boxes)
@@ -252,23 +255,21 @@ def stage1():
     v1 = carve.taubin(v1, f1, 5)
     c0, c1 = carve.edge_census(v0, f0), carve.edge_census(v1, f1)
     carve.write_stl(SEND / "B_grooves.stl", v1, f1)
+    np.save(V2 / "grooves.npy", np.array([np.r_[b[0], b[1].ravel(), b[2]] for b in boxes]))
     removed = (np.clip(field / fieldg.vs + 0.5, 0, 1) - np.clip(cut / fieldg.vs + 0.5, 0, 1)).sum() * fieldg.vs ** 3
-    box_vol = sum(o["L"] * o["S"] * GROOVE_DEPTH_USER for o in ops)
-    L += [f"POCKETS cut into the joint carve field (k={PARAMS['k']}, grow {PARAMS['grow']}, voxel {PARAMS['vs']} mm): {len(ops)} boxes, measured opening size and position, "
-          f"depth {GROOVE_DEPTH_USER} mm USER-SUPPLIED (owner's caliper; not measured from the videos), measured from the opening plane ({-depth:.2f} mm inside the hull face), "
-          f"open 3 mm outward so they break through the hull face.",
-          f"  removed {removed:.1f} mm3 (boxes inside the opening plane: {box_vol:.1f} mm3; the rest is the hull material between the hull face and the opening plane)",
+    L += [f"POCKETS cut into the joint carve field (k={PARAMS['k']}, grow {PARAMS['grow']}, voxel {PARAMS['vs']} mm), then marching cubes + Taubin 5: {len(ops)} boxes with the "
+          f"measured opening rectangles; depth {GROOVE_DEPTH_USER} mm USER-SUPPLIED (owner's caliper, not measured from the videos) from the measured opening plane, along the face normal; "
+          "open 3 mm outward so they break through the hull material outside the opening plane.",
+          f"  removed {removed:.1f} mm3 (opening area x {GROOVE_DEPTH_USER} mm = {sum(o['L'] * o['S'] for o in ops) * GROOVE_DEPTH_USER:.1f} mm3; the difference is hull material outside the opening plane and smoothing)",
           f"  B_grooves.stl: watertight {c1['watertight']} (boundary {c1['boundary_edges']}, non-manifold {c1['non_manifold_edges']}), volume {c1['volume_mm3']:.0f} mm3 (uncut {c0['volume_mm3']:.0f}), {c1['triangles']} triangles"]
-    res["pockets"] = {"depth_user_mm": GROOVE_DEPTH_USER, "opening_plane_inside_face_mm": -depth, "removed_mm3": float(removed), "census": c1, "census_uncut": c0}
-    # overlays: A_orbit_03 f2738 (one of the views the openings were measured in) and A_orbit_02 f1128 (video 2, whose heights disagree)
+    res["pockets"] = {"depth_user_mm": GROOVE_DEPTH_USER, "removed_mm3": float(removed), "census": c1, "census_uncut": c0}
+    names = {n for o in ops for r in o["by_video"].values() for n in r["views"]}
     for vid, idx in (("A_orbit_03", 2738), ("A_orbit_02", 1128)):
         img, fv = frame_view(vid, idx)
-        cv2.imwrite(str(SEND / f"grooves_overlay_{vid[-2:]}_f{idx}.png"), overlay(img, fv, v1, f1, ops, face, f"{vid} f{idx}"))
+        tag = "used to measure" if f"{vid}_{idx}" in names else "NOT used to measure"
+        cv2.imwrite(str(SEND / f"grooves_overlay_{vid[-2:]}_f{idx}.png"), overlay(img, fv, v1, f1, ops, f"{vid} f{idx} ({tag})"))
+        L.append(f"overlay grooves_overlay_{vid[-2:]}_f{idx}.png: frame {idx} of {vid} was {tag} the openings (left frame, right model with pockets in that camera pose, cyan = triangulated openings).")
     cv2.imwrite(str(SEND / "B_grooves_3view.png"), carve.render3(v1, f1))
-    # residual image check: mean darkness inside each projected opening in the frame vs its surroundings
-    L.append("overlays (left: frame; right: model rendered in that frame's camera pose, opening rectangles cyan): grooves_overlay_03_f2738.png "
-             "(f2738 is one of the 5 video 3 views the openings were measured in, so its agreement is partly by construction) and grooves_overlay_02_f1128.png "
-             "(video 2: lateral positions measured there too; its heights sit ~1.3 mm lower, so the rectangles there show the cross-video disagreement).")
     L.append(f"end {date()}; elapsed {time.time() - t0:.0f} s")
     save_stage("1_grooves", "\n".join(L), res)
     print("\n".join(L))
