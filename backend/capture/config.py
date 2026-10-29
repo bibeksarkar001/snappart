@@ -42,9 +42,12 @@ PLATE_THICKNESS_USER_MM = 2.6   # thin flat plate between the window and the gro
 BUMP_TOP_RADIUS_MM = 0.5
 TOP_SHAPE_RADIUS_MM = {"sharp": 0.1, "slightly rounded": 0.5, "quite rounded": 1.0}   # answers of the "top shape" card (estimates)
 
-# "Review your model" anomaly finder (v4 stage 3): placeholders until tuned on the owner's marks
+# "Review your model" anomaly finder (v4 stage 3), tuned on the owner's three marks on the v3 part B model (2304 threshold sets): recall 3/3,
+# 0 false alarms, 2 items. Tuned and tested on the same marks of one part: not a held-out result. The placeholders (rms 0.15, min views 3,
+# disagreement 1.0, area 4) gave recall 3/3 with 15 false alarms in 24 items. min views 0 = the few-views flag is off (every setting >= 1 added
+# false alarms on this part); disagreement 2.0 ties with "off" here (same 2 items) and is kept on.
 REVIEW_LUMP_RADIUS_MM = 2.5
-REVIEW_LUMP_RMS_MM = 0.15
-REVIEW_MIN_VIEWS = 3
-REVIEW_DISAGREE_MM = 1.0
-REVIEW_MIN_AREA_MM2 = 4.0
+REVIEW_LUMP_RMS_MM = 0.4        # top of the tuning grid: a less sensitive value was not tried
+REVIEW_MIN_VIEWS = 0
+REVIEW_DISAGREE_MM = 2.0
+REVIEW_MIN_AREA_MM2 = 16.0

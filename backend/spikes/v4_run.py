@@ -616,22 +616,23 @@ def color_crops(vv):
     return [cv2.imread(str(dataset.CACHE / "crops" / f"{v.name}.jpg")) for _, v in vv]
 
 
-def match(items, owner, v, tol=1.0, share=0.2):
-    """Which owner regions each item hits: >= share of the item's vertices within tol mm of the owner region's vertices, or >= share of the
-    owner region's vertices within tol mm of the item's."""
+def mark_distances(owner, v, tol=1.0):
+    """Per owner mark: a bool per mesh vertex, True within tol mm of the mark (computed once; matching is then array lookups)."""
     import numpy as np
     from scipy.spatial import cKDTree
+    for o in owner.values():
+        o["near"] = cKDTree(v[o["verts"]]).query(v, distance_upper_bound=tol)[0] < tol
+    return owner
+
+
+def match(items, owner, v, share=0.2):
+    """Which owner marks each item hits: >= share of the item's vertices within 1 mm of the mark, or >= share of the mark's vertices are the
+    item's own vertices."""
+    import numpy as np
     hits = {}
     for it in items:
-        pi = v[np.unique(it["fc_tri"])]
-        ti = cKDTree(pi)
-        hits[it["id"]] = []
-        for k, o in owner.items():
-            po = v[o["verts"]]
-            a = (cKDTree(po).query(pi, distance_upper_bound=tol)[0] < tol).mean()
-            b = (ti.query(po, distance_upper_bound=tol)[0] < tol).mean()
-            if a >= share or b >= share:
-                hits[it["id"]].append(k)
+        iv = np.unique(it["fc_tri"])
+        hits[it["id"]] = [k for k, o in owner.items() if o["near"][iv].mean() >= share or np.isin(o["verts"], iv).mean() >= share]
     return hits
 
 
@@ -656,6 +657,8 @@ def stage3():
     tick("load")
     regs = owner_regions(v, fc)
     owner = {k: {"verts": np.unique(fc[regs[k]["tri"]])} for k in ("review_1", "review_4", "review_5")}
+    np.savez(V4 / "owner_marks.npz", **{k: v[o["verts"]] for k, o in owner.items()})       # for the golden test
+    mark_distances(owner, v)
     tick("owner regions")
     v2res = json.loads((V2R.SEND / "results.json").read_text())
     bump_by_video = {vid: r["agree"] for vid, r in v2res["2_bump"]["per_video"].items()}
@@ -664,10 +667,18 @@ def stage3():
         gfe = m3["features"]["grooves"][i]
         ax = np.asarray(gfe["axes"])
         boxes.append((f"slot_{i + 1}", (np.asarray(gfe["centre"]), ax, np.array([gfe["long_mm"] / 2, gfe["short_mm"] / 2, 1.0])),
-                      {vid: len(r["views"]) if isinstance(r, dict) and "views" in r else int(r) for vid, r in o["by_video"].items()}))
+                      {vid: (r["views"] if isinstance(r["views"], int) else len(r["views"])) if isinstance(r, dict) else int(r) for vid, r in o["by_video"].items()}))
     meas = {}
     for rad in (1.5, 2.5, 4.0):
-        meas[rad] = Rv.flags(v, fc, vv, th={"lump_radius_mm": rad})
+        cache = V4 / f"review_meas_r{rad}.npz"                       # measurements depend only on the mesh, the views and the radius
+        if cache.exists():
+            z = np.load(cache)
+            full = {k: z[k] for k in z.files}
+            meas[rad] = (full, None)
+        else:
+            meas[rad] = Rv.flags(v, fc, vv, th={"lump_radius_mm": rad})
+            np.savez(cache, **meas[rad][0])
+        print(f"measured radius {rad}: {time.time() - t0:.0f} s", flush=True)
     tick("measurements (3 radii)")
     rows = []
     nv = Rv.vertex_normals(v, fc)
@@ -720,7 +731,7 @@ def stage3():
          "  flags: lump (rms to the local plane of same-facing samples within R), few_views (silhouette edges within 0.3 mm), disagree (one video's 3rd "
          "strongest view puts the surface further in), one_video (a feature found in one video only); flagged vertices grouped into connected regions >= min area.",
          "  owner's marks = triangles visible inside the owner's outline in the fitted owner camera: " + ", ".join(f"{k} {len(o['verts'])} vertices" for k, o in owner.items()),
-         "  hit = >= 20 % of an item's vertices within 1 mm of the mark, or >= 20 % of the mark's vertices within 1 mm of the item.",
+         "  hit = >= 20 % of an item's vertices within 1 mm of the mark, or >= 20 % of the mark's vertices are vertices of the item.",
          f"  before tuning (config placeholders): recall {len(c0)}/3 ({', '.join(c0) or 'none'}), false alarms {len(f0_)} of {len(items0)} items",
          f"  tuning grid: {len(rows)} threshold sets (R 1.5/2.5/4 mm x lump rms 0.08..0.4 x min views 0..3 x disagreement 0.5..2 mm or off x min area 2..16 mm2); "
          "ranked by recall, then fewest false alarms, then the least sensitive thresholds.",
