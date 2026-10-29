@@ -10,29 +10,26 @@ import numpy as np
 
 from . import carve, config as C
 from .model import default_answers, rebuild  # noqa: F401  (rebuild is part of this module's interface)
+from .question_cards import CHOICES, TEXT
 
-QUESTIONS = {
-    "groove_depth_mm": ("grooves", "How deep are the rectangular slots along the end of the part? The camera only sees their openings.", "mm",
-                        "Push the depth rod of your calipers into one slot until it touches the bottom."),
-    "bump_height_mm": ("lock_bump", "How far does the raised lock bump stand out from the surface it sits on?", "mm",
-                       "Rest the calipers' depth rod on the surface next to the bump and measure to the bump's top."),
-    "bump_width_mm": ("lock_bump", "How wide is the lock bump (across its short side)?", "mm", "Close the outside jaws across the bump's short side."),
-    "bump_length_mm": ("lock_bump", "How long is the lock bump (end to end)?", "mm", "Close the outside jaws over the bump's two ends."),
-    "plate_thickness_mm": ("plate", "How thick is the flat plate between the large window and the slot column?", "mm",
-                           "Measure it in the middle of the plate with the outside jaws, not at its edge."),
-}
+FEATURE_OF = {"groove_depth_mm": "grooves", "bump_height_mm": "lock_bump", "bump_width_mm": "lock_bump", "bump_length_mm": "lock_bump",
+              "bump_top_shape": "lock_bump", "plate_thickness_mm": "plate"}
+QUESTIONS = {k: (FEATURE_OF[k], *TEXT[k]) for k in FEATURE_OF}
+RIDGE_ONLY = {"bump_top_shape"}
 
 
 def questions(features, answers_given=None):
     """One question per answer the geometry depends on that the photos cannot give (or gave in conflict with an answer)."""
     given = answers_given or {}
-    d = default_answers()
+    d = {**default_answers(), "bump_top_shape": next(k for k, r in C.TOP_SHAPE_RADIUS_MM.items() if r == C.BUMP_TOP_RADIUS_MM)}
     out = []
     for key, (fid, text, unit, hint) in QUESTIONS.items():
         if fid == "grooves" and not features.get("grooves") or fid in ("lock_bump",) and not features.get("bump") or fid == "plate" and not features.get("plate"):
             continue
+        if key in RIDGE_ONLY and (features.get("bump") or {}).get("kind") != "ridge":
+            continue
         out.append({"id": key, "feature_id": fid, "question": text, "unit": unit, "default": d[key], "answered": key in given,
-                    "answer": given.get(key), "hint": hint})
+                    "answer": given.get(key), "hint": hint, **({"choices": CHOICES[key]} if key in CHOICES else {})})
     return out
 
 
@@ -68,7 +65,20 @@ def features_list(feats, answers, user_given):
     else:
         out.append({"id": "grooves", "status": "not_detected", "value": None, "unit": "", "views": 0})
     b = feats.get("bump")
-    if b:
+    if b and b.get("kind") == "ridge":
+        out += [{"id": "lock_ridge.position", "status": "measured", "value": [round(x, 2) for x in np.mean(b["ends"], 0)], "unit": "mm", "views": b["agreeing_views"]},
+                {"id": "lock_ridge.face_and_direction", "status": "measured", "value": {"face": b.get("face"), "normal": [round(x, 3) for x in b["normal"]]},
+                 "unit": "", "views": b.get("extent_views", 0)},
+                {"id": "lock_ridge.length_detected", "status": "measured", "value": round(b["detected_length_mm"], 2), "unit": "mm", "views": b["agreeing_views"]},
+                {"id": "lock_ridge.extent_out_of_wall", "status": "measured", "value": round(b["extent_mm"], 2), "unit": "mm", "views": b.get("extent_views", 0)},
+                {"id": "lock_ridge.length", "status": st("bump_length_mm"), "value": answers["bump_length_mm"], "unit": "mm", "views": 0},
+                {"id": "lock_ridge.base_width", "status": st("bump_width_mm"), "value": answers["bump_width_mm"], "unit": "mm", "views": 0},
+                {"id": "lock_ridge.height", "status": st("bump_height_mm"), "value": answers["bump_height_mm"], "unit": "mm", "views": 0},
+                {"id": "lock_ridge.top_radius", "status": "user_supplied" if "bump_top_shape" in user_given else "estimated",
+                 "value": answers.get("bump_top_radius_mm", C.BUMP_TOP_RADIUS_MM), "unit": "mm", "views": 0},
+                {"id": "lock_ridge.shape", "status": "user_supplied", "value": b.get("shape", "hill"), "unit": "", "views": 0},
+                {"id": "lock_pin", "status": "user_supplied", "value": "part of the lock ridge", "unit": "", "views": 0}]
+    elif b:
         out += [{"id": "lock_bump.position", "status": "measured", "value": [round(x, 2) for x in b["edge_mid"]], "unit": "mm", "views": b["agreeing_views"]},
                 {"id": "lock_bump.length_detected", "status": "measured", "value": round(b["detected_length_mm"], 2), "unit": "mm", "views": b["agreeing_views"]},
                 {"id": "lock_bump.length", "status": st("bump_length_mm"), "value": answers["bump_length_mm"], "unit": "mm", "views": 0},
@@ -88,8 +98,10 @@ def features_list(feats, answers, user_given):
     return out
 
 
-def build(unfeatured_mesh, feats, answers, user_given=(), caliper=None, held_out_iou=None, views_moved=None, timings=None, warnings=()):
-    """report dict. unfeatured_mesh: (verts, faces) of the plain carve (dimensions are measured on it, not on user-supplied features)."""
+def build(unfeatured_mesh, feats, answers, user_given=(), caliper=None, held_out_iou=None, views_moved=None, timings=None, warnings=(),
+          corrections=None, review_items=None):
+    """report dict. unfeatured_mesh: (verts, faces) of the plain carve (dimensions are measured on it, not on user-supplied features).
+    corrections: the model edits rebuild() applies (corrections.py); review_items: the anomaly finder's items (review.py)."""
     v, fc = unfeatured_mesh
     pl = carve.obb_plan(v)
     meas = {"length": pl["length_mm"], "width": pl["width_mm"], "height": pl["z_max"] - pl["z_min"]}
@@ -102,7 +114,8 @@ def build(unfeatured_mesh, feats, answers, user_given=(), caliper=None, held_out
              "and each video never sees the face it rests on; those surfaces come from other videos or from answers.")
     return {"held_out_iou": held_out_iou, "dims_mm": dims, "features": features_list(feats, answers, set(user_given)),
             "questions": questions(feats, {k: answers[k] for k in user_given if k in answers}),
-            "low_confidence_regions": low_confidence(views_moved, v, fc) if views_moved else None, "warnings": w, "timings": timings}
+            "low_confidence_regions": low_confidence(views_moved, v, fc) if views_moved else None, "warnings": w, "timings": timings,
+            "corrections": list(corrections or []), "review_items": list(review_items or [])}
 
 
 def write(path: Path, rep):
