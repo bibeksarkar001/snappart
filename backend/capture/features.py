@@ -9,10 +9,10 @@ import cv2
 from . import carve, snap
 
 
-def candidate_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, end_mm=20.0, seed=0):
+def candidate_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, end_mm=20.0, seed=0, n_samples=40000):
     """Faces where openings may sit, at both ends of the footprint's long axis: per end, the largest near-vertical RANSAC plane (normal along
     the axis, outward) and every near-horizontal RANSAC plane, cropped to the last end_mm of the part. e1 runs along the end edge in every case."""
-    P, N = snap.oriented_points(verts, faces, 200000, seed=seed)
+    P, N = snap.oriented_points(verts, faces, n_samples, seed=seed)       # 40k samples: same faces as 200k (v3 stage 3), ~5x faster
     pls = snap.planes(P, N, tol=0.12, max_planes=14, min_frac=0.005)
     box = cv2.boxPoints(cv2.minAreaRect(verts[:, :2].astype(np.float32)))
     sides = [box[1] - box[0], box[2] - box[1]]
@@ -25,7 +25,7 @@ def candidate_faces(verts, faces, max_tilt_deg=15.0, near_mm=3.0, end_mm=20.0, s
         vert = [(n * np.sign(n @ out_ax), m) for n, d, m in pls
                 if np.degrees(np.arccos(min(abs(n @ ax), 1))) <= max_tilt_deg and abs(P[m].mean(0) @ ax - ext) <= near_mm]
         horiz = [(n, m & (np.abs(P @ ax - ext) <= end_mm)) for n, d, m in pls if np.degrees(np.arccos(min(abs(n[2]), 1))) <= max_tilt_deg]
-        cands = ([max(vert, key=lambda q: q[1].sum())] if vert else []) + [h for h in horiz if h[1].sum() > 200]
+        cands = ([max(vert, key=lambda q: q[1].sum())] if vert else []) + [h for h in horiz if h[1].sum() > 0.001 * len(P)]
         for n, m in cands:
             q = P[m]
             if np.degrees(np.arccos(min(abs(n[2]), 1))) <= max_tilt_deg:     # horizontal: outward = away from the part's mid-height
@@ -318,3 +318,99 @@ def plane_sweep(views, images, face_at, zs, ppm=10, blur=4.0, boot=20, seed=0):
     rng = np.random.default_rng(seed)
     best = [zs[int(np.argmin([s[k].var(0).mean() for s in stacks]))] for k in (rng.choice(len(views), len(views)) for _ in range(boot))]
     return float(zs[int(np.argmin(sc))]), float(np.std(best)), sc
+
+
+def groove_features(ops, face):
+    """Measured openings as model features: centre, axes rows (long, short, outward normal), opening size, view count."""
+    out = []
+    for (c, axes, half), o in zip(groove_boxes(ops, face, 0.0, 0.0), ops):
+        out.append({"centre": o["centre"].tolist(), "axes": axes.tolist(), "long_mm": float(o["L"]), "short_mm": float(o["S"]), "views": int(o["n_views"])})
+    return out
+
+
+def detect_bump(vv, imgs, face, delta, min_cos=0.5, ppm=20):
+    """Raised block above the openings (v2 stage 2 method): per view, a 3-segment step on the strongest edge 0.3..3.2 mm above the openings' top
+    edge; views agree if their length is within 1 mm of their video's median; the ends are triangulated in the video with the most agreeing views.
+    Returns None or {"ends", "length_mm", "video", "agree", "found", "ridge_to_opening_mm"}."""
+    per = {}
+    base = face["O"] + delta * face["n"]
+    for (vid, v), im in zip(vv, imgs):
+        if facing(v, face) < min_cos:
+            continue
+        g = rectify(v, im, face, delta, ppm)
+        oo = openings(g, ppm)
+        if len(oo) < 3:
+            continue
+        top = float(np.median([o[1] + o[3] / 2 for o in oo]))
+        r = step_band(g, ppm, top + 0.3, top + 3.2, min(o[0] - o[2] / 2 for o in oo), max(o[0] + o[2] / 2 for o in oo), w_lo=top - 0.3, w_hi=top + 3.2)
+        if r is not None:
+            r.update(top=top, len=r["s1"] - r["s0"], C=-v.R.T @ v.t)
+            per.setdefault(vid, []).append(r)
+    best = None
+    for vid, lst in per.items():
+        med = float(np.median([r["len"] for r in lst]))
+        ok = [r for r in lst if abs(r["len"] - med) <= 1.0]
+        if len(ok) >= 3 and (best is None or len(ok) > len(best[1])):
+            best = (vid, ok, len(lst))
+    if best is None:
+        return None
+    vid, ok, nf = best
+    ends = []
+    for key in ("s0", "s1"):
+        rays = []
+        for r in ok:
+            P = base + r[key] * face["e1"] + r["t_edge"] * face["e2"]
+            rays.append((r["C"], (P - r["C"]) / np.linalg.norm(P - r["C"])))
+        ends.append(triangulate(rays)[0])
+    return {"ends": [e.tolist() for e in ends], "length_mm": float(np.linalg.norm(ends[1] - ends[0])), "video": vid, "agree": len(ok), "found": nf,
+            "ridge_to_opening_mm": float(np.median([r["t_edge"] - r["top"] for r in ok]))}
+
+
+def bump_feature(bump, grooves):
+    """Model feature for the bump: detected far-edge line (midpoint, axis), direction toward the openings, outward normal of the groove face."""
+    e0, e1 = np.array(bump["ends"][0]), np.array(bump["ends"][1])
+    n = np.array(grooves[0]["axes"][2])
+    a = e1 - e0
+    a -= n * (a @ n)
+    a /= np.linalg.norm(a)
+    mid = (e0 + e1) / 2
+    w = np.mean([g["centre"] for g in grooves], 0) - mid
+    w -= a * (w @ a) + n * (w @ n)
+    w /= np.linalg.norm(w)
+    return {"edge_mid": mid.tolist(), "axis": a.tolist(), "toward_openings": w.tolist(), "normal": n.tolist(), "detected_length_mm": bump["length_mm"],
+            "ends": bump["ends"], "source_video": bump["video"], "agreeing_views": bump["agree"]}
+
+
+def plate_region(field, g, bump_ends):
+    """Plate footprint from the carve: x from the window's far edge (material along y = part centre at z = 6) to the bump's detected far edge;
+    y between the rails' inner faces (gap at 5 mm before the window edge)."""
+    ix = lambda v, a: int(round((v - g.lo[a]) / g.vs))
+    yc = float(np.mean([e[1] for e in bump_ends]))
+    zc = ix(6.0, 2)
+    xs = g.lo[0] + np.where(field[:, ix(yc, 1), zc] > 0)[0] * g.vs
+    x1 = min(e[0] for e in bump_ends)
+    gaps = np.where(np.diff(xs) > 2 * g.vs)[0]
+    xw = xs[gaps[-1] + 1] if len(gaps) else xs.min()               # first material after the last gap (the window) before the bump
+    ys = g.lo[1] + np.where(field[ix(xw - 5, 0), :, zc] > 0)[0] * g.vs
+    y0, y1 = ys[ys < yc].max() + g.vs, ys[ys > yc].min() - g.vs
+    return float(xw), float(x1), float(y0), float(y1)
+
+
+def plate_faces(vv, imgs, region, videos_by_side, zs=None, min_cos=0.6):
+    """Both faces of a horizontal plate by photo-consistency plane sweeps: {side: {"z", "boot_sd", "views", "video"}}. videos_by_side maps
+    "lower" / "upper" to the video that sees that face."""
+    x0, x1, y0, y1 = region
+    zs = np.arange(6.0, 12.01, 0.1) if zs is None else zs
+
+    def face_z(z, up):
+        return {"O": np.array([x0 + 1, y0 + 1.5, z]), "e1": np.array([0, 1.0, 0]), "e2": np.array([1.0, 0, 0]), "n": np.array([0, 0, 1.0 if up else -1.0]),
+                "len_s": y1 - y0 - 3, "len_t": x1 - x0 - 3}
+    out = {}
+    for side, vid in videos_by_side.items():
+        up = side == "upper"
+        sel = [(v, im) for (n, v), im in zip(vv, imgs) if n == vid and facing(v, face_z(10, up)) > min_cos]
+        if len(sel) < 5:
+            continue
+        z, sd, _ = plane_sweep([v for v, _ in sel], [im for _, im in sel], lambda z: face_z(z, up), zs)
+        out[side] = {"z": z, "boot_sd": sd, "views": len(sel), "video": vid}
+    return out

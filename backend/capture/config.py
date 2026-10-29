@@ -15,12 +15,13 @@ SAM_CONCEPTS = ("brown plastic buckle", "brown plastic part", "brown object")   
 MIN_COLOUR_IN_SAM = 0.85
 MIN_SAM_CONF = 0.5
 
-# registration (v2 stage 4): Powell refinement voxel. 0.5 mm stays within 0.3 mm of the v1 transform (measured 0.197 mm, 138 s);
-# 1.0 mm is faster (29 s) but moved video 2 by 0.304 mm, just over the 0.3 mm limit, so it is not the default.
-REG_REFINE_VOXEL_MM = 0.5
+# registration (v3 stage 3): Powell refinement voxel. 1.0 mm (24 s) stays within 0.125 mm of the 0.5 mm-grid result (128 s) on every video;
+# against the v1 cached transform it is 0.29 mm (0.5 mm grid: 0.19). A coarse-to-fine shell refinement was tried: 113 s, no gain.
+REG_REFINE_VOXEL_MM = 1.0
 
 # carve (v1 stage 5, held-out IoU)
-K_ROBUST = 12                   # a voxel is outside only if 12 views put it outside
+K_ROBUST = 12                   # a voxel is outside only if 12 views put it outside ...
+K_TUNED_AT_VIEWS = 229          # ... tuned with 229 views; pipeline.k_for() scales it with the view count
 GROW_MM = 0.1                   # every silhouette dilated by 0.1 mm
 VOXEL_MM = 0.15
 TAUBIN_ITERS = 5

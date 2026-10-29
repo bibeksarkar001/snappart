@@ -273,8 +273,287 @@ def stage2():
     print("\n".join(L))
 
 
+def stage3b(n_calls=40, conc=16):
+    """Real SAM throughput: n_calls crops (one per frame, from the v1 crop cache), conc in parallel, 429 -> exponential backoff (1, 2, 4, 8, 16 s + jitter).
+    Results go to out/v3/sam_test/ (the v1 SAM cache is not touched)."""
+    import asyncio
+    import contextlib
+    import io
+    import random
+
+    import openai
+    from sam_coin import segment
+    crops = sorted((V2R.CACHE / "crops").glob("*.jpg"))
+    pick = [crops[i] for i in range(0, len(crops), max(len(crops) // n_calls, 1))][:n_calls]
+    d = V3 / "sam_test"
+    d.mkdir(parents=True, exist_ok=True)
+    sem = asyncio.Semaphore(conc)
+    stats = []
+
+    async def one(path):
+        async with sem:
+            rec = {"crop": path.name, "tries": 0, "n429": 0, "ok": False}
+            t0 = time.perf_counter()
+            for k in range(6):
+                rec["tries"] += 1
+                try:
+                    t1 = time.perf_counter()
+                    _, w, h, boxes, masks, _ = await segment(path, "brown plastic buckle", f"v3/sam_test/{path.stem}_raw.txt")
+                    rec.update(ok=True, latency_s=time.perf_counter() - t1, objects=len(boxes))
+                    break
+                except openai.RateLimitError:
+                    rec["n429"] += 1
+                    await asyncio.sleep(2 ** k + random.random())
+                except Exception as e:  # noqa: BLE001
+                    rec["error"] = type(e).__name__
+                    await asyncio.sleep(2 ** k + random.random())
+            rec["total_s"] = time.perf_counter() - t0
+            stats.append(rec)
+
+    async def main():
+        t = time.perf_counter()
+        await asyncio.gather(*[one(p) for p in pick])
+        return time.perf_counter() - t
+    t0, d0 = time.time(), date()
+    with contextlib.redirect_stdout(io.StringIO()):            # segment() prints per call; one redirect around the whole run (not per task)
+        wall = asyncio.run(main())
+    import numpy as np
+    ok = [r for r in stats if r["ok"]]
+    lat = np.array([r["latency_s"] for r in ok]) if ok else np.array([np.nan])
+    res = {"calls": len(pick), "concurrency": conc, "wall_s": wall, "ok": len(ok), "n429": sum(r["n429"] for r in stats), "retries": sum(r["tries"] - 1 for r in stats),
+           "errors": [r.get("error") for r in stats if not r["ok"]], "latency_median_s": float(np.median(lat)), "latency_p90_s": float(np.percentile(lat, 90)),
+           "with_objects": sum(1 for r in ok if r.get("objects")), "per_call_wall_s": wall / max(len(pick), 1), "start": d0}
+    (V3 / "sam_test" / "stats.json").write_text(json.dumps({"summary": res, "calls": stats}, indent=1, default=float))
+    print(json.dumps(res, indent=1, default=float))
+
+
+def stage3c(per_video=40, long_side=1920, k=None):
+    """Browser-sized frames: per video, 40 of the selected frames at 1920 px long side. Marker detection, mat self-calibration, poses, registration,
+    carve, held-out IoU and grooves from them, with the cached masks and crops downscaled to match. Compared with the full-resolution run."""
+    import cv2
+    import numpy as np
+    from capture import carve, config as C, frames, holdout as H, mat, matcal, pipeline as P
+    from spike_common import ROOT
+    t0, d0 = time.time(), date()
+    res2 = json.loads((V2R.V1 / "results.json").read_text())["stage2"]["frames"]
+    boxes = {(r["video"], str(r["idx"])): r["box"] for r in res2 if r["status"].startswith("ok")}
+    det = mat.make_detector()
+    tm = {"decode": 0.0, "detect": 0.0}
+    scans, scale, chosen = {}, {}, {}
+    for n in NAMES:
+        sel = json.loads((V2R.CACHE / f"sel_{n}.json").read_text())
+        idx = sorted(int(k) for k in sel["frames"])[::2][:per_video]
+        chosen[n] = idx
+        s = long_side / max(sel["size"])
+        scale[n] = s
+        cap = cv2.VideoCapture(str(ROOT / "assets" / "private" / "lock_set" / "Video" / f"{n}.mov"))
+        want, i, fr_out = set(idx), 0, {}
+        t = time.perf_counter()
+        while want:
+            if i in want:
+                ok, fr = cap.read()
+                if not ok:
+                    break
+                fr_out[i] = cv2.resize(fr, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+                want.discard(i)
+            elif not cap.grab():
+                break
+            i += 1
+        tm["decode"] += time.perf_counter() - t
+        t = time.perf_counter()
+        fd = {}
+        for i, fr in fr_out.items():
+            gray = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+            ids, cs = mat.detect(det, gray)
+            fd[i] = (ids, cs, frames.marker_sharpness(gray, cs) if len(ids) else 0.0)
+        tm["detect"] += time.perf_counter() - t
+        scans[n] = {"size": (fr_out[idx[0]].shape[1], fr_out[idx[0]].shape[0]), "frames": fd}
+    t = time.perf_counter()
+    obs = {}
+    for n, sc in scans.items():
+        cal = frames.calibrate(sc, min_markers=8)
+        o = [(f[0], f[1]) for f in sc["frames"].values() if len(f[0]) >= 8]
+        ps = []
+        for ids, cs in o:
+            rv, tv, _, _ = mat.solve_pose(ids, cs, cal["K"], cal["dist"])
+            ps.append((rv.ravel(), tv.ravel()))
+        obs[n] = dict(obs=o, poses=ps, K=cal["K"], dist=cal["dist"])
+    r = matcal.calibrate_joint(obs, prior=C.MAT_PRIOR_PX_PER_MM)
+    tm["mat calibration"] = time.perf_counter() - t
+    W_s, world_s = r["W"], matcal.world_dict(r["W"])
+    W_f, intr_f = matcal.load(V2R.CACHE / "mat_calibrated.json")[:2]
+    dW = W_s - W_f
+    L = [f"STAGE 3c: browser-sized frames ({per_video} per video, long side {long_side} px; scale " + ", ".join(f"{n[-2:]} {s:.3f}" for n, s in scale.items()) + f"). start {d0}.",
+         f"  marker detection on {sum(len(c) for c in chosen.values())} frames: {tm['detect']:.1f} s (decode + downscale from the video, not needed when the browser sends frames: {tm['decode']:.1f} s)",
+         f"  mat self-calibration: {tm['mat calibration']:.1f} s; training rms {r['rms_px']:.2f} px (at 1920 px); marker corners vs the full-resolution calibration: "
+         f"mean |dz| {np.abs(dW[..., 2]).mean():.3f} mm, max {np.abs(dW[..., 2]).max():.3f}; mean |dxy| {np.linalg.norm(dW[..., :2], axis=2).mean():.3f} mm"]
+    views, pose_rms = {}, {}
+    t = time.perf_counter()
+    for n in NAMES:
+        i8 = r["intr"][n]
+        K = np.array([[i8[0], 0, i8[2]], [0, i8[1], i8[3]], [0, 0, 1.0]])
+        dist = np.r_[i8[4:8], 0]
+        f8 = intr_f[n]
+        L.append(f"  {n}: fx {K[0, 0]:.1f} vs full x scale {f8[0] * scale[n]:.1f} ({100 * (K[0, 0] / (f8[0] * scale[n]) - 1):+.2f} %), cx {K[0, 2]:.1f} vs {f8[2] * scale[n]:.1f}, cy {K[1, 2]:.1f} vs {f8[3] * scale[n]:.1f}")
+        vs_, rm = [], []
+        for i in chosen[n]:
+            ids, cs, _ = scans[n]["frames"][i]
+            if (n, str(i)) not in boxes or len(ids) < C.MIN_MARKERS:
+                continue
+            sol = mat.solve_pose(ids, cs, K, dist, world=world_s)
+            if sol is None:
+                continue
+            rv, tv, rms, used = sol
+            rm.append(rms)
+            if rms > C.MAX_RMS_RELAXED_PX:
+                continue
+            box = np.array(boxes[(n, str(i))], float) * scale[n]
+            m = cv2.imread(str(V2R.CACHE / "masks" / f"{n}_{i}.png"), 0)
+            ms = (cv2.resize(m, None, fx=scale[n], fy=scale[n], interpolation=cv2.INTER_AREA) > 127).astype(np.uint8) * 255
+            Kc = K.copy()
+            Kc[0, 2] -= box[0]
+            Kc[1, 2] -= box[1]
+            vs_.append(carve.View(Kc, cv2.Rodrigues(rv)[0], tv.ravel(), carve.mask_sdf(ms), f"{n}_{i}", n))
+        views[n] = vs_
+        pose_rms[n] = (float(np.median(rm)), len(vs_), len(chosen[n]))
+    tm["poses + views"] = time.perf_counter() - t
+    L.append("  poses with the 1920-px calibration (median rms px at 1920 / views kept / frames): " + ", ".join(f"{n[-2:]} {a:.2f} / {b} / {c}" for n, (a, b, c) in pose_rms.items()))
+    t = time.perf_counter()
+    T = P.register_fast(views, NAMES[0], NAMES[2], NAMES[1], refine_vs=C.REG_REFINE_VOXEL_MM)
+    tm["registration"] = time.perf_counter() - t
+    t = time.perf_counter()
+    k = P.k_for(sum(len(x) for x in views.values())) if k is None else k
+    _, g, field = P.carve_joint(views, T, NAMES[0], k=k)
+    v, fc = P.mesh_of(field, g)
+    tm["carve"] = time.perf_counter() - t
+    pl = carve.obb_plan(v)
+    t = time.perf_counter()
+    vv = [(n, x.moved(T[n])) for n in NAMES for x in views[n]]
+    imgs = [cv2.resize(cv2.imread(str(V2R.CACHE / "crops" / f"{x.name}.jpg"), 0), None, fx=scale[n], fy=scale[n], interpolation=cv2.INTER_AREA) for n in NAMES for x in views[n]]
+    face, ops, _, _ = P.find_grooves_parallel(v, fc, vv, imgs)
+    tm["grooves"] = time.perf_counter() - t
+    t = time.perf_counter()
+    iou, per, _ = H.joint(views, T, k, 0.25, ref=NAMES[0], grow=C.GROW_MM)
+    tm["held-out IoU (3 folds, 0.25 mm; evaluation only)"] = time.perf_counter() - t
+    L.append(f"  robust k = {k} (k=12 was tuned at 229 views). Attempt 1 of this stage used k=12 with these 114 views: footprint 51.52 x 41.93, height 11.96, held-out IoU 0.9163 (video 1 0.8685).")
+    L += [f"  registration {tm['registration']:.1f} s, carve {tm['carve']:.1f} s, grooves {tm['grooves']:.1f} s ({len(views[NAMES[0]]) + len(views[NAMES[1]]) + len(views[NAMES[2]])} views)",
+          f"  RESULT: footprint {pl['length_mm']:.2f} x {pl['width_mm']:.2f} (caliper 51.6 x 41.9: {pl['length_mm'] - 51.6:+.2f}, {pl['width_mm'] - 41.9:+.2f}), height {pl['z_max'] - pl['z_min']:.2f} "
+          f"(11.8: {pl['z_max'] - pl['z_min'] - 11.8:+.2f}); held-out IoU {iou:.4f} at 0.25 mm (full resolution, 229 views: 0.9526 at 0.25 mm) per video "
+          + ", ".join(f"{n[-2:]} {x:.4f}" for n, x in per.items()),
+          f"  grooves: {len(ops)} found" + (": " + ", ".join(f"{o['L']:.2f} x {o['S']:.2f} ({o['n_views']} views)" for o in ops) if ops else ""),
+          "  approximation: the cached masks were made on frames undistorted with the full-resolution calibration; they are downscaled, not re-made "
+          "from the 1920-px calibration (the intrinsic differences above bound that effect).",
+          f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("3c_browser_frames", "\n".join(L), {"times_s": tm, "scale": scale, "calib_rms": r["rms_px"], "dz_mean": float(np.abs(dW[..., 2]).mean()), "dxy_mean": float(np.linalg.norm(dW[..., :2], axis=2).mean()),
+                                                     "pose_rms": pose_rms, "plan": pl, "heldout_iou_0p25": iou, "k": k, "per_video": per, "grooves": [{"L": o["L"], "S": o["S"], "views": o["n_views"]} for o in ops]})
+    print("\n".join(L))
+
+
+def cached_sam_adapter(scale, boxes, sizes):
+    """Stand-in for live SAM in timing runs: the v1 cached full-resolution SAM masks (same frame, same concept key), mapped into the new
+    downscaled crop. Returns sam(jobs) for pipeline.masks_from_crops; counts lookups."""
+    import cv2
+    import numpy as np
+    sam_dir = V2R.CACHE / "sam"
+
+    def sam(jobs):
+        out = {}
+        for key, crop, concept, box in jobs:
+            base = key.split("__")[0]
+            n, i = base.rsplit("_", 1)
+            meta = sam_dir / f"{key}.json"
+            if not meta.exists() or (n, i) not in boxes:
+                out[key] = None
+                continue
+            bf = boxes[(n, i)]
+            res = []
+            for j, c in enumerate(json.loads(meta.read_text())["confs"]):
+                m = cv2.imread(str(sam_dir / f"{key}_{j}.png"), 0)
+                canvas = np.zeros((sizes[n][1], sizes[n][0]), np.uint8)
+                canvas[bf[1]:bf[1] + m.shape[0], bf[0]:bf[0] + m.shape[1]] = m
+                small = cv2.resize(canvas, None, fx=scale[n], fy=scale[n], interpolation=cv2.INTER_AREA)
+                res.append((c, small[box[1]:box[3], box[0]:box[2]].copy()))
+            out[key] = res
+        return out
+    return sam
+
+
+def stage3(per_video=40, long_side=1920):
+    """End-to-end browser path (pipeline.run_frames) on 40 frames per video at 1920 px, SAM from the cache mapped into the new crops;
+    SAM time from the measured throughput (stage 3b: 40 calls at 16 parallel)."""
+    import cv2
+    import numpy as np
+    from capture import carve, pipeline as P
+    from spike_common import ROOT
+    t0, d0 = time.time(), date()
+    res2 = json.loads((V2R.V1 / "results.json").read_text())["stage2"]["frames"]
+    boxes = {(r["video"], str(r["idx"])): r["box"] for r in res2}
+    frames_by, scale, sizes = {}, {}, {}
+    tdec = time.perf_counter()
+    for n in NAMES:
+        sel = json.loads((V2R.CACHE / f"sel_{n}.json").read_text())
+        idx = sorted(int(k) for k in sel["frames"])[::2][:per_video]
+        s = long_side / max(sel["size"])
+        scale[n], sizes[n] = s, sel["size"]
+        cap = cv2.VideoCapture(str(ROOT / "assets" / "private" / "lock_set" / "Video" / f"{n}.mov"))
+        want, i, fr = set(idx), 0, {}
+        while want:
+            if i in want:
+                ok, img = cap.read()
+                if not ok:
+                    break
+                fr[i] = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+                want.discard(i)
+            elif not cap.grab():
+                break
+            i += 1
+        frames_by[n] = fr
+    tdec = time.perf_counter() - tdec
+    logf = V3 / "pipeline_run.log"
+    logf.write_text(f"browser-path run start {d0}\n")
+
+    def log(m):
+        with logf.open("a") as fh:
+            fh.write(m + "\n")
+        print(m, flush=True)
+    roles = {"ref": NAMES[0], "flat": NAMES[2], "stand": NAMES[1]}
+    rep = P.run_frames(frames_by, roles, V3 / "pipeline", cached_sam_adapter(scale, {k: v for k, v in boxes.items()}, sizes), log=log)
+    st = json.loads((V3 / "sam_test" / "stats.json").read_text())["summary"]
+    per_call = st["per_call_wall_s"]
+    n_main = sum(len(v) for v in frames_by.values())
+    n_fb = rep["sam_calls"] - n_main
+    sam_s = n_main * per_call + (max(st["latency_p90_s"], n_fb * per_call) if n_fb else 0)
+    sec = dict(rep["seconds"])
+    server = sum(v for k, v in sec.items() if k != "SAM")
+    total = server + sam_s
+    v1, f1 = P.run_frames.mesh
+    pl, cen = carve.obb_plan(v1), carve.edge_census(v1, f1)
+    feats = rep["features"]
+    L = [f"STAGE 3: one user run, browser path (backend/capture/pipeline.run_frames). start {d0}. {per_video} frames per video at {long_side} px long side "
+         f"({n_main} frames). Log: out/v3/pipeline_run.log.",
+         "wall clock per stage (s):"] + [f"  {k}: {v:.1f}" + ("  (cache adapter here; real SAM below)" if k == "SAM" else "") for k, v in sec.items()] + [
+         f"  SAM, measured rate: {rep['sam_calls']} calls ({n_main} main + {n_fb} fallback); stage 3b measured 40 calls at 16 parallel in {st['wall_s']:.1f} s "
+         f"({per_call:.2f} s per call, latency median {st['latency_median_s']:.1f} s, p90 {st['latency_p90_s']:.1f} s, {st['n429']} x 429) -> {sam_s:.0f} s "
+         f"({n_main} x {per_call:.2f} + fallback round {'max(p90, n x rate)' if n_fb else '0'}); the 120-call rate is extrapolated from the 40-call test",
+         f"  TOTAL per user run: {server:.0f} s server stages + {sam_s:.0f} s SAM = {total:.0f} s ({total / 60:.1f} min). Target 5 min: {'REACHED' if total < 300 else 'NOT REACHED'}.",
+         f"  not counted: decoding + downscaling the frames from the video here ({tdec:.0f} s); in the app the browser sends the frames.",
+         f"  slowest: " + ", ".join(f"{k} {v:.0f} s" for k, v in sorted({**{k: v for k, v in sec.items() if k != 'SAM'}, 'SAM (measured rate)': sam_s}.items(), key=lambda kv: -kv[1])[:3]),
+         f"result: footprint {pl['length_mm']:.2f} x {pl['width_mm']:.2f} (caliper 51.6 x 41.9), height {pl['z_max'] - pl['z_min']:.2f} (11.8); watertight {cen['watertight']}; "
+         f"views {rep['views']}; mat calibration rms {rep['calib_rms_px']:.2f} px",
+         f"  grooves {len(feats.get('grooves', []))}: " + ", ".join(f"{g['long_mm']:.2f} x {g['short_mm']:.2f} ({g['views']} views)" for g in feats.get("grooves", [])),
+         f"  bump: " + (f"detected, length {feats['bump']['detected_length_mm']:.2f} mm, {feats['bump']['agreeing_views']} agreeing views ({feats['bump']['source_video']})" if feats.get("bump") else "not detected"),
+         f"  plate faces: " + (", ".join(f"{k} z={v['z']:.2f} ({v['views']} views)" for k, v in feats["plate"]["faces"].items()) + f"; separation {feats['plate']['measured_separation_mm']:.2f} mm" if feats.get("plate") else "not measured"),
+         "Speed attempts: (a) registration 1.0 mm grid (24 s, within 0.125 mm of the 0.5 mm grid); coarse-to-fine shell 113 s, dropped. (b) SAM 16 parallel measured. "
+         "(c) 40 frames/video at 1920 px: detection 3.5 s instead of a 77 s 4K scan; k scaled to the view count (k=12 kept the hull fat: IoU 0.916; k=6: 0.936). "
+         "(d) grooves: RANSAC on 40k instead of 200k samples (35 -> 8 s, same face, openings within 0.05 mm).",
+         f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("3_speed", "\n".join(L), {"seconds": sec, "sam_estimate_s": sam_s, "sam_calls": rep["sam_calls"], "total_s": total, "server_s": server, "decode_s": tdec,
+                                         "plan": pl, "watertight": cen["watertight"], "views": rep["views"]})
+    log("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"1": stage1, "2": stage2}[a.stage]()
+    {"1": stage1, "2": stage2, "3b": stage3b, "3c": stage3c, "3": stage3}[a.stage]()
