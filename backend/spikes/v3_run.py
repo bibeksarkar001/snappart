@@ -42,6 +42,8 @@ def base_features():
         depth_used = 2 * half[2] - 3.0
         gro.append({"centre": (r[:3] - axes[2] * (3.0 - depth_used) / 2).tolist(), "axes": axes.tolist(), "long_mm": 2 * half[0], "short_mm": 2 * half[1]})
     res = json.loads((V2R.SEND / "results.json").read_text())
+    for gv, o in zip(gro, res["1_grooves"]["openings"]):
+        gv["views"] = o["views"]
     b = res["2_bump"]["per_video"][res["2_bump"]["primary"]]
     e0, e1 = np.array(b["end0"]), np.array(b["end1"])
     n = np.array(gro[0]["axes"][2])
@@ -552,8 +554,79 @@ def stage3(per_video=40, long_side=1920):
     log("\n".join(L))
 
 
+def stage4(reuse_iou=True):
+    """report.json for part B from the saved model (v1 views + registration), owner answers, folds held-out IoU plain vs with all features,
+    and a rebuild() check against B_plate.stl."""
+    import numpy as np
+    from capture import carve, config as C, dataset, holdout as H, model as Mo, pipeline as P, report as Rp
+    t0, d0 = time.time(), date()
+    m = Mo.load(V3 / "model_B")
+    field, g, feats = m["field"], m["grid"], m["features"]
+    answers = Mo.default_answers()
+    user_given = list(answers)                                    # every value came from the owner's calipers
+    v0, f0 = Mo.mesh(field, g)
+    v1, f1 = Mo.rebuild(m, answers)
+    vp, fp = V2R.load_mesh(SEND / "B_plate.stl")
+    same = len(v1) == len(vp) and float(np.abs(np.sort(v1.round(4), axis=0) - np.sort(vp, axis=0)).max()) < 1e-3
+    views = {n: dataset.load_views(n) for n in NAMES}
+    T = V2R.load_T()
+    vm = [x.moved(T[n]) for n in NAMES for x in views[n]]
+    # held-out IoU: same 3 folds as holdout.joint, plain carve vs carve + all features (answers)
+    allv = [(n, i) for n in NAMES for i in range(len(views[n]))]
+    plain, full = [], []
+    prev = json.loads((SEND / "results.json").read_text()).get("4_report") if reuse_iou else None
+    if prev:                                                     # measured in the first stage 4 run (366 s); not recomputed
+        plain, full = [prev["held_out_plain"]], [prev["held_out_features"]]
+    for fo in range(0 if prev else 3):
+        hold = set()
+        for n in NAMES:
+            share = max(round(10 * len(views[n]) / len(allv)), 1)
+            step = max(len(views[n]) // share, 1)
+            hold |= {(n, i) for i in list(range(fo % step, len(views[n]), step))[:share]}
+        train = {n: [x for i, x in enumerate(views[n]) if (n, i) not in hold] for n in NAMES}
+        _, gg, ff = P.carve_joint(train, T, NAMES[0], k=C.K_ROBUST)
+        feats_f = dict(feats)
+        if feats.get("plate"):
+            p = dict(feats["plate"])
+            X = gg.lo[0] + np.arange(ff.shape[0]) * gg.vs
+            Y = gg.lo[1] + np.arange(ff.shape[1]) * gg.vs
+            x0, x1, y0, y1 = p["region_xy"]
+            p["mask"] = np.zeros(ff.shape[:2], bool)
+            p["mask"][np.ix_((X >= x0) & (X <= x1), (Y >= y0) & (Y <= y1))] = True
+            feats_f["plate"] = p
+        ma, mb = Mo.mesh(ff, gg), Mo.mesh(Mo.apply(ff, gg, feats_f, answers), gg)
+        for n, i in sorted(hold):
+            mv = views[n][i].moved(T[n])
+            plain.append(carve.view_iou(*ma, mv))
+            full.append(carve.view_iou(*mb, mv))
+    v2res = json.loads((V2R.SEND / "results.json").read_text())
+    dz = [o["by_video"]["A_orbit_02"]["centre"][2] - o["by_video"]["A_orbit_03"]["centre"][2] for o in v2res["1_grooves"]["openings"] if len(o["by_video"]) > 1]
+    st3 = json.loads((SEND / "results.json").read_text()).get("3_speed", {})
+    s1 = json.loads((SEND / "results.json").read_text())["1_bump"]
+    warns = [f"video 2 vs video 3: the same four slot openings triangulate {np.mean(dz):+.2f} mm apart in height (part frame z) between the two videos "
+             f"(range {min(dz):+.2f}..{max(dz):+.2f}); positions use the video with more views (video 3).",
+             f"lock bump: the block is user-supplied in size; {100 * s1['outside_hull_mm3'] / s1['block_volume_mm3']:.0f} % of it lies outside the carved hull, because the hull fills the recess around it.",
+             "lock bump position: the owner says it starts at the top end of the slot column; the detection puts it in the middle (~8 mm free at both ends)."]
+    rep = Rp.build((v0, f0), feats, {**answers}, user_given, caliper={"length": 51.6, "width": 41.9, "height": 11.8}, held_out_iou=float(np.mean(plain)),
+                   views_moved=vm, timings={"per_stage_s": st3.get("seconds"), "sam_s_measured_rate": st3.get("sam_estimate_s"), "total_s": st3.get("total_s")}, warnings=warns)
+    rep["held_out_iou_with_features"] = float(np.mean(full))
+    rep["rebuild_reproduces_B_plate"] = bool(same)
+    Rp.write(SEND / "report.json", rep)
+    L = [f"STAGE 4: report card. start {d0}. backend/capture/report.py -> out/v3/SEND_TO_CLAUDE/report.json (part B, owner answers).",
+         f"  held-out IoU (3 folds x 10 views, 0.15 mm, k=12): plain carve {np.mean(plain):.4f}; with grooves + bump + plate (answers) {np.mean(full):.4f} ({np.mean(full) - np.mean(plain):+.4f})",
+         "  dims (plain carve vs caliper): " + ", ".join(f"{k} {d['measured']} vs {d['caliper']} ({d['error']:+.2f})" for k, d in rep["dims_mm"].items()),
+         "  features: " + "; ".join(f"{f['id']}={f['value']} [{f['status']}{', ' + str(f['views']) + ' views' if f['views'] else ''}]" for f in rep["features"]),
+         f"  questions ({len(rep['questions'])}): " + "; ".join(f"{q['id']} (default {q['default']} {q['unit']})" for q in rep["questions"]),
+         f"  low-confidence surface (< 3 views): {100 * rep['low_confidence_regions']['area_share']:.1f} % of the area; largest cells " + ", ".join(f"{r['centre_mm']} {r['area_mm2']} mm2" for r in rep["low_confidence_regions"]["regions"][:4]),
+         "  warnings: " + " | ".join(rep["warnings"]),
+         f"  rebuild(model_B, answers) reproduces B_plate.stl (same vertices within 1e-3 mm): {same}",
+         f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("4_report", "\n".join(L), {"held_out_plain": float(np.mean(plain)), "held_out_features": float(np.mean(full)), "rebuild_same": bool(same)})
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"1": stage1, "2": stage2, "3b": stage3b, "3c": stage3c, "3": stage3}[a.stage]()
+    {"1": stage1, "2": stage2, "3b": stage3b, "3c": stage3c, "3": stage3, "4": stage4}[a.stage]()

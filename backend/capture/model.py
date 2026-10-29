@@ -16,7 +16,13 @@ from .features import box_sdf
 
 
 def oriented_box(field, g, c, axes, half, add):
-    """Union (add) or subtraction of an oriented box with the field."""
+    """Union (add) or subtraction of an oriented box with the field. An added box must fit inside the grid (it would be clipped otherwise)."""
+    if add:
+        sg = np.array([[a, b, d] for a in (-1, 1) for b in (-1, 1) for d in (-1, 1)], float)
+        P = c + (sg * half) @ axes
+        hi = g.lo + (np.array(g.shape) - 1) * g.vs
+        if (P < g.lo).any() or (P > hi).any():
+            raise ValueError(f"added feature reaches {P.min(0).round(2).tolist()}..{P.max(0).round(2).tolist()}, outside the model grid {g.lo.round(2).tolist()}..{hi.round(2).tolist()}")
     d = box_sdf(g.points(), c, axes, half).astype(np.float32).reshape(field.shape)
     return np.maximum(field, -d) if add else np.minimum(field, d)
 
