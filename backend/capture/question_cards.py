@@ -61,7 +61,8 @@ def anchors(qid, feats, answers):
         polys = [[np.asarray(gg["centre"]) + s * np.asarray(gg["axes"][0]) * gg["long_mm"] / 2 + t * np.asarray(gg["axes"][1]) * gg["short_mm"] / 2
                   for s, t in ((-1, -1), (1, -1), (1, 1), (-1, 1))] for gg in gs]
         p0 = rect[1]
-        return {"polys": polys, "dim": (p0, p0 - ax[2] * a["groove_depth_mm"], "depth ?"), "normal": ax[2], "pts": np.array([p for q in polys for p in q])}
+        inset = [np.asarray(gg["centre"]) + 0.6 * (p - np.asarray(gg["centre"])) for gg, q in zip(gs, polys) for p in q]   # inside the openings:
+        return {"polys": polys, "dim": (p0, p0 - ax[2] * a["groove_depth_mm"], "depth ?"), "normal": ax[2], "pts": np.array(inset)}  # visible down the hole
     if qid.startswith("bump"):
         b = feats["bump"]
         c, ax, w, n = (np.asarray(b[k], float) for k in ("base_mid", "axis", "across", "normal"))
@@ -72,7 +73,8 @@ def anchors(qid, feats, answers):
         dim = {"bump_height_mm": (e, e + n * H, "height ?"), "bump_width_mm": (e - w * W / 2, e + w * W / 2, "base width ?"),
                "bump_length_mm": (c - ax * L / 2 + n * H, c + ax * L / 2 + n * H, "length ?"),
                "bump_top_shape": (e + n * H, e + n * H, "top shape ?")}[qid]
-        return {"polys": [base, peak], "dim": dim, "normal": n, "pts": np.array(base + peak)}
+        seen_from = n - w                              # the ridge stands in a pocket: look at it from where the pocket opens, not only along n
+        return {"polys": [base, peak], "dim": dim, "normal": seen_from / np.linalg.norm(seen_from), "pts": np.array(base + peak)}
     if qid == "plate_thickness_mm":
         p = feats["plate"]
         n, d = np.asarray(p["normal"], float), float(p["d"])
@@ -120,14 +122,22 @@ def arrow(img, a, b, colour, label):
     cv2.putText(img, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (20, 20, 20), 2, cv2.LINE_AA)
 
 
-def frame_card(geom, views, images_bgr, occluder, out_px=480):
-    """Best frame for the geometry, cropped, outlined, with the dimension arrow. Returns (card image, frame record) or (None, None)."""
+def frame_card(geom, views, images_bgr, occluder, out_px=480, min_arrow_px=12, top=40, full_arrow_px=40):
+    """Best frame for the geometry, cropped, outlined, with the dimension arrow: among the `top` frames by review.best_view's score, the
+    best by that score x min(1, arrow length / full_arrow_px), with the arrow for the asked measurement at least min_arrow_px long (a depth
+    seen head-on would vanish) and >= 30 % of the feature visible. Returns (card image, record) or (None, None)."""
     pts = geom["pts"]
     gray = [cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) for im in images_bgr]
-    b = Rv.best_view(views, gray, pts.mean(0), np.asarray(geom["normal"], float), np.vstack([pts, geom["dim"][0], geom["dim"][1]]), occluder=occluder)
-    if b is None:
+    span = lambda vw: float(np.linalg.norm(np.subtract(*[np.array(carve.project(vw, np.atleast_2d(p))[:2]).ravel() for p in geom["dim"][:2]])))
+    point_dim = np.allclose(geom["dim"][0], geom["dim"][1])
+    cands = Rv.best_view(views, gray, pts.mean(0), np.asarray(geom["normal"], float), pts, occluder=occluder, top=top, ranked=True)
+    if not point_dim:
+        cands = sorted(cands, key=lambda c: -c[1] * min(span(views[c[0]][1]) / full_arrow_px, 1.0))
+    ok = [c for c in cands if c[5] > 0.3 and (point_dim or span(views[c[0]][1]) >= min_arrow_px)]
+    if not cands:
         return None, None
-    i, score, (x0, y0, x1, y1), cos, sharp, vis = b
+    i, score, (x0, y0, x1, y1), cos, sharp, vis = (ok or cands)[0]
+    fallback = not ok                                  # no frame met the visibility and arrow-length rules: best frame anyway, flagged
     vw = views[i][1]
     pad = int(0.35 * max(x1 - x0, y1 - y0))
     H, W = images_bgr[i].shape[:2]
@@ -146,7 +156,8 @@ def frame_card(geom, views, images_bgr, occluder, out_px=480):
     a, b2 = proj(geom["dim"][0])[0], proj(geom["dim"][1])[0]
     arrow(crop, a, b2, col, geom["dim"][2])
     return crop, {"frame_id": vw.name, "video": views[i][0], "score": round(float(score), 3), "cos": round(cos, 2), "sharpness": round(sharp, 1),
-                  "visible_share": round(vis, 2), "crop_px": [x0, y0, x1, y1], "highlight": name, "highlight_contrast": round(contrast, 1)}
+                  "visible_share": round(vis, 2), "crop_px": [x0, y0, x1, y1], "highlight": name, "highlight_contrast": round(contrast, 1),
+                  "arrow_px": round(span(vw), 1), "fallback_frame": fallback}
 
 
 def region_card(tri, v, fc, normal, views, images_bgr, occluder, label, out_px=480):

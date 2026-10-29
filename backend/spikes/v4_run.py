@@ -610,6 +610,13 @@ def stage2():
     print("\n".join(L))
 
 
+def annotated(img, min_px=500):
+    """True if a frame carries saturated red pen strokes (the owner's annotations), which real frames of this brown part do not."""
+    import cv2
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    return int(((hsv[..., 1] > 180) & (hsv[..., 2] > 180) & ((hsv[..., 0] < 12) | (hsv[..., 0] > 170))).sum()) > min_px
+
+
 def color_crops(vv):
     import cv2
     from capture import dataset
@@ -854,17 +861,24 @@ def stage5():
     vcm, fcm = coarse_mesh(f4, m3["grid"])
     vv, _ = V2R.all_views()
     imgs = color_crops(vv)
+    marked = [i for i, im in enumerate(imgs) if annotated(im)]          # crops that carry the owner's red pen marks are not shown on cards
+    skipped = [vv[i][1].name for i in marked]
+    vv, imgs = [x for i, x in enumerate(vv) if i not in marked], [x for i, x in enumerate(imgs) if i not in marked]
     out = SEND / "cards"
     cards, L = [], [f"STAGE 5: question cards (backend/capture/question_cards.py). start {d0}. Best frame = facing x sharpness x crop size x visible "
-                    "share (occlusion test against the v4 model); highlight colour = the reserved colour (magenta, cyan, yellow) with the largest mean Lab "
-                    "distance from the pixels under the outline; white outer stroke; labelled dimension arrow."]
+                    "share (occlusion test against the v4 model) x arrow length (the asked dimension must show: >= 12 px, full weight at 40 px); "
+                    "highlight colour = the reserved colour (magenta, cyan, yellow) with the largest mean Lab distance from the pixels under the outline; "
+                    "white outer stroke; labelled dimension arrow.",
+                    f"  frames skipped because their cached crop carries the owner's red pen marks: {skipped} (byte-identical to label_2_lock_pin_recess.jpg "
+                    "and label_3_bump_on_ledge.jpg; neither was among the views used for the ridge detection)."]
     for q in rep["questions"]:
         t1 = time.time()
         geom = Q.anchors(q["id"], feats, ans)
         img, rec = Q.frame_card(geom, vv, imgs, (vcm, fcm))
         card = Q.write_card(out / q["id"], q, img, rec, Q.diagram(q["id"]))
         cards.append(card)
-        L.append(f"  {q['id']}: frame {card.get('frame_id')} (score {card.get('score')}, cos {card.get('cos')}, visible {card.get('visible_share')}), "
+        L.append(f"  {q['id']}: frame {card.get('frame_id')} (score {card.get('score')}, cos {card.get('cos')}, visible {card.get('visible_share')}, "
+                 f"arrow {card.get('arrow_px')} px{', FALLBACK frame: no frame met the rules' if card.get('fallback_frame') else ''}), "
                  f"highlight {card.get('highlight')} (contrast {card.get('highlight_contrast')}); {time.time() - t1:.1f} s")
     v3m = V2R.load_mesh(V3R.SEND / "B_plate.stl")
     tri = np.load(V4 / "review_items_tri.npz")

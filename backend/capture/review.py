@@ -164,10 +164,11 @@ def visible_fraction(vw, pts, occluder, tol=0.4):
     return float(((t < 0) | (dz > z - tol)).mean())
 
 
-def best_view(views, images, centre, normal, region_pts, min_cos=0.3, occluder=None, top=6):
+def best_view(views, images, centre, normal, region_pts, min_cos=0.3, occluder=None, top=6, ranked=False):
     """The view that shows a region best: score = facing (cos between its normal and the direction to the camera) x sharpness (log variance
     of the Laplacian in the crop) x size of the crop x visible share of the region (occlusion test against `occluder`, a coarse mesh, for the
-    `top` best views by the other terms). Returns (index, score, crop box, cos, sharpness, visible share) or None."""
+    `top` best views by the other terms). Returns (index, score, crop box, cos, sharpness, visible share) or None; ranked=True returns the
+    occlusion-tested candidates, best first."""
     cands = []
     for i, ((_, vw), img) in enumerate(zip(views, images)):
         C_ = -vw.R.T @ vw.t
@@ -188,6 +189,8 @@ def best_view(views, images, centre, normal, region_pts, min_cos=0.3, occluder=N
     if occluder is not None:
         cands = [(i, s * (vis := visible_fraction(views[i][1], region_pts, occluder)), box, cos, sh, vis) for i, s, box, cos, sh, _ in cands[:top]]
         cands.sort(key=lambda c: -c[1])
+    if ranked:
+        return cands
     return cands[0] if cands else None
 
 
