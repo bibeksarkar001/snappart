@@ -344,7 +344,7 @@ def detect_bump(vv, imgs, face, delta, min_cos=0.5, ppm=20):
         top = float(np.median([o[1] + o[3] / 2 for o in oo]))
         r = step_band(g, ppm, top + 0.3, top + 3.2, min(o[0] - o[2] / 2 for o in oo), max(o[0] + o[2] / 2 for o in oo), w_lo=top - 0.3, w_hi=top + 3.2)
         if r is not None:
-            r.update(top=top, len=r["s1"] - r["s0"], C=-v.R.T @ v.t)
+            r.update(top=top, len=r["s1"] - r["s0"], C=-v.R.T @ v.t, name=v.name, cos=facing(v, face))
             per.setdefault(vid, []).append(r)
     best = None
     for vid, lst in per.items():
@@ -363,7 +363,22 @@ def detect_bump(vv, imgs, face, delta, min_cos=0.5, ppm=20):
             rays.append((r["C"], (P - r["C"]) / np.linalg.norm(P - r["C"])))
         ends.append(triangulate(rays)[0])
     return {"ends": [e.tolist() for e in ends], "length_mm": float(np.linalg.norm(ends[1] - ends[0])), "video": vid, "agree": len(ok), "found": nf,
-            "ridge_to_opening_mm": float(np.median([r["t_edge"] - r["top"] for r in ok]))}
+            "ridge_to_opening_mm": float(np.median([r["t_edge"] - r["top"] for r in ok])),
+            "per_view": [{"name": r["name"], "cos": r["cos"], "step_mm": r["step"], "edge_to_opening_mm": r["t_edge"] - r["top"], "len_mm": r["len"]} for r in ok]}
+
+
+def ridge_from_steps(bump, face, min_cos=0.9):
+    """Where the ridge stands, from the edge steps in near-head-on views (cos >= min_cos, so the rectified step is the ridge's extent
+    projected along the face normal): within the detected span the visible edge lies `step` mm further from the openings (along e2) than
+    beside it. So the face beside the span ends at the far edge minus step*e2 (the wall the ridge stands on) and the ridge reaches step mm
+    out of that wall along e2. Returns {"wall_line" (2 points), "extent_mm", "extent_sd_mm", "views", "normal" (= e2)} or None."""
+    st = [p["step_mm"] for p in bump["per_view"] if p["cos"] >= min_cos]
+    if len(st) < 3:
+        return None
+    e2 = np.asarray(face["e2"], float)
+    ext = float(np.median(st))
+    return {"wall_line": [(np.asarray(e) - ext * e2).tolist() for e in bump["ends"]], "extent_mm": ext, "extent_sd_mm": float(np.std(st)),
+            "extent_range_mm": [float(min(st)), float(max(st))], "views": len(st), "normal": e2.tolist()}
 
 
 def bump_feature(bump, grooves):

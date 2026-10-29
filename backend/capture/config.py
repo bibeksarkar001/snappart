@@ -37,3 +37,14 @@ BUMP_LENGTH_USER_MM = 19.7
 BUMP_WIDTH_USER_MM = 2.3        # owner also said 2.2 once: to be confirmed
 BUMP_HEIGHT_USER_MM = 2.3       # height above the surface the grooves open in
 PLATE_THICKNESS_USER_MM = 2.6   # thin flat plate between the window and the groove column (re-measured; replaces 0.9-1.0)
+
+# lock ridge cross-section (v4): a hill, straight sides from the 2.3 mm base to a rounded peak. ESTIMATE: no frame shows the profile edge-on.
+BUMP_TOP_RADIUS_MM = 0.5
+TOP_SHAPE_RADIUS_MM = {"sharp": 0.1, "slightly rounded": 0.5, "quite rounded": 1.0}   # answers of the "top shape" card (estimates)
+
+# "Review your model" anomaly finder (v4 stage 3): placeholders until tuned on the owner's marks
+REVIEW_LUMP_RADIUS_MM = 2.5
+REVIEW_LUMP_RMS_MM = 0.15
+REVIEW_MIN_VIEWS = 3
+REVIEW_DISAGREE_MM = 1.0
+REVIEW_MIN_AREA_MM2 = 4.0
