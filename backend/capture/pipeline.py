@@ -16,8 +16,6 @@ import numpy as np
 
 from . import carve, config as C, features as F, frames, masks as M, mat, matcal, register as Rg
 
-cv2.setNumThreads(0)        # no OpenCV thread pool: worker processes are forked, and a fork can inherit a held pool lock (a carve deadlock was seen)
-
 
 class Timer:
     def __init__(self, log):
@@ -42,8 +40,12 @@ PROCS = min(8, os.cpu_count() or 1)
 _G: dict = {}                                    # large inputs shared with forked workers (not pickled)
 
 
+def _init_worker():
+    cv2.setNumThreads(0)        # forked workers never use the OpenCV thread pool they inherit (using it deadlocked the carve, v2 stage 4)
+
+
 def _pool(n):
-    return mp.get_context("fork").Pool(n)
+    return mp.get_context("fork").Pool(n, initializer=_init_worker)
 
 
 def _scan_one(args):
@@ -214,8 +216,8 @@ def k_for(n_views):
     return max(2, round(C.K_ROBUST * n_views / C.K_TUNED_AT_VIEWS))
 
 
-def carve_joint(views, T, ref, procs=PROCS, k=None):
-    """carve.carve_adaptive with the fine pass split over forked workers (same field). k defaults to k_for(number of views)."""
+def carve_joint(views, T, ref, procs=PROCS, k=None, vs=None):
+    """carve.carve_adaptive with the fine pass split over forked workers (same field). k defaults to k_for(number of views), vs to the frozen voxel."""
     allv = [v.moved(T[n]) for n in views for v in views[n]]
     k = k_for(len(allv)) if k is None else k
     floors = [T[n] for n in views if n != ref]
@@ -223,7 +225,7 @@ def carve_joint(views, T, ref, procs=PROCS, k=None):
     idx = np.argwhere(f > 0)
     lo = np.maximum(np.asarray(C.BOX_LO, float), g.lo + idx.min(0) * g.vs - 3.0)
     hi = np.minimum(np.asarray(C.BOX_HI, float), g.lo + idx.max(0) * g.vs + 3.0)
-    g = carve.Grid(lo, hi, C.VOXEL_MM)
+    g = carve.Grid(lo, hi, vs or C.VOXEL_MM)
     X = g.points()
     _G.update(views=allv, X=X, floors=floors, k=k)
     step = -(-len(X) // (procs * 4))

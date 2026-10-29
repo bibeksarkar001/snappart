@@ -175,19 +175,6 @@ def plate_region(field, g, bump):
     return float(xw), float(x1), float(y0), float(y1)
 
 
-def face_rms(v, fc, box, up):
-    """RMS distance (mm) of the mesh's surface samples in box (x0, x1, y0, y1), facing up (+z) or down, to their least-squares plane."""
-    import numpy as np
-    from capture import snap
-    P, N = snap.oriented_points(v, fc, 200000)
-    m = (P[:, 0] > box[0] + 0.5) & (P[:, 0] < box[1] - 0.5) & (P[:, 1] > box[2] + 0.5) & (P[:, 1] < box[3] - 0.5) & ((N[:, 2] > 0.5) if up else (N[:, 2] < -0.5))
-    q = P[m]
-    c = q.mean(0)
-    n = np.linalg.svd(q - c)[2][2]
-    r = (q - c) @ n
-    return float(np.sqrt((r ** 2).mean())), int(m.sum()), float(c[2]), float(np.degrees(np.arccos(abs(n[2]))))
-
-
 def stage2():
     import cv2
     import numpy as np
@@ -227,8 +214,8 @@ def stage2():
     carve.write_stl(SEND / "B_plate.stl", va, fa)
     cv2.imwrite(str(SEND / "B_plate_3view.png"), carve.render3(va, fa))
     box = (x0, x1, y0, y1)
-    rb = {k: face_rms(vb, fb, box, up) for k, up in (("lower", False), ("upper", True))}
-    ra = {k: face_rms(va, fa, box, up) for k, up in (("lower", False), ("upper", True))}
+    rb = {k: F.face_rms(vb, fb, box, up) for k, up in (("lower", False), ("upper", True))}
+    ra = {k: F.face_rms(va, fa, box, up) for k, up in (("lower", False), ("upper", True))}
     # cross-section at y = 101 through the plate
     iy = int(round((101 - g.lo[1]) / g.vs))
     runs = {}

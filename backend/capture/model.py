@@ -15,16 +15,29 @@ from . import carve, config as C
 from .features import box_sdf
 
 
-def oriented_box(field, g, c, axes, half, add):
-    """Union (add) or subtraction of an oriented box with the field. An added box must fit inside the grid (it would be clipped otherwise)."""
+def _sub(g, shape, lo, hi):
+    """Index slices and points of the grid's sub-box covering [lo, hi] (mm)."""
+    i0 = np.clip(np.floor((np.asarray(lo) - g.lo) / g.vs).astype(int), 0, np.array(shape) - 1)
+    i1 = np.clip(np.ceil((np.asarray(hi) - g.lo) / g.vs).astype(int) + 1, 1, np.array(shape))
+    sl = tuple(slice(a, b) for a, b in zip(i0, i1))
+    ax = [g.lo[k] + g.vs * np.arange(i0[k], i1[k]) for k in range(3)]
+    return sl, np.stack(np.meshgrid(*ax, indexing="ij"), -1)
+
+
+def oriented_box(field, g, c, axes, half, add, margin=3.0):
+    """Union (add) or subtraction of an oriented box with the field, evaluated only within margin mm of the box (the field is clipped at
+    +-3 mm, so nothing changes further away). An added box must fit inside the grid (it would be clipped otherwise)."""
+    sg = np.array([[a, b, d] for a in (-1, 1) for b in (-1, 1) for d in (-1, 1)], float)
+    P = c + (sg * half) @ axes
     if add:
-        sg = np.array([[a, b, d] for a in (-1, 1) for b in (-1, 1) for d in (-1, 1)], float)
-        P = c + (sg * half) @ axes
-        hi = g.lo + (np.array(g.shape) - 1) * g.vs
+        hi = g.lo + (np.array(field.shape) - 1) * g.vs
         if (P < g.lo).any() or (P > hi).any():
             raise ValueError(f"added feature reaches {P.min(0).round(2).tolist()}..{P.max(0).round(2).tolist()}, outside the model grid {g.lo.round(2).tolist()}..{hi.round(2).tolist()}")
-    d = box_sdf(g.points(), c, axes, half).astype(np.float32).reshape(field.shape)
-    return np.maximum(field, -d) if add else np.minimum(field, d)
+    sl, X = _sub(g, field.shape, P.min(0) - margin, P.max(0) + margin)
+    d = box_sdf(X.reshape(-1, 3), c, axes, half).astype(np.float32).reshape(X.shape[:3])
+    out = field.copy()
+    out[sl] = np.maximum(field[sl], -d) if add else np.minimum(field[sl], d)
+    return out
 
 
 def groove_ops(grooves, depth, out_mm=3.0):
@@ -49,13 +62,14 @@ def bump_op(b, length, width, height, embed_mm=1.0):
 def plate_op(field, g, p, thickness):
     """Inside the plate's footprint region (2D mask over the grid's x, y), replace the field by the slab between the outer plane and the
     plane `thickness` inside it (signed distance to the slab, clipped like the carve field)."""
-    X = g.points().reshape(*field.shape, 3)
-    n = np.asarray(p["normal"], float)                 # outward (from the plate into the air on the outer side)
-    s = X @ n + p["d"]                                 # signed distance from the outer plane, + outward
-    slab = np.clip(np.minimum(-s, s + thickness), -3, 3).astype(np.float32)
     m = np.asarray(p["mask"], bool)                    # (nx, ny): columns of the grid inside the plate region
+    ix, iy = np.nonzero(m)
+    Z = g.lo[2] + g.vs * np.arange(field.shape[2])
+    X = np.stack([g.lo[0] + g.vs * ix, g.lo[1] + g.vs * iy], 1)
+    n = np.asarray(p["normal"], float)                 # outward (from the plate into the air on the outer side)
+    s = (X @ n[:2])[:, None] + Z[None, :] * n[2] + p["d"]   # signed distance from the outer plane, + outward
     out = field.copy()
-    out[m] = slab[m]
+    out[ix, iy] = np.clip(np.minimum(-s, s + thickness), -3, 3).astype(np.float32)
     return out
 
 

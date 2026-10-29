@@ -414,3 +414,15 @@ def plate_faces(vv, imgs, region, videos_by_side, zs=None, min_cos=0.6):
         z, sd, _ = plane_sweep([v for v, _ in sel], [im for _, im in sel], lambda z: face_z(z, up), zs)
         out[side] = {"z": z, "boot_sd": sd, "views": len(sel), "video": vid}
     return out
+
+
+def face_rms(v, fc, box, up, n=200000):
+    """Roughness: RMS distance (mm) of the mesh's surface samples in box (x0, x1, y0, y1; inset 0.5 mm), facing up (+z) or down, to their own
+    least-squares plane. Returns (rms, samples, mean z, tilt of the plane from horizontal in degrees)."""
+    P, N = snap.oriented_points(v, fc, n)
+    m = (P[:, 0] > box[0] + 0.5) & (P[:, 0] < box[1] - 0.5) & (P[:, 1] > box[2] + 0.5) & (P[:, 1] < box[3] - 0.5) & ((N[:, 2] > 0.5) if up else (N[:, 2] < -0.5))
+    q = P[m]
+    c = q.mean(0)
+    n = np.linalg.svd(q - c)[2][2]
+    r = (q - c) @ n
+    return float(np.sqrt((r ** 2).mean())), int(m.sum()), float(c[2]), float(np.degrees(np.arccos(abs(n[2]))))
