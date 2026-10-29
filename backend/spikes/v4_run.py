@@ -165,23 +165,30 @@ def owner_region_mask(img, colour="blue"):
     import cv2
     import numpy as np
     blue, red = owner_strokes(img)
-    s = (blue if colour == "blue" else red).astype(np.uint8)
-    s = cv2.dilate(s, np.ones((3, 3), np.uint8))
-    s = cv2.morphologyEx(s, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))
+    s0 = cv2.dilate((blue if colour == "blue" else red).astype(np.uint8), np.ones((3, 3), np.uint8))
+    for k in (25, 45, 75, 105):                                         # close gaps in a hand-drawn outline: smallest kernel that encloses something
+        out = _enclosed(img, cv2.morphologyEx(s0, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8)))
+        if out.any():
+            return out
+    return out
+
+
+def _enclosed(img, s):
+    import cv2
+    import numpy as np
     h, w = s.shape
     ff = s.copy()
     cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 1)
-    filled = (s | (1 - ff)).astype(np.uint8)
+    holes = ((1 - ff) & (1 - s)).astype(np.uint8)                       # pixels enclosed by strokes
     g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    n, lab, st, _ = cv2.connectedComponentsWithStats(filled)
-    out = np.zeros_like(filled)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(holes)
+    out = np.zeros_like(holes)
     for i in range(1, n):
         comp = lab == i
-        inner = comp & (s == 0)
-        if inner.sum() < 400 or np.median(g[inner]) > 215:               # a bare line, or the speech bubble
+        if comp.sum() < 400 or np.median(g[comp]) > 215:                 # too small, or the speech bubble's light interior
             continue
         out[comp] = 1
-    return out
+    return cv2.dilate(out, np.ones((15, 15), np.uint8))                 # back out to the middle of the stroke
 
 
 def owner_regions(verts, faces, scale=0.5):
@@ -553,8 +560,9 @@ def stage2():
     tick("plate sweep")
     # flatness of the owner's regions before (v3) and after
     flat = {}
+    x_ok = xw - C.BUMP_HEIGHT_USER_MM - 0.5                         # flatness measured short of the ridge (its flanks are not the face)
     for k in ("review_4", "review_5"):
-        poly = clip(regs[k]["polygon_xy"])
+        poly = [[min(x, x_ok), y] for x, y in clip(regs[k]["polygon_xy"])]
         flat[k] = {"before": region_stats(*v3m, poly, bp), "after": region_stats(v2, fc2, poly, bp), "polygon_xy": poly}
     a2, b2, epts2, erms2 = window_edge(f2, g, bp, y0, y1)
     tick("flatness")
@@ -571,7 +579,9 @@ def stage2():
          "  owner's regions in 3D: each outline mapped through the fitted owner camera onto the v3 mesh (triangles visible inside it): "
          + ", ".join(f"{k} {len(r['tri'])} triangles" for k, r in regs.items()) + ".",
          f"  review_4 region (xy polygon, clipped to the plate area between the window edge and the rails' inner faces): {np.round(flat['review_4']['polygon_xy'], 1).tolist()}",
-         "  made a single flat face: its outer face on the bottom plane, its pocket-side face flat, plate thickness from config.py (both from flatten_region)."]
+         "  made a single flat face: its outer face on the bottom plane, its pocket-side face flat, plate thickness from config.py (both from flatten_region).",
+         f"  flatness (RMS of surface samples to their own least-squares plane; 'down' = the pocket side the owner looked at, 'up' = the outer face; "
+         f"measured inside the region up to x {x_ok:.2f}, 0.5 mm short of the ridge's peak, so the ridge's flanks are not counted):"]
     for k in ("review_4", "review_5"):
         for when in ("before", "after"):
             s = flat[k][when]
@@ -581,11 +591,14 @@ def stage2():
     L += [f"  all corrections vs v3: removed {tot['removed_mm3']:.1f} mm3, added {tot['added_mm3']:.1f} mm3",
           f"(b) window edge: line x = {a:.2f} + {b:+.4f} y fitted (least absolute deviation) to {len(epts)} edge points of the carve at 1.3 mm under the bottom "
           f"plane; points' rms to the line before {erms:.3f} mm (jaggedness), after {erms2:.3f} mm; the edge moved from mean x {epts[:, 0].mean():.2f} to "
-          f"{epts2[:, 0].mean():.2f}. Material in the window on the near side of the line removed (4 mm strip).",
+          f"{epts2[:, 0].mean():.2f}. Material in the window on the near side of the line removed (4 mm strip). At the plate's level the carved edge was "
+          "already straight; the jagged look in review_5 is the hull's ramp under the plate, which the slab replaces (review_5 flatness above).",
           f"(c) plate: outer face on the bottom plane, thickness {th} mm (config.py, USER-SUPPLIED), from the window edge to the slot column wall (x {xw:.2f}).",
           "  re-measured (photo-consistency sweeps of planes parallel to the bottom plane, offset inward; 20 bootstrap resamples):"]
     L += [f"    {k}: offset {r['offset_mm']:.2f} mm (sd {r['boot_sd']:.2f}), {r['views']} views of {r['video']}, contrast {r['contrast']:.2f}" for k, r in meas.items()]
     L += [f"    MEASURED SEPARATION {sep:.2f} mm vs owner 2.6 ({sep - 2.6:+.2f}). " + ("Within 0.3 mm." if abs(sep - 2.6) <= 0.3 else "Still in conflict; 2.6 is used (user-supplied)."),
+          f"    the outer face also sweeps to {meas['outer (+z) face']['offset_mm']:.2f} mm under the bottom plane (a recess the silhouettes cannot see), "
+          "against the owner's 'flat like the bottom'. The model follows the owner (outer face on the bottom plane); both conflicts need the owner's calipers.",
           f"B_v4.stl: watertight {ca['watertight']} (boundary {ca['boundary_edges']}, non-manifold {ca['non_manifold_edges']}), volume {ca['volume_mm3']:.0f} mm3, {ca['triangles']} triangles",
           "renders from the owner's five viewpoints: before_after_review1..5.png (left v3, right v4)",
           "corrections that turn v3 into v4: out/v4/corrections_v4.json (also in report.json, stage 4)",
@@ -657,13 +670,14 @@ def stage3():
         meas[rad] = Rv.flags(v, fc, vv, th={"lump_radius_mm": rad})
     tick("measurements (3 radii)")
     rows = []
+    nv = Rv.vertex_normals(v, fc)
     for rad, ms in meas.items():
         for lr in (0.08, 0.1, 0.12, 0.15, 0.2, 0.25, 0.3, 0.4):
             for mv in (0, 1, 2, 3):
                 for dg in (0.5, 0.75, 1.0, 1.5, 2.0, 1e9):
                     for ma in (2.0, 4.0, 8.0, 16.0):
                         th = {"lump_radius_mm": rad, "lump_rms_mm": lr, "min_views": mv, "disagree_mm": dg, "min_area_mm2": ma}
-                        items = Rv.find(v, fc, vv, boxes, th=th, measured=ms)
+                        items = Rv.find(v, fc, vv, boxes, th=th, measured=ms, nv=nv)
                         for it in items:
                             it["fc_tri"] = fc[it["triangles"]]
                         caught, false, _ = score(items, owner, v)
@@ -725,8 +739,151 @@ def stage3():
     print("\n".join(L))
 
 
+def held_out_iou(field_fn, views, T, corr, feats, ans, folds=3):
+    """Held-out silhouette IoU (holdout.joint's folds, 10 views per fold) of the plain carve and of the carve + features + corrections."""
+    import numpy as np
+    from capture import carve, config as C, model as Mo, pipeline as P
+    allv = [(n, i) for n in NAMES for i in range(len(views[n]))]
+    plain, full = [], []
+    for fo in range(folds):
+        hold = set()
+        for n in NAMES:
+            share = max(round(10 * len(views[n]) / len(allv)), 1)
+            step = max(len(views[n]) // share, 1)
+            hold |= {(n, i) for i in list(range(fo % step, len(views[n]), step))[:share]}
+        train = {n: [x for i, x in enumerate(views[n]) if (n, i) not in hold] for n in NAMES}
+        _, gg, ff = P.carve_joint(train, T, NAMES[0], k=C.K_ROBUST)
+        fe = {k: v for k, v in feats.items() if k != "plate"}                 # the v3 plate's raster mask belongs to the full grid; v4 re-places it
+        ma, mb = Mo.mesh(ff, gg), Mo.mesh(Mo.apply(ff, gg, fe, ans, corr), gg)
+        for n, i in sorted(hold):
+            mv = views[n][i].moved(T[n])
+            plain.append(carve.view_iou(*ma, mv))
+            full.append(carve.view_iou(*mb, mv))
+    return float(np.mean(plain)), float(np.mean(full)), len(plain)
+
+
+def stage4():
+    """Corrections engine: report.json with "corrections"; rebuild(v3 model, answers, corrections) reproduces the stage 1+2 model."""
+    import numpy as np
+    from capture import carve, corrections as Cr, dataset, model as Mo, report as Rp
+    t0, d0 = time.time(), date()
+    tm = {}
+    tick = lambda k, t=[time.time()]: (tm.__setitem__(k, round(time.time() - t[0], 1)), t.__setitem__(0, time.time()))
+    m3 = Mo.load(V3R.V3 / "model_B")
+    corr = json.loads((V4 / "corrections_v4.json").read_text())
+    fids = list(m3["features"]) + ["bump"]
+    for c in corr:
+        Cr.validate(c, fids, [])
+    ans = Mo.default_answers()
+    tick("load + validate")
+    t1 = time.time()
+    va, fa = Mo.rebuild(m3, ans, corr)
+    t_rebuild = time.time() - t1
+    vb, fb = V2R.load_mesh(SEND / "B_v4.stl")
+    same = len(va) == len(vb) and float(np.abs(np.sort(va.round(4), axis=0) - np.sort(vb, axis=0)).max()) < 1e-3
+    tick("rebuild")
+    # a second answer set: answers still drive the corrected model (plate 2.0 mm, sharp ridge top)
+    t1 = time.time()
+    vc, fc_ = Mo.rebuild(m3, {**ans, "plate_thickness_mm": 2.0, "bump_top_shape": "sharp"}, corr)
+    t_rebuild2 = time.time() - t1
+    dvol = carve.edge_census(vc, fc_)["volume_mm3"] - carve.edge_census(va, fa)["volume_mm3"]
+    tick("rebuild with other answers")
+    views = {n: dataset.load_views(n) for n in NAMES}
+    T = V2R.load_T()
+    prev = json.loads((V3R.SEND / "results.json").read_text())["4_report"]
+    hp, hf, nh = held_out_iou(None, views, T, corr, m3["features"], ans)
+    tick("held-out IoU (3 folds)")
+    feats_eff = Mo.correct_features(m3["field"], m3["grid"], m3["features"], corr)
+    items = json.loads((SEND / "review_items.json").read_text()) if (SEND / "review_items.json").exists() else []
+    vm = [x.moved(T[n]) for n in NAMES for x in views[n]]
+    v0, f0 = Mo.mesh(m3["field"], m3["grid"])
+    r2 = json.loads((SEND / "results.json").read_text())["2_flat_plate"]
+    warns = [f"lock ridge: placed on the slot column's inner wall (pocket side) from the video; the brief said 'underside' meaning the +z face, where "
+             "the video shows no ridge. Owner to confirm.",
+             f"plate: re-measured face separation {r2['separation_mm']:.2f} mm (planes parallel to the bottom plane) vs 2.6 mm used (user-supplied)."]
+    user_given = [k for k in ans if k != "bump_top_radius_mm"]
+    rep = Rp.build((v0, f0), feats_eff, ans, user_given, caliper={"length": 51.6, "width": 41.9, "height": 11.8}, held_out_iou=hp, views_moved=vm,
+                   warnings=warns, corrections=corr, review_items=items)
+    rep["held_out_iou_with_features"] = hf
+    rep["rebuild_reproduces_B_v4"] = bool(same)
+    Rp.write(SEND / "report.json", rep)
+    tick("report")
+    L = [f"STAGE 4: corrections engine. start {d0}.",
+         "  operations (backend/capture/model.py): flatten_region(region, to_plane, thickness or the plate answer; with feature_id it re-places that slab "
+         "feature), remove_region(prism), move_feature_to_opposite_face (marches through the material along -normal), set_feature_shape (box | rounded | "
+         "hill, optional top radius), add_feature (adds or replaces by id). JSON schema + validation + the Muse Spark sentence hook: backend/capture/corrections.py "
+         "(from_sentence takes the model call as an argument; nothing calls a model).",
+         f"  the owner's corrections for part B ({len(corr)}): " + "; ".join(f"{c['op']}{' ' + c.get('feature_id', '') if c.get('feature_id') else ''} ({c.get('review_item') or c.get('source')})" for c in corr),
+         f"  stored in report.json under 'corrections'; all {len(corr)} pass the schema.",
+         f"  rebuild(v3 model_B, answers, corrections): {t_rebuild:.1f} s, no model call; reproduces stage 2's B_v4.stl (same vertices within 1e-3 mm): {same}",
+         f"  same corrections with other answers (plate 2.0 mm, ridge top 'sharp'): {t_rebuild2:.1f} s, volume {dvol:+.1f} mm3 vs the default answers",
+         f"  held-out IoU (3 folds x 10 views, 0.15 mm, k=12, {nh} views): plain carve {hp:.4f}, with features + corrections {hf:.4f} ({hf - hp:+.4f}); "
+         f"v3 with its features: {prev['held_out_features']:.4f}",
+         f"  report.json: {len(rep['questions'])} questions (" + ", ".join(q["id"] for q in rep["questions"]) + f"), {len(rep['review_items'])} review items, "
+         f"{len(rep['features'])} feature values",
+         "timings (s): " + ", ".join(f"{k} {v}" for k, v in tm.items()),
+         f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("4_corrections", "\n".join(L), {"rebuild_s": t_rebuild, "reproduces": bool(same), "held_out_plain": hp, "held_out_features": hf,
+                                               "held_out_v3_features": prev["held_out_features"], "rebuild_other_answers_s": t_rebuild2, "timings": tm})
+    print("\n".join(L))
+
+
+def stage5():
+    """'Show me where' question cards for every question in report.json and every review item."""
+    import cv2
+    import numpy as np
+    from capture import model as Mo, question_cards as Q
+    t0, d0 = time.time(), date()
+    rep = json.loads((SEND / "report.json").read_text())
+    m3 = Mo.load(V3R.V3 / "model_B")
+    corr = rep["corrections"]
+    ans = Mo.default_answers()
+    feats = Mo.correct_features(m3["field"], m3["grid"], m3["features"], corr)
+    f4 = Mo.apply(m3["field"], m3["grid"], m3["features"], ans, corr)
+    vcm, fcm = coarse_mesh(f4, m3["grid"])
+    vv, _ = V2R.all_views()
+    imgs = color_crops(vv)
+    out = SEND / "cards"
+    cards, L = [], [f"STAGE 5: question cards (backend/capture/question_cards.py). start {d0}. Best frame = facing x sharpness x crop size x visible "
+                    "share (occlusion test against the v4 model); highlight colour = the reserved colour (magenta, cyan, yellow) with the largest mean Lab "
+                    "distance from the pixels under the outline; white outer stroke; labelled dimension arrow."]
+    for q in rep["questions"]:
+        t1 = time.time()
+        geom = Q.anchors(q["id"], feats, ans)
+        img, rec = Q.frame_card(geom, vv, imgs, (vcm, fcm))
+        card = Q.write_card(out / q["id"], q, img, rec, Q.diagram(q["id"]))
+        cards.append(card)
+        L.append(f"  {q['id']}: frame {card.get('frame_id')} (score {card.get('score')}, cos {card.get('cos')}, visible {card.get('visible_share')}), "
+                 f"highlight {card.get('highlight')} (contrast {card.get('highlight_contrast')}); {time.time() - t1:.1f} s")
+    v3m = V2R.load_mesh(V3R.SEND / "B_plate.stl")
+    tri = np.load(V4 / "review_items_tri.npz")
+    for it in rep["review_items"]:
+        t1 = time.time()
+        img, rec = Q.region_card(tri[it["id"]], *v3m, it["normal"], vv, imgs, (vcm, fcm), f"{it['id']}: {it['kind']}")
+        q = {"id": f"review_{it['id']}", "question": it["question"], "choices": it["choices"], "hint": it["reason"], "unit": ""}
+        card = Q.write_card(out / q["id"], q, img, rec, Q.diagram("review"))
+        cards.append(card)
+        L.append(f"  review_{it['id']} ({it['kind']}): frame {card.get('frame_id')} (score {card.get('score')}, visible {card.get('visible_share')}), "
+                 f"highlight {card.get('highlight')}; {time.time() - t1:.1f} s")
+    # contact sheet of all cards for checking by eye
+    tiles = []
+    for c in cards:
+        im = cv2.imread(str(out / c["question_id"] / "card.png"))
+        if im is None:
+            continue
+        im = cv2.resize(im, (480, int(480 * im.shape[0] / im.shape[1])))
+        im = cv2.copyMakeBorder(im, 30, 0, 0, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+        cv2.putText(im, c["question_id"], (6, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
+        tiles.append(cv2.copyMakeBorder(im, 0, 520 - im.shape[0] if im.shape[0] < 520 else 0, 0, 6, cv2.BORDER_CONSTANT, value=(255, 255, 255))[:520])
+    rows = [np.hstack(tiles[i:i + 4] + [np.full_like(tiles[0], 255)] * (4 - len(tiles[i:i + 4]))) for i in range(0, len(tiles), 4)]
+    cv2.imwrite(str(SEND / "cards_contact_sheet.png"), np.vstack(rows))
+    L += [f"  {len(cards)} cards in cards/<id>/ (card.png, card.json, diagram.svg); contact sheet cards_contact_sheet.png", f"end {date()}; elapsed {time.time() - t0:.0f} s"]
+    save_stage("5_cards", "\n".join(L), {"cards": cards})
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True)
     a = ap.parse_args()
-    {"views": stage_views, "1": stage1, "2": stage2, "3": stage3}[a.stage]()
+    {"views": stage_views, "1": stage1, "2": stage2, "3": stage3, "4": stage4, "5": stage5}[a.stage]()

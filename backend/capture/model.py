@@ -83,7 +83,8 @@ def plate_op(field, g, p, thickness):
     n = np.asarray(p["normal"], float)                 # outward (from the plate into the air on the outer side)
     s = (X @ n[:2])[:, None] + Z[None, :] * n[2] + p["d"]   # signed distance from the outer plane, + outward
     out = field.copy()
-    out[ix, iy] = np.clip(np.minimum(-s, s + thickness), -3, 3).astype(np.float32)
+    slab = np.clip(np.minimum(-s, s + thickness), -3, 3).astype(np.float32)
+    out[ix, iy] = np.minimum(slab, field[ix, iy])      # the carve is an outer bound: a slab never adds material outside it (e.g. over a bevel)
     return out
 
 
