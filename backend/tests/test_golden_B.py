@@ -83,7 +83,70 @@ def test_golden_B(tmp_path):
     tick('save/load')
     v2, f2 = Mo.rebuild(Mo.load(tmp_path / "model"), ans)
     assert np.array_equal(v2, va) and np.array_equal(f2, fa)
+    tick('rebuild')
+    v4_checks(vv)
+    tick('v4 checks')
     dt = time.time() - t0
     print(f"footprint {pl['length_mm']:.2f} x {pl['width_mm']:.2f}, height {pl['z_max'] - pl['z_min']:.2f}, held-out IoU {iou:.4f}, grooves {len(ops)}, "
           f"bump {b['length_mm']:.2f} mm ({b['agree']} views), plate upper face z {pf['upper']['z']:.2f}, {dt:.0f} s")
     assert dt < 120
+
+
+V4 = CACHE.parents[1] / "v4"
+
+
+def v4_checks(vv):
+    """v4 (owner review): the owner's corrections rebuild the v4 model from the v3 model; the lock ridge is a hill on the slot column's inner
+    wall; the review_4 region is flat on the bottom plane; the anomaly finder flags the owner's marks on the unfixed v3 model; a card exists
+    for every question. Skipped piece by piece when the v4 outputs are missing."""
+    if not (V4 / "corrections_v4.json").exists():
+        return
+    from capture import corrections as Cr, review as Rv, snap
+    send = V4 / "SEND_TO_CLAUDE"
+    corr = json.loads((V4 / "corrections_v4.json").read_text())
+    m3 = Mo.load(CACHE.parents[1] / "v3" / "model_B")
+    for c in corr:
+        Cr.validate(c, list(m3["features"]) + ["bump"], [])
+    ans = Mo.default_answers()
+    v, fc = Mo.rebuild(m3, ans, corr)                                            # corrections reproduce the v4 model
+    assert carve.edge_census(v, fc)["watertight"]
+    from cad.section import read_stl
+    from scipy.spatial import cKDTree
+    vb = np.unique(np.round(read_stl(send / "B_v4.stl").reshape(-1, 3), 4), axis=0)
+    va = np.unique(np.round(v, 4), axis=0)
+    assert len(va) == len(vb) and cKDTree(vb).query(va)[0].max() < 1e-3          # same vertices (STL stores float32)
+    # ridge: a hill standing out of the slot column's inner wall toward the plate (outward normal -x), peak 2.3 mm out, narrower at the top
+    r = next(c["feature"] for c in corr if c["op"] == "add_feature")
+    assert r["kind"] == "ridge" and r["shape"] == "hill" and r["normal"][0] < -0.99
+    f4 = Mo.apply(m3["field"], m3["grid"], m3["features"], ans, corr)
+    c0, n, w = (np.asarray(r[k]) for k in ("base_mid", "normal", "across"))
+    out = lambda h, u: Mo.field_at(f4, m3["grid"], c0 + n * h + w * u)[0] > 0
+    assert out(2.1, 0) and not out(2.6, 0)                                        # peak at 2.3 mm
+    assert out(0.3, 1.0) and not out(1.9, 0.9)                                    # wide at the base, narrow near the top
+    # review_4 region: pocket side flat, outer face on the bottom plane (within 0.15 mm), measured short of the ridge and the end bevel
+    s2 = json.loads((send / "results.json").read_text())["2_flat_plate"]
+    bp, poly = s2["bottom_plane"], np.asarray(s2["flatness"]["review_4"]["polygon_xy"])
+    from matplotlib.path import Path as MPath
+    P, N = snap.oriented_points(v, fc, 200000)
+    ins = MPath(poly).contains_points(P[:, :2]) & (P[:, 0] < 162.0)
+    for side in (N[:, 2] < -0.5, N[:, 2] > 0.5):
+        q = P[ins & side]
+        assert np.sqrt((((q - q.mean(0)) @ np.linalg.svd(q - q.mean(0))[2][2]) ** 2).mean()) <= 0.15
+    up = P[ins & (N[:, 2] > 0.5)]
+    assert np.sqrt(((up @ np.asarray(bp["n"]) + bp["d"]) ** 2).mean()) <= 0.15
+    # anomaly finder on the unfixed v3 model flags the owner's marks (frozen thresholds; marks saved by the v4 run)
+    marks = np.load(V4 / "owner_marks.npz")
+    v3, f3 = Mo.mesh(Mo.apply(m3["field"], m3["grid"], m3["features"], ans), m3["grid"])
+    v2res = json.loads((CACHE.parents[1] / "v2" / "SEND_TO_CLAUDE" / "results.json").read_text())
+    box = ("lock_bump", Mo.bump_op(m3["features"]["bump"], ans["bump_length_mm"], ans["bump_width_mm"], ans["bump_height_mm"]),
+           {k: x["agree"] for k, x in v2res["2_bump"]["per_video"].items()})
+    items = Rv.find(v3, f3, vv, [box])
+    from scipy.spatial import cKDTree
+    for k in marks.files:
+        tm = cKDTree(marks[k])
+        assert any((tm.query(v3[np.unique(f3[it["triangles"]])], distance_upper_bound=1.0)[0] < 1.0).mean() >= 0.2 or
+                   (cKDTree(v3[np.unique(f3[it["triangles"]])]).query(marks[k], distance_upper_bound=1.0)[0] < 1.0).mean() >= 0.2 for it in items), k
+    # a card for every question in the v4 report
+    rep = json.loads((send / "report.json").read_text())
+    for q in rep["questions"]:
+        assert (send / "cards" / q["id"] / "card.png").exists() and (send / "cards" / q["id"] / "card.json").exists()

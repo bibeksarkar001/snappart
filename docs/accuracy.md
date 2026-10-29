@@ -65,9 +65,48 @@ Effect of the browser path (40 frames/video at 1920 px instead of 80 at 4K), mea
 - Held-out IoU 0.936 at 0.25 mm voxels (0.953 at full resolution).
 - The same 4 slots are found with the same sizes, within 0.07 mm.
 
+## v4: after the owner's review of the v3 model
+
+The owner marked the v3 model on five screenshots. A camera was fitted to each screenshot by silhouette IoU (0.87-0.96), so every mark maps onto 3D surface. All five screenshots look at the side with the slot openings and the deep pocket over the plate.
+
+| Feature | Status | Value | Caliper | Error |
+|---|---|---|---|---|
+| Lock ridge, face and direction | measured | slot column's inner wall, pointing toward the plate | n/a | n/a |
+| Lock ridge, position along the edge | measured (29 views) | centred at y 101.85 (part centre 101.5) | n/a | n/a |
+| Lock ridge, length | measured / user-supplied | 19.37 mm detected; 19.7 mm used | 19.7 | -0.33 (detected) |
+| Lock ridge, height out of the wall | measured (24 head-on views) / user-supplied | 1.90 mm (sd 0.08) measured; 2.3 mm used | 2.3 | -0.40 (measured) |
+| Lock ridge, base width | user-supplied | 2.3 mm | 2.3 | n/a |
+| Lock ridge, top radius and side slope | estimated | 0.5 mm, 71 deg | n/a | n/a |
+| Plate, face separation (planes parallel to the bottom plane) | measured (53 + 79 views) | 0.90 mm | 2.6 | -1.70 |
+| Plate, thickness used | user-supplied | 2.6 mm | 2.6 | n/a |
+
+- **Where the ridge is.** Neither the v3 direction nor the brief's "underside" fits the video:
+  - Out of the rim face (v3): a 2.3 mm block would reach through the mat video 1 rests on.
+  - On the opposite, flat face (the brief): video 1 shows that face flat, and video 3 lies flat on it.
+  - The frames show a rounded rail inside the pocket, just below the rim. A per-pixel plane sweep (video 3) puts its surface at z 3.0-3.6 for x 165.2-165.6; a hill with a 2.3 mm base peaks at z 3.04. The owner should confirm the side.
+- **Plate.** The model puts the plate's outer face on the bottom plane, which is fitted to the rails' flat face (rms 0.27 mm). The plane sweep places that face 1.30 mm under the plane, which conflicts with "flat like the bottom". Both plate conflicts need calipers.
+- **Flatness** (RMS to their own plane, pocket side, measured short of the ridge):
+  - review_4 region: 0.676 mm before, 0.013 mm after.
+  - review_5 strip: 0.853 mm before, 0.008 mm after.
+- **Window edge.** Where the plate starts, the carved edge was already straight (0.029 mm rms to a fitted line). The jagged look was the hull ramp under the plate, which the plate now replaces.
+- **Held-out IoU** (3 folds, 0.15 mm): 0.9529 for the plain carve, 0.9516 with features and corrections (v3 with its features: 0.9532).
+- **Anomaly finder** (`backend/capture/review.py`), on the unfixed v3 model:
+  - Recall 3 of the owner's 3 marks with 0 false alarms in 2 items, after tuning over 2304 threshold sets. The untuned placeholders gave 15 false alarms in 24 items.
+  - Tuned and tested on the same marks of one part, so this is not a held-out number. The few-views flag is off: every setting of it added false alarms here.
+- **Corrections** (`backend/capture/model.py`, schema in `corrections.py`): `rebuild(model, answers, corrections)` turns the v3 model into v4 in 1.9 s with no model call, and gives the same mesh as the v4 run.
+- **Question cards** (`backend/capture/question_cards.py`): one card per question and review item, each checked by eye to mark the right feature. Two cards (ridge base width, plate thickness) use a frame where the dimension arrow is under 12 px, because no frame shows it larger.
+- Two cached crops (A_orbit_02_1586, A_orbit_03_910) are the owner's annotated label images. Cards skip them; neither was used for the ridge detection.
+
 ## Regression tests
 
-- `backend/tests/test_golden_B.py` reruns the carve and feature steps from the private cache at 0.25 mm voxels in 100 s and asserts:
+- `backend/tests/test_golden_B.py` reruns the carve and feature steps from the private cache at 0.25 mm voxels in 114 s. v4 adds these checks:
+  - the owner's corrections rebuild the v4 model from the v3 model (same vertices), watertight
+  - the lock ridge is a hill on the slot column's inner wall (peak 2.3 mm out, narrow at the top)
+  - the review_4 region is flat (pocket side), with its outer face within 0.15 mm rms of the bottom plane
+  - the anomaly finder (frozen thresholds) flags the owner's three marks on the v3 model
+  - a card exists for every question
+
+  It also asserts:
   - footprint within 0.5 mm and height within 0.3 mm of the calipers
   - held-out IoU >= 0.93
   - four slots
@@ -78,3 +117,5 @@ Effect of the browser path (40 frames/video at 1920 px instead of 80 at 4K), mea
 
   It is skipped when the cache is missing.
 - `backend/tests/test_rebuild.py` checks `rebuild()` on a synthetic part, with no private data.
+- `backend/tests/test_corrections.py` checks each correction, the hill profile, the schema and the sentence hook (with a fake model call) on a synthetic slab.
+- `backend/tests/test_question_cards.py` checks the answer sanity rules (for example, a slot deeper than the part is tall is rejected), the diagrams and the highlight-colour choice.
