@@ -1,0 +1,657 @@
+<title>SnapPart</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one dark "measuring studio". A cinematic 3D stage of the real part, millimetre grid and dimension lines as the visual language, Meta model blue for AI, teal for measured, amber for questions. */
+:root{
+  --bg:#060809; --bg-2:#0A0E0F; --panel:#0E1315; --panel-2:#131A1C; --line:#1A2224; --line-2:#263133;
+  --ink:#EEF3F2; --ink-2:#A6B2B0; --ink-3:#6C7876;
+  --accent:#3DDBC3; --accent-hi:#6BE8D5; --accent-ink:#03201B; --accent-soft:rgba(61,219,195,.12);
+  --meta:#6B95FF; --meta-soft:rgba(107,149,255,.13);
+  --ask:#F6B44C; --ask-soft:rgba(246,180,76,.13); --ok:#5CDA92; --ok-soft:rgba(92,218,146,.12); --est:#A6B2B0; --est-soft:rgba(166,178,176,.12); --bad:#FF7A6E; --bad-soft:rgba(255,122,110,.12);
+  --f:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fm:"Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+  --r:12px; --rl:20px;
+  --stage:radial-gradient(70% 70% at 50% 60%,#0f1d1c 0%,#080b0c 60%,#060809 100%); --hud:rgba(14,19,21,.62); --vlab:rgba(6,8,9,.82); --hdr:rgba(6,8,9,.72); --ghost:rgba(255,255,255,.03);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){
+  --bg:#F4F7F6; --bg-2:#EDF2F0; --panel:#FFFFFF; --panel-2:#FFFFFF; --line:#E1E7E5; --line-2:#CBD5D2;
+  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#7A8684;
+  --accent:#0C9580; --accent-hi:#0A7F6D; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
+  --meta:#3A63E0; --meta-soft:rgba(58,99,224,.09); --ask:#A86400; --ask-soft:rgba(168,100,0,.1); --ok:#167A44; --ok-soft:rgba(22,122,68,.1); --est:#5E6A68; --est-soft:rgba(94,106,104,.1); --bad:#BF3328; --bad-soft:rgba(191,51,40,.08);
+  --stage:radial-gradient(70% 70% at 50% 60%,#E3F1EE 0%,#F1F5F4 65%,#F4F7F6 100%); --hud:rgba(255,255,255,.75); --vlab:rgba(255,255,255,.92); --hdr:rgba(244,247,246,.78); --ghost:rgba(0,0,0,.02);
+  color-scheme:light; } }
+:root[data-theme="light"]{
+  --bg:#F4F7F6; --bg-2:#EDF2F0; --panel:#FFFFFF; --panel-2:#FFFFFF; --line:#E1E7E5; --line-2:#CBD5D2;
+  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#7A8684;
+  --accent:#0C9580; --accent-hi:#0A7F6D; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
+  --meta:#3A63E0; --meta-soft:rgba(58,99,224,.09); --ask:#A86400; --ask-soft:rgba(168,100,0,.1); --ok:#167A44; --ok-soft:rgba(22,122,68,.1); --est:#5E6A68; --est-soft:rgba(94,106,104,.1); --bad:#BF3328; --bad-soft:rgba(191,51,40,.08);
+  --stage:radial-gradient(70% 70% at 50% 60%,#E3F1EE 0%,#F1F5F4 65%,#F4F7F6 100%); --hud:rgba(255,255,255,.75); --vlab:rgba(255,255,255,.92); --hdr:rgba(244,247,246,.78); --ghost:rgba(0,0,0,.02);
+  color-scheme:light; }
+.themebtn{width:38px;height:38px;border-radius:999px;border:1px solid var(--line-2);background:var(--ghost);display:grid;place-items:center;cursor:pointer;color:var(--ink-2);flex:none}
+.themebtn:hover{color:var(--ink)}
+.dev{display:flex;align-items:center;gap:16px;padding:18px;border-radius:18px;border:1px solid var(--line);background:var(--panel);margin-top:14px;flex-wrap:wrap}
+.avatar{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:18px;background:linear-gradient(135deg,var(--accent),var(--meta));color:#fff;flex:none}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg)}
+a{color:inherit}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+::selection{background:var(--accent);color:var(--accent-ink)}
+.wrap{max-width:1200px;margin:0 auto;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.mono{font-family:var(--fm);font-variant-numeric:tabular-nums;letter-spacing:0}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:600}
+h1{font-size:clamp(46px,8vw,104px);line-height:.95;letter-spacing:-.045em}
+h2{font-size:clamp(32px,4.6vw,58px);line-height:1.02;letter-spacing:-.035em}
+h3{font-size:19px;line-height:1.3;letter-spacing:-.015em}
+p{margin:0}
+.lead{font-size:clamp(17px,1.5vw,20px);color:var(--ink-2);line-height:1.55;max-width:36em}
+.muted{color:var(--ink-3)}.dim{color:var(--ink-2)}
+.small{font-size:14px}.tiny{font-size:12px}
+.label{font-family:var(--fm);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.grad{background:linear-gradient(92deg,var(--ink) 10%,var(--accent) 60%,var(--meta) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pill-unused{display:inline-flex;align-items:center;gap:10px;min-height:34px;padding:5px 14px 5px 6px;text-align:left;max-width:100%;border-radius:999px;border:1px solid var(--line-2);background:rgba(255,255,255,.02);font-size:13px;color:var(--ink-2)}
+.pill b{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;background:var(--meta-soft);color:var(--meta);font-weight:600;font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:48px;padding:0 22px;border-radius:999px;border:1px solid transparent;font-weight:600;font-size:15px;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .15s,background .15s,border-color .15s,box-shadow .2s}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 0 rgba(61,219,195,0)}
+.btn-primary:hover{background:var(--accent-hi);box-shadow:0 8px 32px -6px rgba(61,219,195,.45)}
+.btn-ghost{background:var(--ghost);border-color:var(--line-2);color:var(--ink)}
+.btn-ghost:hover{border-color:var(--ink-3)}
+.btn-sm{height:38px;padding:0 16px;font-size:14px}
+.btn-block{width:100%}
+.btn[disabled]{opacity:.4;cursor:not-allowed;box-shadow:none}
+.link{background:none;border:0;padding:0;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:none}
+.link:hover{text-decoration:underline}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-meas{background:var(--ok-soft);color:var(--ok)}.c-you{background:var(--accent-soft);color:var(--accent)}.c-ask{background:var(--ask-soft);color:var(--ask)}.c-est{background:var(--est-soft);color:var(--est)}.c-unseen{color:var(--ink-3);border:1px dashed var(--line-2)}
+.c-meta{background:var(--meta-soft);color:var(--meta);font-family:var(--fm);font-weight:500}
+.c-code{color:var(--ink-3);border:1px solid var(--line-2);font-family:var(--fm);font-weight:500}
+.c-ex{background:var(--ask-soft);color:var(--ask);font-family:var(--fm);font-weight:500}
+.panel{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--rl)}
+.input{height:50px;width:100%;border-radius:12px;border:1px solid var(--line-2);background:var(--bg-2);padding:0 14px;font-size:16px}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.field{display:flex;flex-direction:column;gap:8px}
+.field>label{font-size:14px;font-weight:600}
+.err{color:var(--bad);font-size:13px;min-height:18px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line)}
+.seg button{border:0;background:transparent;height:36px;padding:0 15px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink-3);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+/* header */
+.hdr{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--hdr);backdrop-filter:saturate(1.5) blur(16px);-webkit-backdrop-filter:saturate(1.5) blur(16px);border-bottom:1px solid var(--line)}
+.hrow{display:flex;align-items:center;gap:18px;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px;letter-spacing:-.02em;background:none;border:0;padding:0;cursor:pointer}
+.nav{display:flex;gap:2px;margin-left:auto}
+.nav a{padding:8px 12px;border-radius:999px;font-size:14px;color:var(--ink-2);text-decoration:none;cursor:pointer}
+.nav a:hover{color:var(--ink);background:rgba(255,255,255,.05)}
+.codechip{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line-2);background:transparent;font-family:var(--fm);font-size:12px;color:var(--accent);cursor:pointer}
+.menu-btn{display:none;margin-left:auto;width:42px;height:42px;border-radius:12px;border:1px solid var(--line-2);background:transparent;cursor:pointer;place-items:center}
+.mnav{display:none;flex-direction:column;padding:4px 0 14px}.mnav.on{display:flex}
+.mnav a{padding:13px 2px;border-bottom:1px solid var(--line);text-decoration:none;font-size:17px;cursor:pointer}
+.offline{display:none;background:var(--ask-soft);color:var(--ask);font-size:14px;font-weight:600}.offline.on{display:block}
+.offline .wrap{display:flex;gap:10px;align-items:center;min-height:40px;padding-block:8px}
+.path{border-top:1px solid rgba(255,255,255,.05)}
+.path ol{list-style:none;margin:0;padding:12px 0 14px;display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.path li{display:flex;flex-direction:column;gap:7px;cursor:pointer}
+.path .bar{height:2px;border-radius:2px;background:var(--line-2)}
+.path li.done .bar{background:var(--accent);opacity:.5}.path li.now .bar{background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.path .nm{font-size:13px;font-weight:600;color:var(--ink-3)}.path li.now .nm,.path li.done .nm{color:var(--ink)}
+.path .tm{font-family:var(--fm);font-size:11px;color:var(--ink-3)}
+.path-m{display:none;padding:10px 0 12px}
+.prog{height:4px;border-radius:2px;background:var(--line);overflow:hidden}.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+/* pages */
+.page{display:none}.page.on{display:block;animation:fade .45s cubic-bezier(.2,.7,.2,1)}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+section{padding-block:clamp(64px,8vw,112px);position:relative}
+.sec-head{display:grid;gap:16px;max-width:780px;margin-bottom:clamp(36px,5vw,56px)}
+.center{text-align:center;margin-inline:auto;justify-items:center}
+.glow{position:absolute;pointer-events:none;filter:blur(40px);opacity:.55;border-radius:50%}
+/* hero */
+.hero{padding-top:clamp(48px,7vw,96px);padding-bottom:0;text-align:center;overflow:hidden}
+.hero .lead{margin:22px auto 0}
+.hero-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:32px}
+.stage{position:relative;margin-top:clamp(36px,5vw,64px);height:clamp(380px,52vw,640px);border-radius:28px;overflow:hidden;border:1px solid var(--line);background:var(--stage)}
+.stage canvas{position:absolute;inset:0;width:100%!important;height:100%!important;touch-action:none;cursor:grab}
+.stage canvas:active{cursor:grabbing}
+.hud{position:absolute;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:var(--hud);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);text-align:left;pointer-events:none}
+.hud .k{font-family:var(--fm);font-size:11px;color:var(--ink-3);letter-spacing:.04em}
+.hud .v{font-family:var(--fm);font-size:15px;color:var(--ink)}
+.hud .v.m{color:var(--meta)}.hud .v.a{color:var(--accent)}
+.vlab{position:absolute;transform:translate(-50%,-50%);font-family:var(--fm);font-size:12px;padding:3px 8px;border-radius:6px;background:var(--vlab);border:1px solid var(--accent);color:var(--accent);pointer-events:none;white-space:nowrap}
+.drag{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);font-size:12px;color:var(--ink-3);display:flex;gap:8px;align-items:center;pointer-events:none}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:20px;margin-top:20px;overflow:hidden;background:var(--panel)}
+.stats div{padding:22px 22px 20px;border-right:1px solid var(--line);text-align:left}.stats div:last-child{border-right:0}
+.stats b{display:block;font-family:var(--fm);font-weight:500;font-size:clamp(24px,2.6vw,34px);letter-spacing:-.03em}
+.stats span{font-size:13px;color:var(--ink-3)}
+.doors{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.door{display:flex;flex-direction:column;gap:8px;padding:20px;border-radius:18px;border:1px solid var(--line);background:var(--panel);cursor:pointer;text-align:left;transition:border-color .2s,transform .2s,background .2s}
+.door:hover{border-color:rgba(61,219,195,.5);transform:translateY(-2px);background:var(--panel-2)}
+.door .t{font-family:var(--fm);font-size:12px;color:var(--ink-3)}.door b{font-size:17px;letter-spacing:-.01em}
+.door .go{margin-top:auto;color:var(--accent);font-weight:600;font-size:14px}
+.welcome{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;border-radius:16px;border:1px solid var(--line-2);background:var(--panel);max-width:640px;margin:0 auto 28px;text-align:left;flex-wrap:wrap}
+.welcome .ic{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.welcome .tx{flex:1;min-width:200px;font-size:14px}
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.step{display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:20px;border:1px solid var(--line);background:var(--panel)}
+.step .art{height:150px;border-radius:14px;background:var(--bg-2);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center}
+.step .art svg{width:100%;height:100%}
+.step .n{font-family:var(--fm);font-size:12px;color:var(--ink-3)}
+/* meta */
+.meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.mcard{position:relative;padding:26px;border-radius:22px;border:1px solid rgba(107,149,255,.22);background:radial-gradient(120% 90% at 0% 0%,rgba(107,149,255,.12),transparent 55%),var(--panel);display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.mcard .nm{font-size:24px;font-weight:600;letter-spacing:-.03em}
+.mcard .role{font-family:var(--fm);font-size:12px;color:var(--meta);letter-spacing:.04em;text-transform:uppercase}
+.io{border-radius:12px;background:var(--bg-2);border:1px solid var(--line);padding:12px 14px;font-family:var(--fm);font-size:12.5px;line-height:1.6;color:var(--ink-2)}
+.io .in{color:var(--ink-3)}.io .out{color:var(--ink)}
+.flowline{display:flex;align-items:center;gap:0;margin:0 0 22px;overflow-x:auto;padding-bottom:6px}
+.fnode{flex:none;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);font-size:13px;font-weight:600;color:var(--ink-2);background:var(--panel)}
+.fnode.meta{border-color:rgba(107,149,255,.45);color:var(--meta);background:var(--meta-soft)}
+.fnode.out{border-color:rgba(61,219,195,.45);color:var(--accent);background:var(--accent-soft)}
+.fline{flex:1 0 28px;min-width:28px;height:1px;background:linear-gradient(90deg,var(--line-2),var(--meta),var(--line-2));opacity:.7}
+/* compare */
+.cmpwrap{display:grid;grid-template-columns:1.25fr .75fr;gap:20px;align-items:stretch}
+.stage-sm{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--stage);min-height:420px}
+.stage-sm canvas{position:absolute;inset:0;width:100%!important;height:100%!important;touch-action:none;cursor:grab}
+.changes{display:flex;flex-direction:column;gap:10px}
+.chg{display:flex;gap:12px;padding:16px;border-radius:16px;border:1px solid var(--line);background:var(--panel)}
+.chg .d{width:8px;height:8px;border-radius:50%;background:var(--ask);margin-top:7px;flex:none;box-shadow:0 0 10px var(--ask)}
+/* accuracy */
+.acc{display:grid;grid-template-columns:.9fr 1.1fr;gap:clamp(24px,5vw,64px);align-items:start}
+.states{display:grid;border-top:1px solid var(--line)}
+.states .row{display:grid;grid-template-columns:140px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--line);align-items:center;font-size:15px;color:var(--ink-2)}
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl th{text-align:left;font-family:var(--fm);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:14px 20px;border-bottom:1px solid var(--line)}
+.tbl td{padding:15px 20px;border-bottom:1px solid var(--line)}
+.tbl .n{text-align:right;font-family:var(--fm);font-variant-numeric:tabular-nums}
+.tbl tr:last-child td{border-bottom:0}
+.err-good{color:var(--ok)}
+.proof{display:grid;grid-template-columns:1.3fr .7fr;gap:16px}
+.ph{border:1.5px dashed var(--line-2);border-radius:22px;min-height:300px;display:grid;place-items:center;text-align:center;padding:28px;background:var(--panel);color:var(--ink-3)}
+.phl{font-family:var(--fm);font-size:11px;background:var(--ask-soft);color:var(--ask);padding:2px 7px;border-radius:5px}
+.cta-band{border-radius:28px;border:1px solid var(--line);padding:clamp(40px,6vw,80px);text-align:center;background:radial-gradient(60% 120% at 50% 0%,rgba(61,219,195,.16),transparent 60%),radial-gradient(50% 100% at 100% 100%,rgba(107,149,255,.12),transparent 60%),var(--panel)}
+.foot{border-top:1px solid var(--line);padding-block:56px 64px;font-size:14px;color:var(--ink-3)}
+.foot .cols{display:grid;grid-template-columns:2fr 1fr 1fr;gap:32px}
+.foot a{display:block;padding:5px 0;text-decoration:none;cursor:pointer;color:var(--ink-2)}.foot a:hover{color:var(--ink)}
+/* flow */
+.flow{padding-block:clamp(28px,4vw,48px) 72px}
+.fgrid{display:grid;grid-template-columns:.8fr 1.2fr;gap:clamp(24px,5vw,72px);align-items:start}
+.fleft{display:flex;flex-direction:column;gap:16px;position:sticky;top:156px}
+.back{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:transparent;cursor:pointer;font-size:13px;width:max-content;color:var(--ink-2)}
+.stack{display:flex;flex-direction:column;gap:20px}
+details.why{border-top:1px solid var(--line);padding-top:12px}
+details.why summary{cursor:pointer;font-weight:600;font-size:14px;list-style:none;display:flex;gap:8px}
+details.why summary::before{content:"+";font-family:var(--fm);color:var(--accent)}details.why[open] summary::before{content:"−"}
+details.why p{margin-top:8px;font-size:14px;color:var(--ink-2)}
+.composer{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line-2);border-radius:16px;background:var(--bg-2);padding:8px}
+.composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.composer textarea{flex:1;border:0;background:transparent;resize:none;min-height:44px;max-height:160px;padding:10px 6px;font-size:16px;line-height:1.45}
+.composer textarea:focus{outline:none}
+.ib{width:44px;height:44px;border-radius:12px;border:1px solid var(--line-2);background:transparent;display:grid;place-items:center;cursor:pointer;flex:none;color:var(--ink-2)}
+.ib.fill{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ib.voice{border-color:rgba(107,149,255,.45);color:var(--meta)}
+.matbox{padding:18px;border-radius:20px;border:1px solid var(--line);background:var(--panel)}
+.matbox svg{width:100%;height:auto;display:block}
+.kit{display:grid;gap:10px}
+.kit button{display:flex;gap:14px;align-items:center;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);cursor:pointer}
+.kit .box{width:22px;height:22px;border-radius:7px;border:1.5px solid var(--line-2);display:grid;place-items:center;flex:none;color:transparent;font-size:13px}
+.kit button[aria-pressed="true"]{border-color:rgba(61,219,195,.5)}.kit button[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.slot{display:flex;flex-direction:column;gap:4px;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--panel);text-align:left;cursor:pointer;min-height:84px}
+.slot .k{font-family:var(--fm);font-size:11px;color:var(--ink-3)}.slot b{font-size:14px}.slot .st{font-size:12px;color:var(--ink-3)}
+.slot[aria-current="step"]{border-color:rgba(61,219,195,.6);box-shadow:0 0 0 4px var(--accent-soft)}.slot.kept .st{color:var(--ok);font-weight:600}
+.guide{border-radius:20px;border:1px solid var(--line);background:var(--panel);aspect-ratio:16/10;overflow:hidden}
+.guide svg{width:100%;height:100%;display:block}
+.checks{border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+.checks .c{display:flex;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px}.checks .c:last-child{border-bottom:0}
+.dot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-2);flex:none}
+.dot.ok{background:var(--ok);border-color:var(--ok);box-shadow:0 0 10px rgba(92,218,146,.5)}
+.dot.run{border-color:var(--accent);border-top-color:transparent;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cov{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.cov svg{width:124px;height:124px;flex:none}
+.estimate{padding:18px;border-radius:16px;background:var(--accent-soft);border:1px solid rgba(61,219,195,.25);display:flex;flex-direction:column;gap:6px}
+.pipe{border:1px solid var(--line);border-radius:20px;background:var(--panel);overflow:hidden}
+.prow{display:grid;grid-template-columns:22px 1fr auto;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line);opacity:.4;transition:opacity .3s,background .3s}
+.prow:last-child{border-bottom:0}.prow.run{opacity:1;background:rgba(61,219,195,.04)}.prow.done{opacity:1}
+.prow.meta.run{background:rgba(107,149,255,.06)}
+.prow .nm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600;font-size:15px}
+.prow .dt{font-family:var(--fm);font-size:12.5px;color:var(--ink-3);margin-top:3px}
+.prow .ms{font-family:var(--fm);font-size:12.5px;color:var(--ink-3)}
+.thumbs{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}.thumbs svg{width:58px;height:40px;border-radius:7px;background:var(--bg-2);border:1px solid var(--line)}
+.timer{font-family:var(--fm);font-weight:500;font-size:clamp(56px,8vw,96px);letter-spacing:-.05em;line-height:1}
+.note{display:flex;gap:10px;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);font-size:14px;color:var(--ink-2);align-items:center;flex-wrap:wrap}
+.rev{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;align-items:start}
+.revstage{position:sticky;top:156px}
+.qs{display:flex;flex-direction:column;gap:12px}
+.q{padding:20px;border-radius:20px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:12px;transition:border-color .2s}
+.q.active{border-color:rgba(246,180,76,.55);box-shadow:0 0 0 4px var(--ask-soft),0 20px 50px -20px rgba(246,180,76,.25)}
+.q.wait{opacity:.5}.q.answered{opacity:.85}
+.q .who{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.closeup{position:relative;height:200px;border-radius:14px;overflow:hidden;background:radial-gradient(80% 80% at 50% 50%,#132321,#090c0d);border:1px solid var(--line)}
+.closeup canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+.closeup .lbl{position:absolute;left:10px;bottom:10px;font-family:var(--fm);font-size:11px;color:var(--ink-3);background:rgba(6,8,9,.7);padding:3px 7px;border-radius:5px}
+.ans{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ans .input{width:120px;height:44px}
+.choice{height:40px;padding:0 15px;border-radius:999px;border:1px solid var(--line-2);background:transparent;cursor:pointer;font-weight:600;font-size:14px}
+.choice:hover{border-color:#3a4749}.choice[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.understood{padding:14px;border-radius:14px;background:var(--meta-soft);border:1px solid rgba(107,149,255,.3);display:flex;flex-direction:column;gap:10px;font-size:14px}
+.res{display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:start}
+.rep .row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line);align-items:center}.rep .row:last-child{border-bottom:0}
+.rep .row small{display:block;margin-top:2px;font-family:var(--fm);font-size:12px;color:var(--ink-3)}
+.kpis{display:grid;grid-template-columns:1fr 1fr}
+.kpis>div{padding:18px}.kpis>div:first-child{border-right:1px solid var(--line)}
+.bign{font-family:var(--fm);font-size:34px;font-weight:500;letter-spacing:-.04em}
+.pp{padding:18px;display:flex;flex-direction:column;gap:12px}
+.qr{width:92px;height:92px;background:#fff;border-radius:10px;padding:6px;flex:none}.qr img,.qr canvas{width:100%!important;height:100%!important}
+.range{width:100%;accent-color:var(--accent)}
+.doc{max-width:760px}.doc h3{margin:34px 0 8px}.doc p,.doc li{color:var(--ink-2)}.doc p+p{margin-top:12px}.doc ul{padding-left:20px}
+.road{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
+.road .col{display:flex;flex-direction:column;gap:12px}
+.ri{padding:18px;border-radius:16px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:8px}.ri.idea{border-style:dashed;background:transparent}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translate(-50%,16px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:90;max-width:calc(100% - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.proto-btn{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:70;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel-2);font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-2)}
+.proto{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(58px + env(safe-area-inset-bottom,0px));z-index:70;width:min(320px,calc(100vw - 28px));padding:16px;border-radius:18px;border:1px solid var(--line-2);background:var(--panel-2);display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.proto .g{display:flex;flex-direction:column;gap:6px}.proto .g>span{font-size:12px;color:var(--ink-3);font-weight:600}
+.proto .seg button{height:30px;padding:0 10px;font-size:12px}
+@media (max-width:1000px){.fgrid,.rev,.res,.acc,.cmpwrap,.proof{grid-template-columns:1fr}.fleft,.revstage{position:static}.steps{grid-template-columns:1fr 1fr}.meta-grid,.road{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.stats div:nth-child(2){border-right:0}.stats div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+@media (max-width:720px){.nav,.hdr .codechip{display:none}.menu-btn{display:grid}.doors,.steps{grid-template-columns:1fr}.path ol{display:none}.path-m{display:block}.slots{grid-template-columns:1fr 1fr}.states .row{grid-template-columns:1fr;gap:6px}.foot .cols{grid-template-columns:1fr}.hud.opt{display:none}.flow .pcta{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:20;box-shadow:0 10px 30px rgba(0,0,0,.5)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<header class="hdr" id="hdr">
+  <div class="wrap hrow">
+    <button class="logo" data-go="home" aria-label="SnapPart home"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x=".5" y=".5" width="25" height="25" rx="7" fill="var(--panel)" stroke="var(--line-2)"/><rect x="6" y="6" width="5" height="5" rx="1" fill="var(--ink)"/><rect x="15" y="6" width="5" height="5" rx="1" fill="var(--ink)"/><rect x="6" y="15" width="5" height="5" rx="1" fill="var(--ink)"/><rect x="15" y="15" width="5" height="5" rx="1" fill="var(--accent)"/></svg>SnapPart</button>
+    <nav class="nav" aria-label="Main"><a data-go="home" data-anchor="how">How it works</a><a data-go="home" data-anchor="meta">Meta AI</a><a data-go="about">About</a><a data-go="next">What's next</a><a data-go="resume">Left somewhere?</a></nav>
+    <button class="codechip" id="hdrCode" data-go="result" hidden>amber-river-hinge</button>
+    <button class="themebtn" id="themeBtn" aria-label="Switch to light mode" title="Light or dark"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" id="themeIco"></svg></button>
+    <button class="btn btn-primary btn-sm" data-go="prepare" id="hdrCta">Film a part</button>
+    <button class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="wrap"><nav class="mnav" id="mnav"><a data-go="home" data-anchor="how">How it works</a><a data-go="home" data-anchor="meta">Meta AI</a><a data-go="about">About</a><a data-go="next">What's next</a><a data-go="resume">Left somewhere?</a></nav></div>
+  <div class="offline" id="offline"><div class="wrap">You're offline. Your progress is saved on this device, and 2 uploads will resume when you reconnect.</div></div>
+  <div class="path" id="path" hidden><div class="wrap"><ol id="pathList"></ol><div class="path-m"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px"><b id="pmN"></b><span class="mono muted tiny" id="pmS"></span></div><div class="prog"><i id="pmB"></i></div></div></div></div>
+</header>
+
+<main>
+<!-- HOME -->
+<div class="page" id="p-home">
+  <div class="hero"><div class="wrap">
+    <div id="welcome"></div>
+    <h1>Film a part.<br><span class="grad">Print a copy.</span></h1>
+    <p class="lead">Put a broken or missing piece on a printed mat and film three short videos. SnapPart measures it in millimetres, asks you what a camera can't see, and hands you a file that prints and fits.</p>
+    <div class="hero-cta"><button class="btn btn-primary" data-go="prepare">Film a part →</button><button class="btn btn-ghost" data-go="build" data-replay="1">Watch a real build</button></div>
+    <div class="stage" id="heroStage">
+      <div class="hud" style="left:18px;top:18px"><span class="k">PART B · EXAMPLE RUN</span><span class="v">Briefcase lock plate</span></div>
+      <div class="hud opt" style="right:18px;top:18px"><span class="k">OUTLINES</span><span class="v m">SAM 3.1 · 140 frames</span></div>
+      <div class="hud opt" style="left:18px;bottom:18px"><span class="k">HELD-OUT SCORE</span><span class="v a">0.95</span></div>
+      <div class="hud opt" style="right:18px;bottom:18px"><span class="k">PRINTED COPY</span><span class="v a">Fits the original lock</span></div>
+      <div class="drag"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 7a5 5 0 0 1 9-3M12 7a5 5 0 0 1-9 3M11 1v3H8M3 13v-3h3" stroke="currentColor" fill="none" stroke-width="1.3"/></svg>Drag to turn</div>
+    </div>
+    <div class="stats">
+      <div><b>±0.26<span class="mono" style="font-size:16px"> mm</span></b><span>largest size error against calipers</span></div>
+      <div><b>3:01</b><span>measured build time, part B</span></div>
+      <div><b>0.95</b><span>held-out score on 10 unseen frames</span></div>
+      <div><b>1 / 1</b><span>printed copies that fit the real lock</span></div>
+    </div>
+    <div class="doors">
+      <button class="door" data-go="result"><span class="t">1 minute</span><b>Explore a real result</b><span class="small muted">Turn the model and check every size against calipers.</span><span class="go">Open result →</span></button>
+      <button class="door" data-go="build"><span class="t">2 minutes</span><b>Watch a real build</b><span class="small muted">A measured run of part B, then answer its questions yourself.</span><span class="go">Start replay →</span></button>
+      <button class="door" data-go="prepare"><span class="t">About 10 minutes</span><b>Film your own part</b><span class="small muted">Print the mat, film three videos, get your file.</span><span class="go">Get started →</span></button>
+    </div>
+  </div></div>
+
+  <section id="how"><div class="wrap">
+    <div class="sec-head"><span class="label">How it works</span><h2>Three phone videos in.<br><span class="muted">A measured part out.</span></h2></div>
+    <div class="steps">
+      <div class="step"><div class="art" id="art1"></div><span class="n">01 · Film</span><h3>Every frame knows its scale</h3><p class="small dim">26 printed codes give each frame its camera position and real millimetres.</p></div>
+      <div class="step"><div class="art" id="art2"></div><span class="n">02 · Outline</span><h3>SAM 3.1 traces the part</h3><p class="small dim">Meta's segmentation model outlines your part in every frame it appears in.</p></div>
+      <div class="step"><div class="art" id="art3"></div><span class="n">03 · Carve</span><h3>Outlines carve the solid</h3><p class="small dim">Space outside any outline is removed. Flat faces and round bars snap true.</p></div>
+      <div class="step"><div class="art" id="art4"></div><span class="n">04 · Ask</span><h3>Muse Spark asks, you answer</h3><p class="small dim">What a camera can't see, it asks. Type it, tap it or say it.</p></div>
+    </div>
+  </div></section>
+
+  <section id="meta" style="overflow:hidden"><div class="glow" style="width:520px;height:520px;background:rgba(107,149,255,.18);right:-120px;top:40px"></div><div class="wrap" style="position:relative">
+    <div class="sec-head"><span class="label" style="color:var(--meta)">Meta AI at the core</span><h2>Three Meta models.<br>One measured part.</h2><p class="lead">SnapPart's measuring engine is ours. Seeing, reasoning and listening are Meta's. Each model has a job nothing else in the pipeline does.</p></div>
+    <div class="flowline" aria-label="Pipeline"><span class="fnode">Your videos</span><span class="fline"></span><span class="fnode meta">SAM 3.1</span><span class="fline"></span><span class="fnode">Measuring engine</span><span class="fline"></span><span class="fnode meta">Muse Spark 1.3</span><span class="fline"></span><span class="fnode meta">Muse Voice</span><span class="fline"></span><span class="fnode out">STL + report</span></div>
+    <div class="meta-grid" id="metaGrid"></div>
+    <p class="tiny muted" style="margin-top:16px">Example inputs and outputs from SnapPart's pipeline. A model shows as running only when it runs in the current build.</p>
+  </div></section>
+
+  <section><div class="wrap">
+    <div class="sec-head"><span class="label" style="color:var(--ask)">Ask, don't guess</span><h2>It asks before it invents.</h2><p class="lead">The first carve of part B had a lumpy strip and a plate a camera couldn't see. SnapPart flagged both. Three answers later, the model matched the real part.</p></div>
+    <div class="cmpwrap">
+      <div class="stage-sm" id="cmpStage"><div class="hud" style="left:16px;top:16px"><span class="k" id="cmpK">AFTER YOUR ANSWERS</span><span class="v a" id="cmpV">Part B, v4</span></div><div class="drag">Drag to turn</div></div>
+      <div class="changes">
+        <div class="seg" id="cmpSeg" style="width:max-content"><button aria-pressed="false" data-v="0">Before your answers</button><button aria-pressed="true" data-v="1">After your answers</button></div>
+        <div class="chg"><span class="d"></span><div><b>Lock ridge sized from your answers</b><p class="small dim">Found in 29 frames on the slot wall; its height and top shape came from you.</p></div></div>
+        <div class="chg"><span class="d"></span><div><b>Bumpy strip made flat</b><p class="small dim">Surface error 0.85 mm became 0.01 mm after you said "it's flat".</p></div></div>
+        <div class="chg"><span class="d"></span><div><b>Plate set level with the bottom</b><p class="small dim">A face the camera never saw, filled from your answer.</p></div></div>
+      </div>
+    </div>
+  </div></section>
+
+  <section><div class="wrap acc">
+    <div class="stack"><span class="label">Honest about accuracy</span><h2>Measured to fit, and clear about what it can't see.</h2><p class="lead">Other tools make a model that looks right. SnapPart measures, then tells you where it's sure and where it needs your number.</p>
+      <div class="states"><div class="row"><span><span class="chip c-meas">Measured</span></span>From many views and the mat's scale.</div><div class="row"><span><span class="chip c-you">You entered</span></span>Something a camera can't see, like slot depth.</div><div class="row"><span><span class="chip c-est">Estimated</span></span>Only when you skip a question. Always labelled.</div><div class="row"><span><span class="chip c-unseen">Can't be seen</span></span>Hollows, blind pockets, features under 1 mm.</div></div></div>
+    <div class="panel" style="overflow:hidden"><div style="padding:18px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line)"><b>Part B against digital calipers</b><span class="chip c-ex">example run</span></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Size</th><th class="n">Model</th><th class="n">Calipers</th><th class="n">Error</th></tr></thead><tbody>
+        <tr><td>Length</td><td class="n">51.34</td><td class="n">51.60</td><td class="n err-good">−0.26</td></tr><tr><td>Width</td><td class="n">41.70</td><td class="n">41.90</td><td class="n err-good">−0.20</td></tr><tr><td>Height</td><td class="n">11.69</td><td class="n">11.80</td><td class="n err-good">−0.11</td></tr><tr><td>Slot, long side</td><td class="n">7.43</td><td class="n">7.40</td><td class="n err-good">+0.03</td></tr><tr><td>Slot, short side</td><td class="n">2.54</td><td class="n">2.60</td><td class="n err-good">−0.06</td></tr></tbody></table></div>
+      <p class="tiny muted" style="padding:16px 20px;border-top:1px solid var(--line)">Millimetres. One test part; results depend on light, video and how flat the mat lies. <button class="link tiny" data-go="about">Method and numbers</button></p></div>
+  </div></section>
+
+  <section><div class="wrap">
+    <div class="sec-head"><span class="label">Proof on the bench</span><h2>Printed. Fitted. Working.</h2><p class="lead">Part B was filmed, built, printed and fitted to the briefcase lock it came from. Light sanding, and the mechanism works.</p></div>
+    <div class="proof"><div class="ph"><div><b style="color:var(--ink)">Print-fit clip</b><p class="small" style="margin-top:6px">The copy sliding onto the real lock, then the latch working. 8 to 12 s, muted, looping.</p><span class="phl" style="display:inline-block;margin-top:12px">your footage</span></div></div><div class="ph"><div><b style="color:var(--ink)">Original and copy</b><p class="small" style="margin-top:6px">Calipers on both, numbers in shot.</p><span class="phl" style="display:inline-block;margin-top:12px">your photo</span></div></div></div>
+  </div></section>
+
+  <section style="padding-top:0"><div class="wrap"><div class="cta-band"><h2>The part you can't buy,<br>you can now print.</h2><p class="lead" style="margin:18px auto 0">About 6 minutes to film, 3 to build. No account.</p><div class="hero-cta"><button class="btn btn-primary" data-go="prepare">Film a part →</button><button class="btn btn-ghost" data-go="resume">Left somewhere?</button></div></div></div></section>
+</div>
+
+<!-- PREPARE -->
+<div class="page" id="p-prepare"><div class="wrap flow"><div class="fgrid">
+  <div class="fleft"><button class="back" data-go="home">← Home</button><span class="label" style="color:var(--accent)">Prepare · about 2 min</span><h2>Tell us about the part.</h2><p class="lead">Name it, pick its size, then print and tape the mat.</p><details class="why"><summary>Why the mat matters</summary><p>Each code is exactly 22 mm. Seeing six or more in a frame tells SnapPart where the camera was and how big a millimetre is, with no special hardware.</p></details></div>
+  <div class="stack">
+    <div class="field"><label for="pname">Part name</label><input class="input" id="pname" placeholder="Toolbox lock"><div class="err" id="pnameErr"></div></div>
+    <div class="field"><label>Rough size</label><div class="seg" id="sizeSeg" style="width:max-content"><button aria-pressed="false" data-v="s">Under 20 mm</button><button aria-pressed="true" data-v="m">20 to 100 mm</button><button aria-pressed="false" data-v="l">Over 100 mm</button></div><p class="tiny muted" id="sizeNote">Uses the A4 mat with 22 mm codes.</p></div>
+    <div class="field"><label for="pdesc">Tell us about your part <span class="muted" style="font-weight:400">optional</span></label><div class="composer"><button class="ib voice" data-mic="pdesc" aria-label="Speak instead of typing">🎙</button><textarea id="pdesc" rows="2" placeholder="What is it, what does it do, what's hard about it?"></textarea></div><p class="tiny muted">Spoken with Muse Voice Transcribe. Audio is deleted right after it becomes text.</p></div>
+    <div class="matbox"><div id="matSvg"></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap"><span class="small muted">A4 landscape · 26 codes · 22 mm each</span><button class="btn btn-ghost btn-sm" data-toast="In the app this downloads snappart_mat_A4.pdf.">Download the mat (PDF)</button></div></div>
+    <div class="field"><label for="scale">Check the print: measure one code</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input class="input mono" id="scale" inputmode="decimal" placeholder="22.0" style="max-width:150px"><span class="muted">mm</span><span id="scaleOk" class="small"></span></div><p class="tiny muted">Print at 100%, not "fit to page". 21.8 to 22.2 mm is fine.</p></div>
+    <div class="field"><label>Kit check</label><div class="kit" id="kit"><button aria-pressed="false"><span class="box">✓</span><span><b>Mat printed and taped flat</b><br><span class="small muted">All four corners, on a rigid table.</span></span></button><button aria-pressed="false"><span class="box">✓</span><span><b>Part clean, soft even light</b><br><span class="small muted">No harsh shadows across the mat.</span></span></button><button aria-pressed="false"><span class="box">✓</span><span><b>Phone and about 10 minutes</b><br><span class="small muted">Calipers help later, but are optional.</span></span></button></div></div>
+    <button class="btn btn-primary btn-block pcta" id="toCapture">Continue to capture →</button>
+    <p class="tiny muted">Private by default. No login. Frames are deleted after 7 days. <button class="link tiny" data-go="privacy">Privacy policy</button></p>
+  </div></div></div></div>
+
+<!-- CAPTURE -->
+<div class="page" id="p-capture"><div class="wrap flow"><div class="fgrid">
+  <div class="fleft"><button class="back" data-go="prepare">← Back</button><span class="label" style="color:var(--accent)" id="capEy">Capture · video 1 of 4</span><h2 id="capT">High ring.</h2><p class="lead" id="capL"></p><ul class="small dim" style="padding-left:18px;margin:0;display:grid;gap:6px"><li>Record with your phone's camera app, then choose the video.</li><li>Keep 6 or more codes in view. Hands out of frame.</li><li>Lock focus on the part. Distance can vary.</li></ul><details class="why"><summary>Why three videos</summary><p>High and low rings see the sides from two heights. The flipped video sees the face that rests on the mat.</p></details></div>
+  <div class="stack"><div class="slots" id="slots"></div><div class="guide" id="guide"></div><div class="stack" id="capWork"></div><button class="btn btn-primary btn-block pcta" id="capMain">Choose video 1</button><p class="tiny muted">Only about 40 sharp frames are uploaded, not the video. Prototype: upload and checks use values from a real part B capture.</p></div>
+</div></div></div>
+
+<!-- BUILD -->
+<div class="page" id="p-build"><div class="wrap flow"><div class="fgrid">
+  <div class="fleft"><span class="label" style="color:var(--accent)">Build</span><h2>Building your model.</h2><p class="lead">Close this tab if you like. Your code brings you back, and the build keeps going.</p><div><div class="timer" id="timer">0:00</div><p class="small muted" style="margin-top:8px">elapsed · part B took 3 min 1 s</p></div><div class="note">📏 Keep calipers or a ruler nearby. You may be asked for a number or two.</div><p class="tiny muted mono" id="cost">Model calls: $0.00</p></div>
+  <div class="stack"><div class="note"><span class="chip c-ex">example run</span>Replay of a real part B build at 10× speed. The times are the measured ones.</div><div class="pipe" id="pipe"></div><button class="btn btn-primary btn-block pcta" id="toReview" disabled>Questions appear when the build finishes</button></div>
+</div></div></div>
+
+<!-- REVIEW -->
+<div class="page" id="p-review"><div class="wrap flow"><div class="rev">
+  <div class="revstage"><div class="stage-sm" id="revStage" style="min-height:520px"><div class="hud" style="left:16px;top:16px"><span class="k">AMBER</span><span class="v" style="color:var(--ask)" id="revWhat">the 4 slots</span></div><div class="drag">Drag to turn · <button class="link tiny" id="markBtn" style="pointer-events:auto">Mark something</button></div></div></div>
+  <div class="qs"><div><span class="label" style="color:var(--ask)">Review · <span id="revCount"></span></span><h2 style="margin-top:10px">A few questions before it prints.</h2><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:14px" id="revChips"></div></div>
+    <div id="qs" class="qs"></div>
+    <div class="q"><div class="who"><b style="color:var(--ink)">Tell SnapPart something</b><span>· voice or text</span></div><div class="composer"><button class="ib voice" data-mic="freeTxt" aria-label="Speak">🎙</button><textarea id="freeTxt" rows="1" placeholder="e.g. this strip is flat like the bottom"></textarea><button class="ib fill" id="freeSend" aria-label="Send">↑</button></div><div class="err" id="freeErr"></div><div id="freeOut"></div></div>
+    <button class="btn btn-primary btn-block pcta" id="toResult">See my part →</button>
+  </div></div></div></div>
+
+<!-- RESULT -->
+<div class="page" id="p-result"><div class="wrap flow">
+  <div style="display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:24px"><div><span class="label" style="color:var(--accent)">Result · example run · part B</span><h2 style="margin-top:10px">Your part is ready.</h2></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-go="review">Back to questions</button><button class="btn btn-primary btn-sm" data-toast="In the app this downloads part_B.stl: watertight, millimetres.">Download STL</button></div></div>
+  <div class="res">
+    <div class="stack"><div class="stage-sm" id="resStage" style="min-height:540px"><div class="hud" style="left:16px;top:16px"><span class="k">SIZE, MM</span><span class="v a">51.34 × 41.70 × 11.69</span></div><div class="drag">Drag to turn</div></div>
+      <div class="panel"><div class="kpis"><div><div class="bign">0.95</div><p class="small muted">Held-out score: how well the model matches 10 frames it was never built from.</p></div><div><div class="bign">±0.26</div><p class="small muted">Largest size error against calipers, mm.</p></div></div></div></div>
+    <div class="stack"><div class="panel rep" id="report"></div>
+      <div class="panel pp"><b>Ready to print</b><div class="checks"><div class="c"><span class="dot ok"></span>Watertight, one solid piece</div><div class="c"><span class="dot ok"></span>Millimetres · 51.3 × 41.7 × 11.7</div><div class="c"><span class="dot ok"></span>Printed copy fitted the original lock</div></div><p class="tiny muted">Your slicer should read about 51.3 × 41.7 × 11.7 mm. If not, check its scale is 100%.</p></div>
+      <div class="panel pp"><b>How did the print go?</b><div class="ans" id="fitChips"></div><div id="fitOut"></div></div>
+      <div class="panel pp"><b>Save your link</b><div style="display:flex;gap:14px;align-items:center"><div class="qr" id="qr"></div><div style="min-width:0"><div class="mono" style="color:var(--accent);font-size:16px">amber-river-hinge</div><p class="tiny muted">Opens this part on any device for 7 days.</p><button class="btn btn-ghost btn-sm" id="copyLink" style="margin-top:8px">Copy link</button></div></div></div>
+      <div class="panel pp"><b>Delete this part</b><p class="small muted">Removes its frames, model, report and answers now.</p><div id="delArea"><button class="btn btn-ghost btn-sm" id="delBtn">Delete this part</button></div></div>
+    </div></div></div></div>
+
+<!-- RESUME -->
+<div class="page" id="p-resume"><div class="wrap flow"><div class="fgrid">
+  <div class="fleft"><span class="label" style="color:var(--accent)">Left somewhere?</span><h2>Pick up where you were.</h2><p class="lead">Enter the code from your link. It opens your part on any device, at the exact step you left.</p><p class="small muted">Your link is private. Anyone with the code can open this part. It's deleted after 7 days.</p></div>
+  <div class="stack"><div class="field"><label for="rcode">Resume code</label><input class="input mono" id="rcode" placeholder="amber river hinge" autocomplete="off"><div class="err" id="rcodeErr"></div><button class="btn btn-primary btn-block" id="findBtn">Find my part</button><p class="tiny muted">Try "amber river hinge".</p></div><div id="found"></div>
+    <div class="field" style="border-top:1px solid var(--line);padding-top:20px"><label for="where">Tell us where you were <span class="muted" style="font-weight:400">optional</span></label><p class="small muted">This picks the step. It can't find a part on its own.</p><div class="composer"><button class="ib voice" data-mic="where" aria-label="Speak">🎙</button><textarea id="where" rows="1" placeholder="e.g. I printed it and the hinge was too tight"></textarea><button class="ib fill" id="whereSend" aria-label="Find my step">↑</button></div><div class="err" id="whereErr"></div><div id="whereOut"></div></div></div>
+</div></div></div>
+
+<!-- ABOUT -->
+<div class="page" id="p-about"><div class="wrap flow"><div class="doc">
+  <span class="label">About</span><h1 style="font-size:clamp(42px,6vw,72px);margin-top:16px">Film a part.<br><span class="grad">Print a copy.</span></h1>
+  <p class="lead" style="margin-top:22px">A part you can't buy shouldn't be the end of the thing it belongs to. A cracked latch on a toolbox, a snapped bracket under a favourite toy car, a hinge nobody sells anymore. SnapPart lets you film the piece on a printed mat and get a measured 3D model you can print.</p>
+  <h3>How it works</h3><p><b style="color:var(--ink)">Film.</b> Print the mat, tape it flat, film a high orbit, a low orbit and the part flipped. <b style="color:var(--ink)">Build.</b> The codes give each frame its camera position and scale, SAM 3.1 outlines the part in every frame, and the outlines carve the shape. <b style="color:var(--ink)">Review and print.</b> Muse Spark asks for what a camera can't see; answer by typing, tapping or speaking with Muse Voice, then download the STL.</p>
+  <h3>Honest about accuracy</h3><p>On our test part (51.6 × 41.9 × 11.8 mm by calipers), overall sizes came within 0.1 to 0.26 mm and the four slots measured 7.43 × 2.54 mm against 7.4 × 2.6 mm. The held-out score of 0.95 says how well the model matches 10 frames it was never built from. Your results depend on light, video and how flat the mat lies. <a class="link" href="https://github.com/bibeksarkar001/snappart/blob/main/docs/accuracy.md" target="_blank" rel="noopener">Method and numbers</a></p>
+  <h3>Built with open source</h3><p>OpenCV, NumPy, SciPy, scikit-image, Open3D, trimesh, FastAPI, React and three.js, among others. <a class="link" href="https://github.com/bibeksarkar001/snappart#readme" target="_blank" rel="noopener">All, with licences, in the README</a></p>
+  <h3>Credits</h3><div class="dev"><div class="avatar" aria-hidden="true">BS</div><div style="flex:1;min-width:180px"><b style="font-size:17px">Bibek Sarkar</b><div class="mono tiny muted">github.com/bibeksarkar001</div></div><a class="btn btn-ghost btn-sm" href="https://github.com/bibeksarkar001" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.34c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z"/></svg>View GitHub profile</a></div><p style="margin-top:14px">Made by <b style="color:var(--ink)">Bibek Sarkar</b>, with help from <b style="color:var(--ink)">Bhashwati Roy</b>. Built during the Meta Global AI Developer Hackathon, Oct 27 to Nov 4, 2026. The commit history is in the repository.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:22px"><a class="btn btn-ghost btn-sm" href="https://github.com/bibeksarkar001/snappart" target="_blank" rel="noopener">Repository</a><a class="btn btn-ghost btn-sm" href="https://github.com/bibeksarkar001/snappart#readme" target="_blank" rel="noopener">README</a><button class="btn btn-ghost btn-sm" data-go="next">What's next</button><button class="btn btn-ghost btn-sm" data-go="privacy">Privacy</button><button class="btn btn-ghost btn-sm" data-go="terms">Terms</button></div>
+</div></div></div>
+
+<!-- NEXT -->
+<div class="page" id="p-next"><div class="wrap flow"><div class="sec-head"><span class="label">What's next</span><h2>Where SnapPart is going.</h2><p class="lead">Nothing below is available until it's marked Built. No dates yet.</p><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip c-meas">Built</span><span class="chip c-you">In progress</span><span class="chip c-est">Planned</span><span class="chip c-unseen">Idea</span></div></div><div class="road" id="road"></div></div></div>
+
+<!-- PRIVACY -->
+<div class="page" id="p-privacy"><div class="wrap flow"><div class="doc"><span class="label">Privacy policy</span><h2 style="margin-top:12px">Your part, your files.</h2><p class="small muted">Last updated <span class="phl">[date]</span></p>
+  <h3>What we collect</h3><ul><li>Frames your browser pulls from your videos (not the full videos).</li><li>Voice recordings, only if you speak, only to make text.</li><li>What you type: part name, description, answers, corrections.</li><li>What we make: model, report, question cards, review images.</li><li>IP address and request times, only to prevent abuse.</li></ul><p>No name, email or account.</p>
+  <h3>How it's processed</h3><p>Frames, text and voice go to Meta's Model API (SAM 3.1, Muse Spark 1.3, Muse Voice Transcribe) on the standard endpoints, not the "contributor" ones under which content may be used for training. Site on Vercel, build server on <span class="phl">[backend host]</span>. We never sell data or use it for ads.</p>
+  <h3>How long we keep it</h3><p>Voice: deleted right after transcription. Frames, model, report and answers: 7 days, then deleted. Delete your part anytime from its Result page.</p>
+  <h3>Who can see your part</h3><p>Anyone with your private link or code. We don't list or publish parts. Contact <span class="phl">[contact email]</span>.</p></div></div></div>
+
+<!-- TERMS -->
+<div class="page" id="p-terms"><div class="wrap flow"><div class="doc"><span class="label">Terms of use</span><h2 style="margin-top:12px">Before you print.</h2><p class="small muted">Last updated <span class="phl">[date]</span></p>
+  <h3>Measurements can be wrong</h3><p>Check the sizes that matter before printing. Don't use SnapPart parts where failure could hurt someone (safety, vehicle, medical, electrical, load-bearing, child-safety, pressure or food-contact) unless a qualified person has checked them.</p>
+  <h3>What you may make</h3><p>Parts you own or may copy, for repair and personal use. You're responsible for patents, design rights, copyrights and trademarks. <b style="color:var(--ink)">No weapons or weapon parts, including any firearm component, and nothing illegal to make or own.</b></p>
+  <h3>No warranty</h3><p>Provided "as is". To the fullest extent the law allows, we aren't liable for loss or damage from using SnapPart or what you print. SnapPart is not made or endorsed by Meta. Governed by the laws of <span class="phl">[governing law]</span>.</p></div></div></div>
+</main>
+
+<footer class="foot"><div class="wrap"><div class="cols"><div style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--ink);font-size:16px">SnapPart</b><span>Film a part. Print a copy.</span><span>Made for the <a href="https://cerebralvalley.ai/e/meta-ai-developer-hackathon" target="_blank" rel="noopener" style="display:inline;text-decoration:underline">Meta Global AI Developer Hackathon</a>. Not made or endorsed by Meta.</span></div><div><a data-go="about">About</a><a data-go="next">What's next</a><a data-go="resume">Left somewhere?</a><a data-go="privacy">Privacy</a><a data-go="terms">Terms</a></div><div><a href="https://github.com/bibeksarkar001/snappart" target="_blank" rel="noopener">Repository</a><a href="https://github.com/bibeksarkar001/snappart#readme" target="_blank" rel="noopener">README</a><a href="https://github.com/bibeksarkar001" target="_blank" rel="noopener">Bibek Sarkar on GitHub</a><a>Demo video <span class="phl">soon</span></a></div></div></div></footer>
+
+<button class="proto-btn" id="protoBtn" aria-expanded="false">Prototype</button>
+<div class="proto" id="proto" hidden><b style="font-size:14px">Prototype controls <span class="muted" style="font-weight:400">· not in the product</span></b>
+  <div class="g"><span>Welcome back card</span><div class="seg" data-ctl="welcome"><button data-v="none">None</button><button data-v="capture">Capture</button><button data-v="away">Built away</button><button data-v="expired">Expired</button></div></div>
+  <div class="g"><span>Connection</span><div class="seg" data-ctl="net"><button data-v="on" aria-pressed="true">Online</button><button data-v="off">Offline</button></div></div>
+  <div class="g"><span>Muse Spark 1.3</span><div class="seg" data-ctl="spark"><button data-v="0">Not running yet</button><button data-v="1" aria-pressed="true">Running</button></div></div>
+  <div class="g"><span>Muse Voice Transcribe</span><div class="seg" data-ctl="voice"><button data-v="0">Not running yet</button><button data-v="1" aria-pressed="true">Running</button></div></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>/* Part B geometry is not stored in the repository. The app loads the model from the backend (GLB). For a local look at the full prototype, open assets/private/design/snappart_prototype_v3_full.html. */</script>
+<script>
+(function(){
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S={welcome:'capture',net:'on',spark:1,voice:1,slot:0,kept:[0,0,0,0],answers:{}};
+try{const v=JSON.parse(localStorage.getItem('sp2')||'{}');if(v.answers)S.answers=v.answers;if(v.welcome)S.welcome=v.welcome}catch(e){}
+const save=()=>{try{localStorage.setItem('sp2',JSON.stringify({answers:S.answers,welcome:S.welcome}))}catch(e){}};
+function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('on');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),2600)}
+
+/* theme */
+function isLight(){const t=document.documentElement.getAttribute('data-theme');return t?t==='light':matchMedia('(prefers-color-scheme: light)').matches}
+const SUN='<circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9L13 13M3 13l1.1-1.1M11.9 4.1L13 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',MOON='<path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>';
+function applyTheme(t){if(t)document.documentElement.setAttribute('data-theme',t);const L=isLight();$('#themeIco').innerHTML=L?MOON:SUN;$('#themeBtn').setAttribute('aria-label',L?'Switch to dark mode':'Switch to light mode');V.forEach(v=>v.retheme&&v.retheme())}
+try{const t=localStorage.getItem('sp-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}
+$('#themeBtn').onclick=()=>{const t=isLight()?'dark':'light';try{localStorage.setItem('sp-theme',t)}catch(e){}applyTheme(t)};
+matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>applyTheme());
+
+/* routing */
+const FLOW=['prepare','capture','build','review','result'],FN={prepare:['Prepare','about 2 min'],capture:['Capture','5 to 8 min'],build:['Build','about 3 min'],review:['Review','1 to 3 min'],result:['Result','']};
+const ROUTES=['home','prepare','capture','build','review','result','resume','about','next','privacy','terms'];
+function go(r,anchor){if(!ROUTES.includes(r))r='home';if(location.hash.slice(1)!==r)history.replaceState(null,'','#'+r);show(r,anchor)}
+function show(r,anchor){$$('.page').forEach(p=>p.classList.toggle('on',p.id==='p-'+r));const f=FLOW.includes(r);$('#path').hidden=!f;$('#hdrCode').hidden=!f;$('#hdrCta').hidden=f;$('#mnav').classList.remove('on');
+  if(f){const i=FLOW.indexOf(r);$('#pathList').innerHTML=FLOW.map((x,k)=>`<li class="${k<i?'done':k===i?'now':''}" data-go="${x}" tabindex="0" role="link"><span class="bar"></span><span class="nm">${k<i?'✓ ':''}${FN[x][0]}</span><span class="tm">${FN[x][1]}</span></li>`).join('');$('#pmN').textContent=FN[r][0];$('#pmS').textContent=`Step ${i+1} of 5`;$('#pmB').style.width=((i+1)*20)+'%'}
+  if(anchor)requestAnimationFrame(()=>{const el=document.getElementById(anchor);el&&el.scrollIntoView({behavior:reduce?'auto':'smooth'})});else window.scrollTo(0,0);
+  V.forEach(v=>v.setActive(v.route===r));
+  if(r==='build')startBuild();if(r==='review')renderReview();if(r==='result')renderResult();if(r==='capture')renderCapture()}
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){e.preventDefault();go(g.dataset.go,g.dataset.anchor);return}const t=e.target.closest('[data-toast]');if(t)toast(t.dataset.toast);const m=e.target.closest('[data-mic]');if(m)mic(m)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'){const g=e.target.closest('li[data-go]');if(g)go(g.dataset.go)}});
+window.addEventListener('hashchange',()=>show(location.hash.slice(1)||'home'));
+$('#menuBtn').onclick=()=>{const on=$('#mnav').classList.toggle('on');$('#menuBtn').setAttribute('aria-expanded',on)};
+function mic(b){const ta=document.getElementById(b.dataset.mic);if(!S.voice){toast('Voice arrives with Muse Voice Transcribe. Type for now.');return}
+  toast('Muse Voice Transcribe: speech becomes text you can edit. (Simulated in this preview.)');if(ta&&!ta.value){ta.value={where:'I printed it and the hinge was too tight',freeTxt:'this strip is flat like the bottom',pdesc:'A briefcase lock plate. The ridge inside the pocket is what latches.'}[b.dataset.mic]||'';ta.focus()}}
+
+/* prototype controls */
+$('#protoBtn').onclick=()=>{const p=$('#proto');p.hidden=!p.hidden;$('#protoBtn').setAttribute('aria-expanded',!p.hidden)};
+const setSeg=(seg,v)=>[...seg.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===String(v)));
+$$('.proto .seg').forEach(seg=>{seg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=seg.dataset.ctl,v=b.dataset.v;setSeg(seg,v);
+  if(k==='welcome'){S.welcome=v;renderWelcome();save()}if(k==='net'){S.net=v;$('#offline').classList.toggle('on',v==='off')}
+  if(k==='spark'){S.spark=+v;renderMeta();if(location.hash==='#review')renderReview()}if(k==='voice'){S.voice=+v;renderMeta()}})});
+setSeg($('[data-ctl="welcome"]'),S.welcome);
+
+function renderWelcome(){const V={capture:['Welcome back · Toolbox lock','Capture, video 3 of 4. Two videos are saved on this device.','Continue','capture'],away:['Your model finished while you were away','Part B · 2 questions are waiting.','Answer','review'],expired:['Toolbox lock has expired','Frames and model were deleted after 7 days. Your answers are saved here, so a new part starts pre-filled.','Start again','prepare']}[S.welcome];
+  $('#welcome').innerHTML=V?`<div class="welcome"><div class="ic"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M13 8.5l5-2.5v8l-5-2.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/></svg></div><div class="tx"><b>${V[0]}</b><div class="muted">${V[1]}</div></div><button class="btn btn-primary btn-sm" data-go="${V[3]}">${V[2]} →</button></div>`:''}
+function renderMeta(){const M=[['SAM 3.1','Sees','Outlines your part in every video frame, so the shape comes from what the camera actually saw.','<span class="in">in </span> 140 frames · "brown plastic buckle"<br><span class="out">out</span> 140 masks · 52 s',1],
+ ['Muse Spark 1.3','Reasons','Checks your videos and outlines, writes the questions, turns your words into changes, and writes the report.','<span class="in">in </span> 4 slot openings, depth unseen<br><span class="out">out</span> "How deep are the 4 slots? Push the depth rod in until it stops."',S.spark],
+ ['Muse Voice Transcribe','Listens','Turns your spoken description and answers into text, so you can keep your hands on the part.','<span class="in">in </span> "the hinge was too tight"<br><span class="out">out</span> clearance +0.15 mm, ready to apply',S.voice]];
+  $('#metaGrid').innerHTML=M.map(m=>`<div class="mcard"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span class="role">${m[1]}</span>${m[4]?'<span class="chip c-meas">Running</span>':'<span class="chip c-ask">Not running yet</span>'}</div><div class="nm">${m[0]}</div><p class="small dim">${m[2]}</p><div class="io">${m[3]}</div></div>`).join('')}
+
+/* illustrations */
+function rnd(s){return()=>((s=(s*9301+49297)%233280)/233280)}
+function code(x,y,s,seed,fg='var(--ink)',bg='var(--panel)'){const r=rnd(seed),c=s/6;let o=`<rect x="${x}" y="${y}" width="${s}" height="${s}" fill="${fg}"/><rect x="${x+c}" y="${y+c}" width="${c*4}" height="${c*4}" fill="${bg}"/>`;for(let i=0;i<4;i++)for(let j=0;j<4;j++)if(r()>.5)o+=`<rect x="${x+c*(1+i)}" y="${y+c*(1+j)}" width="${c}" height="${c}" fill="${fg}"/>`;return o}
+(function(){const W=297,H=210,s=17,p=[];for(let i=0;i<9;i++){p.push([14+i*(W-28-s)/8,12]);p.push([14+i*(W-28-s)/8,H-12-s])}for(let j=1;j<=4;j++){const y=12+j*(H-24-s)/5;p.push([14,y]);p.push([W-14-s,y])}
+  let o=`<svg viewBox="-12 -10 ${W+24} ${H+34}" role="img" aria-label="A4 landscape mat with 26 codes"><rect width="${W}" height="${H}" rx="4" fill="#F2F5F4"/>`;p.forEach((q,k)=>o+=code(q[0],q[1],s,k*7+3,'#0A0D0E','#F2F5F4'));
+  o+=`<rect x="${W/2-36}" y="${H/2-24}" width="72" height="48" rx="6" fill="none" stroke="#9AA6A4" stroke-dasharray="3 3"/><text x="${W/2}" y="${H/2+4}" text-anchor="middle" font-size="9" font-family="Geist Mono,monospace" fill="var(--ink-3)">part here</text><path d="M14 ${H+10}H${W-14}M14 ${H+6}v8M${W-14} ${H+6}v8" stroke="#3DDBC3" stroke-width=".8"/><text x="${W/2}" y="${H+21}" text-anchor="middle" font-size="8" font-family="Geist Mono,monospace" fill="#3DDBC3">297 mm</text><path d="M14 -4h${s}M14 -7v6M${14+s} -7v6" stroke="#3DDBC3" stroke-width=".8"/><text x="${14+s+5}" y="-1" font-size="7" font-family="Geist Mono,monospace" fill="#3DDBC3">22.0 mm</text></svg>`;$('#matSvg').innerHTML=o})();
+const A='#3DDBC3',MB='#6B95FF',AM='#F6B44C';
+$('#art1').innerHTML=`<svg viewBox="0 0 260 150"><path d="M40 108L130 136L220 108L130 82Z" fill="var(--panel-2)" stroke="var(--line-2)"/>${[[64,108],[96,120],[164,120],[196,108],[130,92]].map((q,k)=>code(q[0]-5,q[1]-4,9,k+9)).join('')}<path d="M115 102l15 6 15-6-15-6z" fill="var(--line)" stroke="var(--ink-3)"/><ellipse cx="130" cy="92" rx="100" ry="30" fill="none" stroke="${A}" stroke-dasharray="3 5" opacity=".7"/><g><rect x="-9" y="-6" width="18" height="12" rx="3" fill="${A}"/><animateMotion dur="7s" repeatCount="indefinite" path="M230 92A100 30 0 1 1 30 92A100 30 0 1 1 230 92" ${reduce?'begin="indefinite"':''}/></g></svg>`;
+$('#art2').innerHTML=`<svg viewBox="0 0 260 150">${[[22,24,-5],[140,20,5],[80,70,0]].map((f,k)=>`<g transform="translate(${f[0]} ${f[1]}) rotate(${f[2]})"><rect width="100" height="62" rx="7" fill="var(--panel-2)" stroke="var(--line-2)"/><path d="M24 44l28-22 28 8-4 16-26 6z" fill="${MB}" fill-opacity=".14" stroke="${MB}" stroke-width="1.8" stroke-dasharray="130"><animate attributeName="stroke-dashoffset" values="130;0;0" dur="3s" begin="${k*.5}s" repeatCount="indefinite"/></path></g>`).join('')}</svg>`;
+$('#art3').innerHTML=`<svg viewBox="0 0 260 150">${Array.from({length:10},(_,i)=>Array.from({length:6},(_,j)=>{const inn=i>0&&i<9&&j>0&&j<5&&!(i>2&&i<6&&j>1&&j<4);return `<rect x="${32+i*20}" y="${16+j*20}" width="17" height="17" rx="3" fill="${inn?A:'var(--line)'}" opacity="${inn?.85:.6}"/>`}).join('')).join('')}</svg>`;
+$('#art4').innerHTML=`<svg viewBox="0 0 260 150"><rect x="24" y="26" width="212" height="44" rx="12" fill="rgba(107,149,255,.12)" stroke="rgba(107,149,255,.4)"/><text x="40" y="53" font-size="12" font-family="Geist,sans-serif" fill="var(--ink)">How deep are the 4 slots?</text><rect x="120" y="86" width="116" height="40" rx="12" fill="rgba(61,219,195,.12)" stroke="rgba(61,219,195,.45)"/><text x="178" y="111" text-anchor="middle" font-size="13" font-family="Geist Mono,monospace" fill="${A}">3.7 mm</text></svg>`;
+
+/* prepare */
+$('#sizeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;setSeg($('#sizeSeg'),b.dataset.v);$('#sizeNote').textContent={s:'Small parts come out rough on the A4 mat. A small-code mat is on the way.',m:'Uses the A4 mat with 22 mm codes.',l:'Over 100 mm may not fit A4. Print the same mat on A3.'}[b.dataset.v]};
+$('#kit').onclick=e=>{const b=e.target.closest('button');if(b)b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true')};
+$('#scale').oninput=()=>{const v=parseFloat($('#scale').value),o=$('#scaleOk');o.innerHTML=isNaN(v)?'':(v>=21.8&&v<=22.2?'<span style="color:var(--ok);font-weight:600">✓ Right scale</span>':'<span style="color:var(--bad);font-weight:600">Reprint at 100%: should be 22 mm</span>')};
+$('#pname').oninput=()=>$('#pnameErr').textContent='';
+$('#toCapture').onclick=()=>{if(!$('#pname').value.trim()){$('#pnameErr').textContent='Give your part a name, like "toolbox lock".';$('#pname').focus();return}go('capture')};
+
+/* capture */
+const SL=[{k:'1 · High ring',t:'High ring.',l:'Circle the part once from about 45° above.',req:1,h:-34},{k:'2 · Low ring',t:'Low ring.',l:'Circle once more, about 20° above the table.',req:1,h:-14},{k:'3 · Flipped',t:'Part flipped.',l:'Turn the part over and circle once more, so the underside is seen.',req:1,h:-26,flip:1},{k:'4 · Demo',t:'Show how it works.',l:'Optional. Use your hands and say what it does. Muse Voice turns the sound into your description.',req:0,demo:1}];
+const COV=[Array(36).fill(1),Array.from({length:36},(_,k)=>k>=20&&k<24?0:1),Array(36).fill(1)];
+function guide(i){const s=SL[i];if(s.demo)return `<svg viewBox="0 0 400 250"><path d="M120 190L200 220L280 190L200 160Z" fill="var(--panel-2)" stroke="var(--line-2)"/><path d="M178 178l22 9 22-9-22-9z" fill="var(--line)" stroke="var(--ink-3)"/><g transform="translate(150 70)"><rect width="100" height="44" rx="22" fill="rgba(107,149,255,.13)" stroke="rgba(107,149,255,.4)"/>${[0,1,2,3,4,5,6].map(k=>`<rect x="${22+k*9}" y="${22-[6,12,18,10,15,8,5][k]/2}" width="4" height="${[6,12,18,10,15,8,5][k]}" rx="2" fill="${MB}"/>`).join('')}</g><text x="200" y="146" text-anchor="middle" font-size="12" font-family="Geist Mono,monospace" fill="var(--ink-3)">Muse Voice Transcribe</text></svg>`;
+  const cy=170+s.h,ry=46+s.h/4;return `<svg viewBox="0 0 400 250"><path d="M70 190L200 236L330 190L200 146Z" fill="var(--panel-2)" stroke="var(--line-2)"/>${[[100,190],[150,208],[250,208],[300,190],[150,168],[250,168]].map((q,k)=>code(q[0]-7,q[1]-5,13,k+21)).join('')}<path d="M176 186l24 9 24-9-24-9z" fill="${s.flip?'rgba(246,180,76,.25)':'var(--line)'}" stroke="var(--ink-3)"/>${s.flip?`<path d="M186 160q14-20 28 0" fill="none" stroke="${AM}" stroke-width="2"/>`:''}<ellipse cx="200" cy="${cy}" rx="150" ry="${ry}" fill="none" stroke="${A}" stroke-dasharray="5 6" stroke-width="1.4"/><g><rect x="-12" y="-8" width="24" height="16" rx="4" fill="${A}"/><circle r="4" fill="#03201B"/><animateMotion dur="8s" repeatCount="indefinite" path="M350 ${cy}A150 ${ry} 0 1 1 50 ${cy}A150 ${ry} 0 1 1 350 ${cy}" ${reduce?'begin="indefinite"':''}/></g><text x="20" y="28" font-size="12" font-family="Geist Mono,monospace" fill="var(--ink-3)">${s.flip?'part flipped · same orbit':s.h<-20?'about 45° above':'about 20° above'}</text></svg>`}
+function cov(a){const n=a.length;let o='<svg viewBox="0 0 132 132" role="img" aria-label="Angles filmed around the part">';a.forEach((v,k)=>{const a0=k/n*6.2832-1.5708,a1=(k+.8)/n*6.2832-1.5708,R=60,r=46,P=(t,rr)=>[66+rr*Math.cos(t),66+rr*Math.sin(t)];const[x0,y0]=P(a0,R),[x1,y1]=P(a1,R),[x2,y2]=P(a1,r),[x3,y3]=P(a0,r);o+=`<path d="M${x0} ${y0}A${R} ${R} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r} ${r} 0 0 0 ${x3} ${y3}Z" fill="${v?A:AM}"/>`});return o+`<text x="66" y="71" text-anchor="middle" font-size="15" font-family="Geist Mono,monospace" fill="var(--ink)">${Math.round(a.filter(Boolean).length/n*100)}%</text></svg>`}
+const next=()=>{for(let k=0;k<4;k++)if(!S.kept[k])return k;return 3};
+function renderCapture(){const i=S.slot,s=SL[i],all=S.kept[0]&&S.kept[1]&&S.kept[2];
+  $('#slots').innerHTML=SL.map((x,k)=>`<button class="slot ${S.kept[k]?'kept':''}" ${k===i?'aria-current="step"':''} data-slot="${k}"><span class="k">${x.k}</span><b>${x.req?'Required':'Optional'}</b><span class="st">${S.kept[k]?'✓ Kept':k===i?'Now':'Waiting'}</span></button>`).join('');
+  $('#capEy').textContent=`Capture · video ${i+1} of 4 · ${s.req?'required':'optional'}`;$('#capT').textContent=s.t;$('#capL').textContent=s.l;$('#guide').innerHTML=guide(i);
+  let w='';if(S.kept[i])w+=checks(i);if(all)w+=`<div class="estimate"><span class="chip c-est" style="width:max-content">estimated</span><b>Expected accuracy: about ±0.2 to ±0.4 mm</b><span class="small dim">From 120 sharp frames, codes in all of them, and a nearly full coverage ring. The measured report replaces this after the build.</span></div>`;
+  if(all&&!S.kept[3])w+=`<button class="btn btn-ghost btn-sm" data-go="build" style="width:max-content">Skip the demo video and build</button>`;$('#capWork').innerHTML=w;
+  $('#capMain').textContent=S.kept[i]?(all?'Start the build →':`Next: video ${next()+1}`):`Choose video ${i+1}`}
+function checks(i){if(SL[i].demo)return `<div class="checks"><div class="c"><span class="dot ok"></span>Audio found, 38 s</div><div class="c"><span class="dot ok"></span>${S.voice?'Transcribed with <span class="chip c-meta">Muse Voice</span>':'Transcription arrives with Muse Voice'}</div></div>`;const gap=i===1;
+  return `<div class="checks"><div class="c"><span class="dot ok"></span>40 sharp frames pulled in your browser</div><div class="c"><span class="dot ok"></span>Mat codes in every frame (6 to 11 each)</div><div class="c"><span class="dot ok"></span>Sharp, hands out of frame</div>${S.spark?'<div class="c"><span class="dot ok"></span>Light and part checked <span class="chip c-meta">Muse Spark</span></div>':''}</div><div class="panel" style="padding:16px"><div class="cov">${cov(COV[i])}<div style="flex:1;min-width:180px"><b>${gap?'One side is thin':'All the way round'}</b><p class="small dim" style="margin-top:4px">${gap?'Few frames from the left side. Keep it, or retake for a slightly better model.':'Every angle around the part has frames.'}</p><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-retake="${i}">Retake</button><span class="chip c-meas" style="height:38px;padding:0 14px">✓ Kept</span></div></div></div></div>`}
+$('#slots').onclick=e=>{const b=e.target.closest('[data-slot]');if(b){S.slot=+b.dataset.slot;renderCapture()}};
+$('#capWork').onclick=e=>{const r=e.target.closest('[data-retake]');if(r){S.kept[+r.dataset.retake]=0;renderCapture();toast('Removed. Choose a new video when ready.')}};
+$('#capMain').onclick=()=>{const i=S.slot,all=S.kept[0]&&S.kept[1]&&S.kept[2];if(S.kept[i]){if(all)return go('build');S.slot=next();return renderCapture()}
+  if(S.net==='off')toast('Saved on this device. It uploads when you are back online.');$('#capMain').disabled=true;
+  $('#capWork').innerHTML=`<div class="panel" style="padding:16px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between"><b>Uploading video ${i+1}</b><span class="mono small" id="upP">0%</span></div><div class="prog"><i id="upB"></i></div><div class="checks"><div class="c"><span class="dot run"></span>Pulling sharp frames in your browser</div></div></div>`;
+  let p=0;const t=setInterval(()=>{p=Math.min(100,p+(reduce?100:6));$('#upB').style.width=p+'%';$('#upP').textContent=p+'%';if(p>=100){clearInterval(t);S.kept[i]=1;$('#capMain').disabled=false;renderCapture()}},80)};
+
+/* build */
+const ST=[['Find mat codes','OpenCV',2.0,'120 frames · 6 to 11 codes each'],['Calibrate the mat','our code',9.5,'26 codes · paper flatness corrected'],['Camera poses','OpenCV',2.9,'120 poses · 1.3 px held-out error'],['Outline the part','SAM 3.1',52,'140 of 140 frames outlined','t'],['Check outlines','Muse Spark 1.3',6,'0 outlines dropped (example output)','s'],['Line up the videos','our code',29.4,'3 videos aligned within 0.2 mm'],['Carve the shape','our code',38.7,'0.15 mm voxels · watertight'],['Find features','our code',41.0,'4 slots · 1 ridge · 1 plate · 2 areas to review'],['Write your questions','Muse Spark 1.3',4,'5 questions, ranked by impact (example output)','s'],['Mesh and STL','our code',5.9,'51.3 × 41.7 × 11.7 mm']];
+let bt=null;
+function startBuild(){const st=ST.filter(s=>s[4]!=='s'||S.spark);$('#pipe').innerHTML=st.map((s,k)=>`<div class="prow ${/SAM|Muse/.test(s[1])?'meta':''}" id="pr${k}"><span class="dot" id="pd${k}"></span><div><div class="nm">${s[0]} ${/SAM|Muse/.test(s[1])?`<span class="chip c-meta">${s[1]}</span>`:`<span class="chip c-code">${s[1]}</span>`}</div><div class="dt" id="pt${k}">waiting</div>${s[4]==='t'?`<div class="thumbs" id="th${k}"></div>`:''}</div><span class="ms" id="pm${k}"></span></div>`).join('');
+  $('#toReview').disabled=true;$('#toReview').textContent='Questions appear when the build finishes';clearInterval(bt);let k=0,el=0,inS=0;const tot=st.reduce((a,s)=>a+s[2],0),fmt=x=>`${Math.floor(x/60)}:${String(Math.floor(x%60)).padStart(2,'0')}`;let sam=0;
+  const begin=()=>{if(k>=st.length){$('#timer').textContent=fmt(tot);$('#toReview').disabled=false;$('#toReview').textContent='Answer 5 questions →';toast('Build finished. Real part B run: 3 min 1 s.');return false}$('#pr'+k).classList.add('run');$('#pd'+k).className='dot run';$('#pt'+k).textContent='running…';return true};
+  if(!begin())return;bt=setInterval(()=>{const s=st[k],dt=reduce?s[2]:1;inS+=dt;el+=dt;$('#timer').textContent=fmt(el);
+    if(s[4]==='t'){sam=Math.min(140,Math.round(inS/s[2]*140));const th=$('#th'+k);while(th.children.length<Math.min(8,Math.floor(inS/s[2]*8)+1))th.insertAdjacentHTML('beforeend',`<svg viewBox="0 0 58 40"><path d="M14 30l12-18 18 4-2 10-16 6z" fill="${MB}" fill-opacity=".18" stroke="${MB}" stroke-width="1.5" transform="rotate(${th.children.length*41} 29 20)"/></svg>`);$('#pt'+k).textContent=`${sam} of 140 frames outlined`}
+    $('#cost').textContent=`Model calls: $${(sam*.0025).toFixed(2)} · ${sam} SAM 3.1 images at $2.50 per 1,000`;
+    if(inS>=s[2]){$('#pr'+k).classList.replace('run','done');$('#pd'+k).className='dot ok';$('#pt'+k).textContent=s[3];$('#pm'+k).textContent=s[2]+' s';k++;inS=0;if(!begin())clearInterval(bt)}},100)}
+$('#toReview').onclick=()=>go('review');
+
+/* 3D */
+function dec(D){const b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));const q=new Uint16Array(b(D.pos).buffer),n=new Int8Array(b(D.nrm).buffer),idx=new Uint32Array(b(D.idx).buffer);const pos=new Float32Array(q.length),nr=new Float32Array(n.length);for(let i=0;i<q.length;i+=3){pos[i]=D.min[0]+q[i]*D.scale[0];pos[i+1]=D.min[1]+q[i+1]*D.scale[1];pos[i+2]=D.min[2]+q[i+2]*D.scale[2]}for(let i=0;i<n.length;i++)nr[i]=n[i]/127;return{pos,nr,idx}}
+const REG={slots:{x:[167.4,174],y:[80,123],z:[-1,4.3]},ridge:{x:[165.2,167.9],y:[91.8,112],z:[1,4.8]},plate:{x:[149.4,167.2],y:[84.3,119.2],z:[-1,3.2]},lump:{x:[150.6,153],y:[92.8,114.4],z:[3,12]}};
+const VIEW={slots:[-.95,.95,1.45],ridge:[-1.4,.72,1.35],plate:[-.5,1.05,1.45],lump:[-1.0,1.0,1.45]};
+const GEO={},V=[];
+function geo(key){if(GEO[key])return GEO[key];const d=dec(window[key]);const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(d.pos,3));g.setAttribute('normal',new THREE.BufferAttribute(d.nr,3));g.setIndex(new THREE.BufferAttribute(d.idx,1));g.computeBoundingBox();GEO[key]={g,pos:d.pos};return GEO[key]}
+function viewer(el,route,o){if(!window.THREE||!window.PART_B){el.insertAdjacentHTML('beforeend','<div class="drag" style="bottom:50%">3D preview unavailable</div>');return null}
+  const W=()=>el.clientWidth,H=()=>el.clientHeight,r=new THREE.WebGLRenderer({antialias:true,alpha:true});r.setPixelRatio(Math.min(2,devicePixelRatio));r.setSize(W(),H());r.outputEncoding=THREE.sRGBEncoding;r.toneMapping=THREE.ACESFilmicToneMapping;r.toneMappingExposure=.92;r.localClippingEnabled=true;el.prepend(r.domElement);
+  const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(o.fov||28,W()/H(),1,3000);
+  sc.add(new THREE.HemisphereLight(0xdff7f2,0x0b1214,.55));const k1=new THREE.DirectionalLight(0xffffff,1.25);k1.position.set(80,140,110);sc.add(k1);const k2=new THREE.DirectionalLight(0x6be8d5,.9);k2.position.set(-120,40,-90);sc.add(k2);const k3=new THREE.DirectionalLight(0x6b95ff,.55);k3.position.set(120,-20,-60);sc.add(k3);
+  const holder=new THREE.Group();sc.add(holder);
+  const clip=new THREE.Plane(new THREE.Vector3(0,-1,0),999);
+  const mat=new THREE.MeshPhysicalMaterial({color:0x9FAAA8,roughness:.55,metalness:0,clearcoat:.25,clearcoatRoughness:.6,vertexColors:true,side:THREE.DoubleSide,clippingPlanes:o.scan?[clip]:[]});
+  let mesh=null,G=null,col=null,hl=null,bb=null;
+  const grid=new THREE.GridHelper(220,44,0x2a3a3a,0x162022);const gridTheme=()=>{const L=isLight();grid.material.color&&0;const cs=grid.geometry.attributes.color;const a=new THREE.Color(L?0xa9bab6:0x2a3a3a),b=new THREE.Color(L?0xd5dfdc:0x162022);for(let i=0;i<cs.count;i++){cs.setXYZ(i,b.r,b.g,b.b)}cs.needsUpdate=true};grid.material.transparent=true;grid.material.opacity=.55;sc.add(grid);
+  const sh=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),gr=x.createRadialGradient(64,64,4,64,64,64);gr.addColorStop(0,'rgba(0,0,0,.65)');gr.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gr;x.fillRect(0,0,128,128);const m=new THREE.Mesh(new THREE.PlaneGeometry(90,70),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));m.rotation.x=-Math.PI/2;return m})();sc.add(sh);
+  const scanQ=new THREE.Mesh(new THREE.PlaneGeometry(80,64),new THREE.MeshBasicMaterial({color:0x3DDBC3,transparent:true,opacity:.0,side:THREE.DoubleSide,depthWrite:false}));scanQ.rotation.x=-Math.PI/2;sc.add(scanQ);
+  const dims=new THREE.Group();sc.add(dims);const labs=[];
+  function load(key){if(mesh){holder.remove(mesh)}const gg=geo(key);G=gg;const g=gg.g.clone();col=new Float32Array(gg.pos.length);g.setAttribute('color',new THREE.BufferAttribute(col,3));mesh=new THREE.Mesh(g,mat);bb=g.boundingBox;const c=new THREE.Vector3();bb.getCenter(c);mesh.position.set(-c.x,-c.y,-bb.max.z);const piv=new THREE.Group();piv.rotation.x=Math.PI/2;piv.add(mesh);holder.children.forEach(ch=>holder.remove(ch));holder.add(piv);paint();if(o.dims)buildDims()}
+  function paint(){const P=G.pos,R=hl&&REG[hl];for(let i=0;i<P.length;i+=3){const inR=R&&P[i]>=R.x[0]&&P[i]<=R.x[1]&&P[i+1]>=R.y[0]&&P[i+1]<=R.y[1]&&P[i+2]>=R.z[0]&&P[i+2]<=R.z[1];col[i]=inR?1:.9;col[i+1]=inR?.6:.93;col[i+2]=inR?.14:.92}mesh.geometry.attributes.color.needsUpdate=true}
+  function buildDims(){dims.children.slice().forEach(c=>dims.remove(c));labs.forEach(l=>l.remove());labs.length=0;const sx=bb.max.x-bb.min.x,sy=bb.max.y-bb.min.y,sz=bb.max.z-bb.min.z;const lm=new THREE.LineBasicMaterial({color:0x3DDBC3,transparent:true,opacity:.85});
+    const seg=(a,b)=>{const g=new THREE.BufferGeometry().setFromPoints([a,b]);dims.add(new THREE.Line(g,lm))};const off=5;
+    /* world: x=length, z=-y(width), y=height (after rotation) */
+    const x0=-sx/2,x1=sx/2,z0=sy/2,z1=-sy/2;
+    seg(new THREE.Vector3(x0,0,z0+off),new THREE.Vector3(x1,0,z0+off));seg(new THREE.Vector3(x0,0,z0+off-2),new THREE.Vector3(x0,0,z0+off+2));seg(new THREE.Vector3(x1,0,z0+off-2),new THREE.Vector3(x1,0,z0+off+2));
+    seg(new THREE.Vector3(x1+off,0,z0),new THREE.Vector3(x1+off,0,z1));seg(new THREE.Vector3(x1+off-2,0,z0),new THREE.Vector3(x1+off+2,0,z0));seg(new THREE.Vector3(x1+off-2,0,z1),new THREE.Vector3(x1+off+2,0,z1));
+    seg(new THREE.Vector3(x1+off,0,z1-off),new THREE.Vector3(x1+off,sz,z1-off));seg(new THREE.Vector3(x1+off-2,sz,z1-off),new THREE.Vector3(x1+off+2,sz,z1-off));
+    [['51.34 mm',new THREE.Vector3(0,0,z0+off+4)],['41.70 mm',new THREE.Vector3(x1+off+4,0,0)],['11.69 mm',new THREE.Vector3(x1+off+4,sz/2,z1-off)]].forEach(([t,p])=>{const d=document.createElement('div');d.className='vlab';d.textContent=t;d._p=p;el.appendChild(d);labs.push(d)})}
+  load(o.model||'PART_B');
+  let yaw=o.yaw??-.65,pitch=o.pitch??.42,dist=o.dist||150,drag=null,idle=0,active=false,tgt=null,t0=0,scanY=999;
+  const cv=r.domElement;cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY,yaw,pitch];cv.setPointerCapture(e.pointerId);tgt=null});cv.addEventListener('pointermove',e=>{if(!drag)return;yaw=drag[2]+(e.clientX-drag[0])*.01;pitch=Math.max(.05,Math.min(1.35,drag[3]+(e.clientY-drag[1])*.006));idle=0});cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
+  const rs=()=>{r.setSize(W(),H());cam.aspect=W()/H();cam.updateProjectionMatrix()};new ResizeObserver(rs).observe(el);
+  function frame(now){if(!active)return;requestAnimationFrame(frame);if(!t0)t0=now;idle++;
+    if(o.spin&&!drag&&!reduce&&idle>60&&!tgt)yaw+=.0028;
+    if(tgt&&!drag){yaw+=(tgt[0]-yaw)*.07;pitch+=(tgt[1]-pitch)*.07;dist+=((tgt[2]*90)-dist)*.07;if(Math.abs(tgt[0]-yaw)<.002)tgt=null}
+    const narrow=W()<560?1.25:1;cam.position.set(Math.sin(yaw)*Math.cos(pitch)*dist*narrow,Math.sin(pitch)*dist*narrow+4,Math.cos(yaw)*Math.cos(pitch)*dist*narrow);cam.lookAt(0,4,0);
+    if(o.scan&&!reduce){const T=(now-t0)/1000,h=12.5;let p=Math.min(1,T/2.4);scanY=-1+p*(h+2);clip.constant=scanY;scanQ.position.y=scanY;scanQ.material.opacity=p<1?.16:Math.max(0,.16-(T-2.4)*.2);}else{clip.constant=999;scanQ.visible=false}
+    if(hl&&!reduce)mat.emissive.setRGB(.18*(1+Math.sin(now/300))/2,.1*(1+Math.sin(now/300))/2,0);else mat.emissive.setRGB(0,0,0);
+    r.render(sc,cam);labs.forEach(d=>{const v=d._p.clone().project(cam);d.style.left=((v.x+1)/2*W())+'px';d.style.top=((1-v.y)/2*H())+'px'})}
+  gridTheme();const api={retheme:gridTheme,route,setActive(on){if(on&&!active){active=true;rs();t0=0;requestAnimationFrame(frame)}else if(!on)active=false},setHl(k){hl=k;paint();if(k&&VIEW[k])tgt=VIEW[k].slice()},load};
+  V.push(api);return api}
+
+/* review */
+const QS=[{id:'depth',hl:'slots',kind:'num',who:'4 slots',imp:'high',t:'How deep are the 4 slots?',sub:'The openings measured 7.43 × 2.54 mm. A camera can\'t see how far down they go.',tip:'Push the depth rod of your calipers into a slot until it stops.',unit:'mm',min:.2,max:11.5,def:3.7,all:1,what:'the 4 slots'},
+ {id:'ridgeH',hl:'ridge',kind:'num',who:'Lock ridge',imp:'high',t:'How far does the lock ridge stand out from its wall?',sub:'24 head-on frames measured about 1.9 mm. Calipers will be more exact.',tip:'Rest the depth rod on the wall beside the ridge; measure to its top.',unit:'mm',min:.2,max:8,def:1.9,what:'the lock ridge'},
+ {id:'ridgeTop',hl:'ridge',kind:'choice',who:'Lock ridge',imp:'medium',t:'What does the top of the ridge look like?',sub:'No frame shows it end-on, so its top is a guess until you say.',tip:'Look along the ridge from one end.',choices:['Sharp','Slightly rounded','Quite rounded'],what:'the ridge top'},
+ {id:'plate',hl:'plate',kind:'conflict',who:'Flat plate',imp:'high',t:'How thick is the flat plate, in its middle?',sub:'The video measured 0.90 mm. You entered 2.6 mm earlier. Only one can be right.',tip:'Outside jaws in the middle of the plate, not at its edge.',choices:['0.9 mm is right','2.6 mm is right'],min:.2,max:11,what:'the flat plate'},
+ {id:'lump',hl:'lump',kind:'choice',who:'Area to review',imp:'medium',t:'This strip looks bumpy. Is it flat on the real part?',sub:'Its surface wanders 0.48 mm from a flat plane, more than this kind of face usually does.',tip:'Run a fingertip along the strip between the window and the plate.',choices:['Keep','Remove','Make flat'],what:'a bumpy strip'}];
+let revV=null;
+function chips(){const a=S.answers,you=Object.values(a).filter(v=>v!=='skip').length,est=Object.values(a).filter(v=>v==='skip').length,need=QS.filter(q=>a[q.id]==null).length;$('#revChips').innerHTML=`<span class="chip c-meas">9 measured</span><span class="chip c-you">${you} you answered</span><span class="chip c-est">${est} estimated</span><span class="chip c-ask">${need} waiting</span>`}
+function renderReview(){const a=S.answers;let f=QS.findIndex(q=>a[q.id]==null);$('#revCount').textContent=f<0?'all answered':`${f+1} of ${QS.length}`;
+  $('#qs').innerHTML=QS.map((q,i)=>{const done=a[q.id]!=null;if(!done&&i!==f)return `<div class="q wait"><div class="who"><span class="chip c-ask">${q.who}</span>waiting</div><b>${q.t}</b></div>`;
+    const head=`<div class="who">${S.spark?'<span class="chip c-meta">Muse Spark 1.3</span>':''}<span class="chip c-ask">${q.who}</span>impact ${q.imp}</div><h3>${q.t}</h3>`;
+    if(done){const v=a[q.id];return `<div class="q answered">${head}<div class="ans"><span class="chip ${v==='skip'?'c-est':'c-you'}">${v==='skip'?'Estimated · skipped':typeof v==='number'?v+' mm':v}</span><button class="link small" data-undo="${q.id}">Change</button></div></div>`}
+    let ans='';if(q.kind==='num')ans=`<div class="ans"><input class="input mono" id="in_${q.id}" inputmode="decimal" placeholder="${q.def}" aria-label="${q.t}"><span class="muted">mm</span><button class="btn btn-primary btn-sm" data-apply="${q.id}">Update model</button><button class="choice" data-skip="${q.id}">I don't know</button></div>${q.all?'<p class="tiny muted">Applies to all 4 slots.</p>':''}`;
+    else if(q.kind==='choice')ans=`<div class="ans">${q.choices.map(c=>`<button class="choice" data-pick="${q.id}" data-v="${c}">${c}</button>`).join('')}<button class="choice" data-skip="${q.id}">I don't know</button></div>`;
+    else ans=`<div class="ans">${q.choices.map(c=>`<button class="choice" data-pick="${q.id}" data-v="${c}">${c}</button>`).join('')}</div><div class="ans"><input class="input mono" id="in_${q.id}" inputmode="decimal" placeholder="other" aria-label="Plate thickness"><span class="muted">mm</span><button class="btn btn-ghost btn-sm" data-apply="${q.id}">Use this</button></div>`;
+    return `<div class="q active">${head}<p class="small dim">${q.sub}</p><p class="small" style="display:flex;gap:8px"><span aria-hidden="true">📏</span>${q.tip}</p>${ans}<div class="err" id="err_${q.id}"></div></div>`}).join('');
+  if(revV)revV.setHl(f<0?null:QS[f].hl);$('#revWhat').textContent=f<0?'all answered':QS[f].what;chips();$('#toResult').textContent=f<0?'See my part →':'Skip the rest and see my part →'}
+function answer(id,v){S.answers[id]=v;save();renderReview();toast(v==='skip'?'Using a labelled estimate. Rebuilt in 1.9 s.':'Model rebuilt in 1.9 s.')}
+$('#qs').addEventListener('click',e=>{const ap=e.target.closest('[data-apply]'),pk=e.target.closest('[data-pick]'),sk=e.target.closest('[data-skip]'),un=e.target.closest('[data-undo]');
+  if(ap){const q=QS.find(x=>x.id===ap.dataset.apply),raw=$('#in_'+q.id).value.trim(),v=parseFloat(raw),er=$('#err_'+q.id);if(!raw||isNaN(v)){er.textContent='Enter a number in millimetres first.';return}if(v<q.min||v>q.max){er.textContent=q.id==='depth'?`${v} mm is deeper than the part is tall (11.7 mm). Check the reading.`:`${v} mm doesn't fit this part (${q.min} to ${q.max} mm).`;return}answer(q.id,v)}
+  if(pk){const v=pk.dataset.v;answer(pk.dataset.pick,v.startsWith('0.9')?.9:v.startsWith('2.6')?2.6:v)}if(sk)answer(sk.dataset.skip,'skip');if(un){delete S.answers[un.dataset.undo];save();renderReview()}});
+$('#qs').addEventListener('input',e=>{if(e.target.id&&e.target.id.startsWith('in_')){const er=$('#err_'+e.target.id.slice(3));if(er)er.textContent=''}});
+function understand(t){t=t.toLowerCase();if(/flat|level|smooth/.test(t))return['make the strip between the window and the plate flat, level with the bottom.','lump'];if(/tight|loose/.test(t))return[`change clearance on the lock ridge by ${/tight/.test(t)?'+0.15':'−0.10'} mm.`,'ridge'];if(/remove|not there|doesn'?t exist/.test(t))return['remove the bump seen in only one video.','ridge'];if(/deep|depth|slot/.test(t))return['set the slot depth. Which number?','slots'];return null}
+$('#freeSend').onclick=()=>{const v=$('#freeTxt').value.trim(),er=$('#freeErr');if(!v){er.textContent='Type or say what is wrong first.';return}er.textContent='';const u=understand(v);
+  $('#freeOut').innerHTML=u?`<div class="understood"><span class="tiny" style="color:var(--meta)">${S.spark?'Muse Spark 1.3':'Simulated · Muse Spark in the app'}</span><b>Understood: ${u[0]}</b><div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="uA">Apply</button><button class="btn btn-ghost btn-sm" id="uC">Change</button></div></div>`:`<div class="understood"><b>Not sure which part you mean.</b><span class="small dim">Tap "Mark something", touch the area, or try "this strip is flat like the bottom".</span></div>`;
+  if(u&&revV)revV.setHl(u[1]);const a=$('#uA');if(a)a.onclick=()=>{$('#freeOut').innerHTML='';$('#freeTxt').value='';toast('Applied. Model rebuilt in 1.9 s.');renderReview()};const c=$('#uC');if(c)c.onclick=()=>{$('#freeOut').innerHTML='';$('#freeTxt').focus()}};
+$('#freeTxt').oninput=()=>$('#freeErr').textContent='';$('#markBtn').onclick=()=>{toast('In the app: tap the area on the model, then say or type what is wrong.');$('#freeTxt').focus()};$('#toResult').onclick=()=>go('result');
+
+/* result */
+const row=(n,s,c)=>`<div class="row"><div><b>${n}</b><small>${s}</small></div>${c}</div>`;
+function renderResult(){const a=S.answers,you='<span class="chip c-you">You answered</span>',me='<span class="chip c-meas">Measured</span>',es='<span class="chip c-est">Estimated</span>';
+  $('#report').innerHTML=row('Overall size','51.34 × 41.70 × 11.69 · calipers 51.6 × 41.9 × 11.8',me)+row('4 slot openings','7.43 × 2.54 mm · 48 to 105 views each',me)+row('Slot depth',(typeof a.depth==='number'?a.depth:3.7)+' mm',typeof a.depth==='number'?you:es)+row('Lock ridge','on the slot wall · 19.37 mm long · 29 views',me)+row('Ridge height',(typeof a.ridgeH==='number'?a.ridgeH:1.9)+' mm · video 1.90',typeof a.ridgeH==='number'?you:me)+row('Ridge top',typeof a.ridgeTop==='string'&&a.ridgeTop!=='skip'?a.ridgeTop:'slightly rounded',typeof a.ridgeTop==='string'&&a.ridgeTop!=='skip'?you:es)+row('Plate thickness',(typeof a.plate==='number'?a.plate:.9)+' mm, middle',typeof a.plate==='number'?you:me)+row('Inside the slots','hollow, out of a camera\'s view','<span class="chip c-unseen">Can\'t be seen</span>');
+  $('#fitChips').innerHTML=['Fits well','Too tight','Too loose','Warped','Something is missing'].map(x=>`<button class="choice" data-fit="${x}">${x}</button>`).join('')+`<button class="ib voice" data-mic="none" aria-label="Say how it went" style="width:40px;height:40px">🎙</button>`;
+  const q=$('#qr');if(!q.dataset.d&&window.QRCode){new QRCode(q,{text:'https://snappart.app/p/amber-river-hinge',width:80,height:80,colorDark:'#060809',colorLight:'#ffffff'});q.dataset.d=1}}
+$('#fitChips').addEventListener('click',e=>{const b=e.target.closest('[data-fit]');if(!b)return;$$('#fitChips [data-fit]').forEach(x=>x.setAttribute('aria-pressed',x===b));const v=b.dataset.fit,o=$('#fitOut');
+  if(/Too/.test(v)){const s=v==='Too tight'?.15:-.1;o.innerHTML=`<label class="small" for="clr"><b>Clearance on mating faces</b> <span class="mono" id="clrV">${s>0?'+':''}${s.toFixed(2)} mm</span> <span class="muted">suggested</span></label><input type="range" class="range" id="clr" min="-0.3" max="0.4" step="0.05" value="${s}"><button class="btn btn-primary btn-sm" id="rb" style="width:max-content">Rebuild STL</button><p class="tiny muted">Changes the ridge and slot faces only. Overall size stays as measured.</p>`;$('#clr').oninput=()=>{const x=+$('#clr').value;$('#clrV').textContent=(x>0?'+':'')+x.toFixed(2)+' mm'};$('#rb').onclick=()=>toast('Rebuilt in 1.9 s with '+$('#clrV').textContent+'. Download the new STL.')}
+  else if(v==='Something is missing')o.innerHTML='<p class="small">Tell SnapPart what is missing and it asks a new question. <button class="link" data-go="review">Open Review</button></p>';else if(v==='Warped')o.innerHTML='<p class="small dim">Warping comes from printing, not the model. Try a brim, or print it flat side down.</p>';else o.innerHTML='<p class="small" style="color:var(--ok);font-weight:600">Great. Thanks for telling us.</p>'});
+$('#copyLink').onclick=async()=>{try{await navigator.clipboard.writeText('https://snappart.app/p/amber-river-hinge');toast('Link copied.')}catch(e){toast('Copy failed. Your code is amber-river-hinge.')}};
+function delInit(){$('#delArea').innerHTML='<button class="btn btn-ghost btn-sm" id="delBtn">Delete this part</button>';$('#delBtn').onclick=()=>{$('#delArea').innerHTML='<p class="small" style="color:var(--bad);font-weight:600">Delete everything for this part now? This can\'t be undone.</p><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-sm" style="background:var(--bad);color:#2a0a07" id="dy">Delete</button><button class="btn btn-ghost btn-sm" id="dn">Keep it</button></div>';$('#dy').onclick=()=>{$('#delArea').innerHTML='<p class="small dim">Deleted. (In this preview nothing is stored.)</p>'};$('#dn').onclick=delInit}}delInit();
+
+/* resume */
+$('#findBtn').onclick=()=>{const v=$('#rcode').value.trim().toLowerCase().replace(/[-_\s]+/g,' '),er=$('#rcodeErr'),f=$('#found');if(!v){er.textContent='Enter the three-word code from your link.';f.innerHTML='';return}if(S.net==='off'){er.textContent="You're offline. Reconnect to look up your part.";return}if(v!=='amber river hinge'){er.textContent='No part with that code. Check the three words, like "amber river hinge".';f.innerHTML='';return}er.textContent='';f.innerHTML=`<div class="welcome" style="margin:0"><div class="ic">✓</div><div class="tx"><b>Part B, hinge and lock</b><div class="muted">Model ready · 2 questions waiting · deleted in 6 days</div></div><button class="btn btn-primary btn-sm" data-go="review">Continue →</button></div>`};
+$('#rcode').oninput=()=>$('#rcodeErr').textContent='';
+$('#whereSend').onclick=()=>{const v=$('#where').value.trim().toLowerCase(),er=$('#whereErr'),o=$('#whereOut');if(!v){er.textContent='Say or type where you were first.';return}er.textContent='';let s=null;if(/print|tight|loose|fit|warp/.test(v))s=['result','Result, "How did the print go?"'];else if(/question|depth|asked/.test(v))s=['review','Review'];else if(/video|film|record/.test(v))s=['capture','Capture'];else if(/build|wait/.test(v))s=['build','Build'];
+  o.innerHTML=s?`<div class="understood"><span class="tiny" style="color:var(--meta)">${S.spark?'Muse Spark 1.3':'Simulated · Muse Spark in the app'}</span><b>Understood: you were at ${s[1]}.</b><span class="small dim">Enter your code above to open your part there.</span><div><button class="btn btn-primary btn-sm" data-go="${s[0]}">Go to ${s[1].split(',')[0]}</button></div></div>`:`<div class="understood"><b>Not sure which step. Pick one:</b><div class="ans">${FLOW.map(f=>`<button class="choice" data-go="${f}">${FN[f][0]}</button>`).join('')}</div></div>`};
+$('#where').oninput=()=>$('#whereErr').textContent='';
+
+/* roadmap */
+const RD=[['Now','being built',[['In progress','Film a part, get a measured STL','The pipeline works on a test part; the app is being built.'],['In progress','"Show me where" questions','Muse Spark asks about the exact spot it can\'t measure.'],['In progress','Review your model','Flags anything unusual: keep, remove or make flat.'],['In progress','Answer by voice','Muse Voice Transcribe. You confirm every change.'],['In progress','Left somewhere? resume','A code and link back to the exact step.']]],['Next','after the core works',[['Planned','Small-code mat','For parts under about 25 mm.'],['Planned','Snap to standard sizes','Recognises an M4 screw or 608 bearing and offers published sizes, with a source.'],['Planned','Clearance profiles','Ready-made fits for hinges, latches and snap fits.'],['Planned','Snap your caliper','Photograph a reading; SnapPart reads the number.']]],['Later','ideas',[['Idea','Enclosure builder','Film your parts, describe the project, print a case that fits them.'],['Idea','Automatic re-carving','Ask for one more short video when the score is low.'],['Idea','Share repaired parts','Only parts you own the rights to, with consent and a way to remove.']]]];
+$('#road').innerHTML=RD.map(c=>`<div class="col"><h3>${c[0]} <span class="small muted" style="font-weight:400">${c[1]}</span></h3>${c[2].map(i=>`<div class="ri ${i[0]==='Idea'?'idea':''}"><span class="chip ${i[0]==='In progress'?'c-you':i[0]==='Planned'?'c-est':'c-unseen'}" style="width:max-content">${i[0]}</span><b>${i[1]}</b><span class="small dim">${i[2]}</span></div>`).join('')}</div>`).join('');
+
+/* boot */
+renderWelcome();renderMeta();
+viewer($('#heroStage'),'home',{spin:1,scan:1,dims:1,yaw:-.7,pitch:.45,dist:128});
+const cmpV=viewer($('#cmpStage'),'home',{spin:1,yaw:-1.0,pitch:.9,dist:138});
+$('#cmpSeg').onclick=e=>{const b=e.target.closest('button');if(!b||!cmpV)return;setSeg($('#cmpSeg'),b.dataset.v);const af=b.dataset.v==='1';cmpV.load(af?'PART_B':'PART_B0');$('#cmpK').textContent=af?'AFTER YOUR ANSWERS':'BEFORE YOUR ANSWERS';$('#cmpV').textContent=af?'Part B, v4':'Part B, first carve';$('#cmpV').className='v '+(af?'a':'');$('#cmpV').style.color=af?'':'var(--ask)'};
+revV=viewer($('#revStage'),'review',{yaw:-.95,pitch:.95,dist:135});
+viewer($('#resStage'),'result',{spin:1,dims:1,yaw:-.7,pitch:.5,dist:140});
+applyTheme();show(location.hash.slice(1)||'home');
+})();
+</script>
