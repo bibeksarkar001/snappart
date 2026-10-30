@@ -10,6 +10,10 @@ class JobCreate(Strict):
     part_name: str | None = Field(None, max_length=80)
 
 
+class StartRequest(Strict):
+    build_anyway: bool = False                     # start although the capture check said the footage is not good enough
+
+
 class ErrorBody(BaseModel):
     code: str
     message: str
@@ -38,10 +42,13 @@ class Job(BaseModel):
     queue_position: int | None
     eta_s: float | None
     outputs: list[str]
+    uploads: dict | None = None
+    capture_check: dict | None = None
 
 
 class JobCreated(BaseModel):
     job_id: str
+    resume_code: str
     state: str
     mode: str
     limits: dict
