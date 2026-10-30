@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db, events, jobs
+from . import db, events
 
 STAGES = [("marker detection", 0.02), ("mat self-calibration", 0.06), ("poses + undistorted crops", 0.02), ("SAM", 0.30),
           ("registration", 0.17), ("joint carve", 0.21), ("features", 0.18), ("apply answers + mesh + STL", 0.04)]   # real run's time shares
@@ -81,20 +81,25 @@ def bundle(data_dir: Path) -> Path:
     return final
 
 
-def run_build(conn, storage, settings, job_id: str, sleep=time.sleep) -> dict:
-    """Mock build step: queued -> building, progress events over mock_build_s, copy the canned outputs, -> needs_input (the canned
-    report has open questions). Returns the job row."""
+def run_build(conn, storage, settings, job_id: str, sleep=time.sleep) -> tuple[str, str]:
+    """Mock build step for a job a worker has claimed (state building): progress events over mock_build_s, then the canned outputs.
+    Stage checkpoints in work/checkpoint.json: a resumed build skips the stages it already finished. Returns (next state, reason)."""
     src = bundle(settings.data_dir)
-    jobs.transition(conn, job_id, "building", "build started (mock)", expect="queued")
-    n, done = len(STAGES), 0.0
+    ck = "work/checkpoint.json"
+    done = set(json.loads(storage.get(job_id, ck))["done"]) if storage.exists(job_id, ck) else set()
+    n, frac = len(STAGES), 0.0
     for i, (name, share) in enumerate(STAGES):
+        frac += share
+        if name in done:
+            continue
         events.emit(conn, job_id, "stage_started", {"stage": name, "index": i + 1, "of": n})
         dt = settings.mock_build_s * share
         sleep(dt)
-        done += share
         with db.tx(conn):
             events.append(conn, job_id, "stage_finished", {"stage": name, "index": i + 1, "of": n, "seconds": round(dt, 2), "mock": True})
-            events.append(conn, job_id, "progress", {"fraction": round(done, 3)})
+            events.append(conn, job_id, "progress", {"fraction": round(frac, 3)})
+        done.add(name)
+        storage.put(job_id, ck, json.dumps({"done": sorted(done)}).encode())
     keys = []
     for p in sorted(src.rglob("*")):
         if p.is_file():
@@ -103,5 +108,4 @@ def run_build(conn, storage, settings, job_id: str, sleep=time.sleep) -> dict:
             keys.append(key)
     rep = json.loads((src / "report.json").read_text())
     events.emit(conn, job_id, "build_finished", {"outputs": keys, "questions": len(rep["questions"]), "mock": True})
-    nxt = "needs_input" if rep["questions"] else "reviewing"
-    return jobs.transition(conn, job_id, nxt, "questions the camera cannot answer" if rep["questions"] else "ready for review")
+    return ("needs_input", "questions the camera cannot answer") if rep["questions"] else ("reviewing", "ready for review")
