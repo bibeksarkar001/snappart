@@ -1,7 +1,7 @@
 """Golden regression on part B (the A_orbit_* videos): carve + feature steps rerun from the private cache with the frozen settings.
 
 Calipers: 51.6 x 41.9 mm footprint, 11.8 mm height; four end grooves. Owner answers (config.py) for groove depth, bump size, plate thickness.
-Carves at 0.25 mm voxels (production: 0.15) to stay under 2 minutes; the 0.15 mm carve alone takes ~95 s on the 16 GB development laptop.
+Carves at 0.25 mm voxels (production: 0.15) to keep the run short; the time budget is 240 s; the 0.15 mm carve alone takes ~95 s on the 16 GB development laptop.
 Skipped when the private cache is missing."""
 import json
 import time
@@ -89,7 +89,7 @@ def test_golden_B(tmp_path):
     dt = time.time() - t0
     print(f"footprint {pl['length_mm']:.2f} x {pl['width_mm']:.2f}, height {pl['z_max'] - pl['z_min']:.2f}, held-out IoU {iou:.4f}, grooves {len(ops)}, "
           f"bump {b['length_mm']:.2f} mm ({b['agree']} views), plate upper face z {pf['upper']['z']:.2f}, {dt:.0f} s")
-    assert dt < 120
+    assert dt < 240                                                             # owner: 240 s budget (alone ~115 s; slower inside the full suite)
 
 
 V4 = CACHE.parents[1] / "v4"
