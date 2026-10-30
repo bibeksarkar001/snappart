@@ -231,3 +231,7 @@ backend/spikes/out/
 
 # Private test photos - never commit (golden/test sets)
 assets/
+
+# AI-assistant local config (kept out of the public repo)
+CLAUDE.md
+.claude/

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260" role="img" aria-label="SnapPart. Film a part. Print a copy.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/><stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7cf0c5"/><stop offset="1" stop-color="#5ab4ff"/>
+    </linearGradient>
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#ffffff" stroke-opacity="0.04"/>
+    </pattern>
+    <clipPath id="c1"><rect x="60" y="86" height="60"><animate attributeName="width" calcMode="discrete" values="0;0.0;24.0;48.0;72.0;96.0;120.0;144.0;168.0;192.0;216.0;240.0;264.0;288.0;288.0" keyTimes="0;0.0667;0.0815;0.0963;0.1111;0.1259;0.1407;0.1556;0.1704;0.1852;0.2;0.2148;0.2296;0.2444;1" dur="9.0s" repeatCount="indefinite"/></rect></clipPath>
+    <clipPath id="c2"><rect x="60" y="150" height="60"><animate attributeName="width" calcMode="discrete" values="0;0.0;24.0;48.0;72.0;96.0;120.0;144.0;168.0;192.0;216.0;240.0;264.0;288.0;312.0;312.0" keyTimes="0;0.2889;0.3043;0.3197;0.335;0.3504;0.3658;0.3812;0.3966;0.412;0.4274;0.4427;0.4581;0.4735;0.4889;1" dur="9.0s" repeatCount="indefinite"/></rect></clipPath>
+  </defs>
+  <rect width="900" height="260" rx="18" fill="url(#bg)"/>
+  <rect width="900" height="260" rx="18" fill="url(#grid)"/>
+  <rect x="0.5" y="0.5" width="899" height="259" rx="17.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <text x="60" y="64" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" letter-spacing="4" fill="#8b949e">SNAPPART</text>
+  <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="40" font-weight="700" fill="url(#acc)">
+    <text x="60" y="130" clip-path="url(#c1)">Film a part.</text>
+    <text x="60" y="194" clip-path="url(#c2)">Print a copy.</text>
+  </g>
+  <text x="60" y="236" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" fill="#8b949e">Measured to fit. Honest about what a camera can't see.</text>
+</svg>
