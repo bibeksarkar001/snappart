@@ -1,0 +1,851 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "SnapPart API",
+  "version": "0.2.0"
+ },
+ "paths": {
+  "/healthz": {
+   "get": {
+    "summary": "Healthz",
+    "operationId": "healthz_healthz_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/readyz": {
+   "get": {
+    "summary": "Readyz",
+    "operationId": "readyz_readyz_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs": {
+   "post": {
+    "summary": "Create Job",
+    "operationId": "create_job_v1_jobs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/JobCreate"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobCreated"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}": {
+   "get": {
+    "summary": "Get Job",
+    "operationId": "get_job_v1_jobs__job_id__get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Job",
+    "description": "Deletes frames, outputs, answers, corrections, events and the job row; keeps only an anonymous tombstone (hash, time).",
+    "operationId": "delete_job_v1_jobs__job_id__delete",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/videos/{video}/frames/{index}": {
+   "put": {
+    "summary": "Put Frame",
+    "operationId": "put_frame_v1_jobs__job_id__videos__video__frames__index__put",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "video",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 3,
+       "minimum": 1,
+       "title": "Video"
+      }
+     },
+     {
+      "name": "index",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "exclusiveMaximum": 10000,
+       "title": "Index"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "image/jpeg": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     },
+     "description": "One JPEG frame, at most max_frame_bytes."
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/uploads": {
+   "get": {
+    "summary": "Get Uploads",
+    "operationId": "get_uploads_v1_jobs__job_id__uploads_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/capture-check": {
+   "post": {
+    "summary": "Run Capture Check",
+    "operationId": "run_capture_check_v1_jobs__job_id__capture_check_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/start": {
+   "post": {
+    "summary": "Start",
+    "operationId": "start_v1_jobs__job_id__start_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/StartRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/events": {
+   "get": {
+    "summary": "Get Events",
+    "operationId": "get_events_v1_jobs__job_id__events_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "after",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "After"
+      }
+     },
+     {
+      "name": "wait",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "number",
+       "minimum": 0,
+       "default": 0,
+       "title": "Wait"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/resume/{code}": {
+   "get": {
+    "summary": "Resume Job",
+    "description": "Same answer and similar time for a wrong, malformed or missing code; per-IP lockout after repeated misses.",
+    "operationId": "resume_job_v1_resume__code__get",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 80,
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/meta/models": {
+   "get": {
+    "summary": "Meta Models",
+    "operationId": "meta_models_v1_meta_models_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MetaModels"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "Job": {
+    "properties": {
+     "job_id": {
+      "type": "string",
+      "title": "Job Id"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "created_at": {
+      "type": "number",
+      "title": "Created At"
+     },
+     "updated_at": {
+      "type": "number",
+      "title": "Updated At"
+     },
+     "state_changed_at": {
+      "type": "number",
+      "title": "State Changed At"
+     },
+     "warnings": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Warnings"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/JobError"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "queue_position": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Queue Position"
+     },
+     "eta_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Eta S"
+     },
+     "outputs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Outputs"
+     },
+     "uploads": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uploads"
+     },
+     "capture_check": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Capture Check"
+     }
+    },
+    "type": "object",
+    "required": [
+     "job_id",
+     "state",
+     "mode",
+     "created_at",
+     "updated_at",
+     "state_changed_at",
+     "warnings",
+     "error",
+     "queue_position",
+     "eta_s",
+     "outputs"
+    ],
+    "title": "Job"
+   },
+   "JobCreate": {
+    "properties": {
+     "part_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 80
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Part Name"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "JobCreate"
+   },
+   "JobCreated": {
+    "properties": {
+     "job_id": {
+      "type": "string",
+      "title": "Job Id"
+     },
+     "resume_code": {
+      "type": "string",
+      "title": "Resume Code"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "limits": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Limits"
+     }
+    },
+    "type": "object",
+    "required": [
+     "job_id",
+     "resume_code",
+     "state",
+     "mode",
+     "limits"
+    ],
+    "title": "JobCreated"
+   },
+   "JobError": {
+    "properties": {
+     "code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Code"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "message"
+    ],
+    "title": "JobError"
+   },
+   "MetaModels": {
+    "properties": {
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id"
+     },
+     "models": {
+      "items": {
+       "$ref": "#/components/schemas/ModelState"
+      },
+      "type": "array",
+      "title": "Models"
+     }
+    },
+    "type": "object",
+    "required": [
+     "mode",
+     "job_id",
+     "models"
+    ],
+    "title": "MetaModels"
+   },
+   "ModelState": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "running": {
+      "type": "boolean",
+      "title": "Running"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "calls_ok": {
+      "type": "integer",
+      "title": "Calls Ok"
+     },
+     "calls_failed": {
+      "type": "integer",
+      "title": "Calls Failed"
+     },
+     "last_ok_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Ok At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "running",
+     "reason",
+     "calls_ok",
+     "calls_failed",
+     "last_ok_at"
+    ],
+    "title": "ModelState"
+   },
+   "StartRequest": {
+    "properties": {
+     "build_anyway": {
+      "type": "boolean",
+      "title": "Build Anyway",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "StartRequest"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}
