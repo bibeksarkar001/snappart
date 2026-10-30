@@ -1,6 +1,6 @@
 # SnapPart API (v1)
 
-JSON over HTTPS. The machine-readable contract is `docs/openapi.json` (regenerate with `python scripts/export_openapi.py`). Mock mode (`SNAPPART_MOCK=1`) and real mode share this contract. This document covers backend stages 1 and 2. Questions, answers, corrections, rebuild and downloads arrive in stage 3.
+JSON over HTTPS. The machine-readable contract is `docs/openapi.json` (regenerate with `python scripts/export_openapi.py`). Mock mode (`SNAPPART_MOCK=1`) and real mode share this contract, so the frontend can be wired now against mock mode. This document covers backend stages 1 to 3; Muse Spark and Muse Voice (stage 4) and the accuracy and completeness fields (stage 5) come later.
 
 ## Every response
 
@@ -183,3 +183,136 @@ Truthful model state, computed only from recorded calls.
 ### `GET /healthz`, `GET /readyz`
 
 `/readyz` returns 200 or 503 with `{"ready", "mode", "mock", "environment", "checks": {"db", "storage"}}`, so mock mode is always visible here.
+
+## After the build (stage 3)
+
+These routes work once the job is `needs_input`, `reviewing` or `done`. Before that they return `409 not_ready`. Any answer, correction or review choice on a `done` job moves it back to `reviewing`.
+
+### `GET /v1/jobs/{job_id}/questions`
+
+Returns the questions the camera cannot answer, plus the review items. Each question has:
+
+- **`kind`:** `number`, `choice` or `conflict`.
+  - A `conflict` question also lists `candidates`: the video's value and the earlier answer.
+- **What it is about:** `feature`, which the 3D viewer highlights (`grooves`, `lock_bump`, `plate`), and `label`.
+- **Text:** `title`, plus `detail` (built only from measured report values) and `hint`.
+- **Bounds:** `min` and `max` in mm, taken from the part's measured size.
+- **Answer state:** `default`; `applies_to` (how many slots one answer covers); `answered`, `answer` and `status` (`user_supplied`, or `estimated` after "I don't know").
+- **`card`:** links to the "show me where" image, its SVG diagram and its `card.json`.
+
+```json
+{"job_id": "xC7m...", "open_questions": 5,
+ "questions": [{"id": "groove_depth_mm", "feature": "grooves", "label": "Slots", "kind": "number",
+   "title": "How deep are the rectangular slots? (one answer for all of them)",
+   "detail": "The 2 openings measured 10.0 x 3.0 mm. A camera cannot see how far down they go.",
+   "hint": "Push the depth rod of your calipers into a slot until it touches the bottom.", "unit": "mm", "default": 3.7,
+   "min": 0.2, "max": 6.07, "choices": null, "candidates": null, "applies_to": 2, "impact": null,
+   "answered": false, "answer": null, "status": null,
+   "card": {"image": "/v1/jobs/xC7m.../files/cards/groove_depth_mm/card.png", "diagram": ".../diagram.svg", "meta": ".../card.json"}}],
+ "review_items": [{"id": "M01", "kind": "lump", "reason": "MOCK: a canned example of a flagged area, not a real finding",
+   "question": "This area looks bumpy. On the real part, is it a flat surface?", "choices": ["Keep", "Remove", "Make flat"],
+   "centre": [6.0, 0.0, 6.0], "normal": [0, 0, 1.0], "polygon_xy": [[3.0, -6.0], [9.0, -6.0], [9.0, 6.0], [3.0, 6.0]], "z_mm": [5.9, 6.0, 6.1],
+   "area_mm2": 72.0, "feature_id": null, "note": null, "image": "/v1/jobs/xC7m.../files/review/M01.png", "decision": null}]}
+```
+
+### `POST /v1/jobs/{job_id}/answers`
+
+Body: `{"answers": {"groove_depth_mm": 2.0, "bump_top_shape": "skip"}}`.
+
+- **Value types:** a number in mm, one of the question's `choices`, or `"skip"` ("I don't know": the default is kept and labelled `estimated`).
+- **Validation:** answers are checked against the bounds and the part's measured size, so a slot deeper than the part is tall is rejected with a plain reason (`422 answer_out_of_range`). Unknown question ids return `422 unknown_question`.
+- **Rebuild:** saving answers does not rebuild by itself.
+
+```json
+{"saved": ["bump_top_shape", "groove_depth_mm"], "open_questions": 3, "rebuild_needed": true}
+```
+
+### `POST /v1/jobs/{job_id}/corrections`, `GET .../corrections`, `DELETE .../corrections/{id}`
+
+- **POST** body: `{"correction": {...}}`. It must be exactly one of the corrections engine's five ops, with typed parameters (schema in `backend/capture/corrections.py`): `flatten_region`, `remove_region`, `move_feature_to_opposite_face`, `set_feature_shape`, `add_feature`. Feature and plane names must exist in the model; anything else returns `422 invalid_correction`. The response is `{"correction_id": "c_111755f0efcf", "rebuild_needed": true}`.
+- **GET** lists all corrections in order, including undone ones (`"reverted": true`).
+- **DELETE** undoes one correction: `{"undone": "c_...", "rebuild_needed": true}`.
+
+### `POST /v1/jobs/{job_id}/rebuild`
+
+Applies the answers and the corrections that are not undone to the stored model, with no AI call. It rewrites `model.stl`, `preview.stl`, `preview.glb` and `report.json`.
+
+- **Speed:** 1.8 s on part B (571k triangles; preview 141k), 0.2 s on the synthetic mock part.
+- **Response:** the changes since the previous report, and the new state. The job moves to `reviewing` once no question is open.
+- **Concurrency:** at most `max_concurrent_rebuilds` run at once per API process; above that the response is `503 busy` with `Retry-After: 2`.
+
+```json
+{"seconds": 0.24, "changes": [{"id": "grooves.depth", "from": 3.7, "to": 2.0, "status_from": "estimated", "status_to": "user_supplied"},
+  {"id": "lock_ridge.shape", "from": "hill", "to": "rounded", "status_from": "user_supplied", "status_to": "user_supplied"}],
+ "open_questions": 3, "watertight": true, "volume_mm3": 7161.1, "model_triangles": 108192, "preview_triangles": 108192, "state": "needs_input"}
+```
+
+### `GET /v1/jobs/{job_id}/report`
+
+The current `report.json` (after the last rebuild), or the build's report if nothing was rebuilt yet. Every number keeps its status label: `measured`, `user_supplied`, `estimated` or `not_detected`.
+
+Fields after a rebuild:
+
+| Field | Meaning |
+|---|---|
+| `answers` | the answers used |
+| `corrections` | the build's corrections plus yours |
+| `user_corrections` | yours, with ids |
+| `rebuild` | `seconds`, `watertight`, `volume_mm3`, `model_size_mm`, triangle counts |
+
+Mock reports carry `"mode": "mock"` and `"synthetic": true`.
+
+### Review: `GET /v1/jobs/{job_id}/review`, `POST .../review/{item_id}`, `POST .../marks`
+
+Each review item has an image, a region (`centre`, `normal`, `polygon_xy`, `z_mm`) and `choices`. `POST .../review/{item_id}` takes `{"choice": "Make flat"}` and records the decision. What each choice does:
+
+| Choice | Effect |
+|---|---|
+| Keep, Current side | no edit |
+| Remove | cuts the flagged region's height band |
+| Make flat | trims what stands above (or below) the region's middle height; it never adds material |
+| Opposite side | moves the feature through the part |
+| Remove (single-video feature) | removes the feature |
+
+- These areas must face up or down; sideways areas return `422 choice_not_available` for Remove and Make flat.
+- Changing your mind undoes the earlier choice's edit.
+- The response is `{"item": "M01", "decision": "Make flat", "correction_id": "c_...", "rebuild_needed": true}`.
+
+`POST .../marks` adds your own spot (at most 20 per part): `{"point": [x, y, z], "radius_mm": 3, "normal": [0, 0, 1], "note": "scratch"}`. The point is in the part frame in mm, as the 3D viewer reports it. The spot becomes item `U01`, `U02`, ..., with the same three choices.
+
+### `POST /v1/jobs/{job_id}/accept`
+
+Moves the job to `done` once no question is open (`409 questions_open` otherwise). Returns the job.
+
+### Downloads: `GET /v1/jobs/{job_id}/files/{name}`
+
+Only these names exist. Every other name is a 404, and no user-supplied path reaches the disk.
+
+| Name | Content-Type | Notes |
+|---|---|---|
+| `model.stl` | `model/stl` | binary, millimetres, full resolution |
+| `preview.stl` | `model/stl` | at most 250k triangles (the same model meshed coarser) |
+| `preview.glb` | `model/gltf-binary` | the preview for three.js; positions in mm with node scale 0.001 and a rotation from the part's z-up to glTF's y-up |
+| `report.json` | `application/json` | |
+| `cards/<question>/card.png`, `card.json`, `diagram.svg` | png / json / svg | |
+| `review/<item>.png` | `image/png` | |
+
+- **Headers:** `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` and `Content-Security-Policy: default-src 'none'; sandbox`.
+- **Content-Disposition:** `attachment` for models and the report, `inline` for images. File names are `snappart-<first 8 of the job id>-<name>`.
+
+## What the approved design needs that the backend cannot provide yet
+
+| Design element | Status |
+|---|---|
+| Question `impact` ("impact high") | `impact` is `null`. Not computed yet; a measured version would rebuild with the answer changed and report how much the model moves. |
+| Plate "conflict" question (video 0.90 mm vs earlier 2.6 mm) | Supported (`kind: "conflict"` with `candidates`) when the report carries the measured separation. The v4 part B report does not, so it shows as a number question until stage 5 stores it. |
+| Review chips "9 measured / n you answered / n estimated / n waiting" | Derive them from `report.json` `features[].status` and the questions' `status`. |
+| Result row "Inside the slots: can't be seen" | Stage 5 (`not_detected` regions with reasons). |
+| Per-dimension `±` error bars, accuracy estimate at capture | Stage 5. No accuracy percentage anywhere. |
+| "Fits well / Too tight / Too loose" and the clearance rebuild (−0.3 to +0.4 mm on mating faces) | Not supported: the corrections engine has no clearance op, and the prompt allows only its five ops. Needs a decision. |
+| "Tell SnapPart something" box and the mic | Stage 4 (Muse Spark correction proposals, Muse Voice). |
+| Meta model badges | `GET /v1/meta/models` now; real calls start in stage 4. |
+| Capture coverage ring | `capture_check.coverage_map` (azimuth × elevation counts); the ring's drawing is the frontend's. |
+| QR link and short link `/p/<code>` | The frontend builds it from the resume code; the backend serves `GET /v1/resume/{code}`. The prototype's "amber river hinge" is not a valid real code (those words are not on the BIP-39 list). |
+| GLB of the part | `preview.glb` (preview resolution). |
+

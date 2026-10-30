@@ -456,6 +456,519 @@
     }
    }
   },
+  "/v1/jobs/{job_id}/report": {
+   "get": {
+    "summary": "Get Report",
+    "operationId": "get_report_v1_jobs__job_id__report_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/questions": {
+   "get": {
+    "summary": "Get Questions",
+    "operationId": "get_questions_v1_jobs__job_id__questions_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/answers": {
+   "post": {
+    "summary": "Post Answers",
+    "operationId": "post_answers_v1_jobs__job_id__answers_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswersRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/corrections": {
+   "get": {
+    "summary": "Get Corrections",
+    "operationId": "get_corrections_v1_jobs__job_id__corrections_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Post Correction",
+    "operationId": "post_correction_v1_jobs__job_id__corrections_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/corrections/{correction_id}": {
+   "delete": {
+    "summary": "Undo Correction",
+    "operationId": "undo_correction_v1_jobs__job_id__corrections__correction_id__delete",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "correction_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^c_[0-9a-f]{12}$",
+       "title": "Correction Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/rebuild": {
+   "post": {
+    "summary": "Post Rebuild",
+    "operationId": "post_rebuild_v1_jobs__job_id__rebuild_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/review": {
+   "get": {
+    "summary": "Get Review",
+    "operationId": "get_review_v1_jobs__job_id__review_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/review/{item_id}": {
+   "post": {
+    "summary": "Post Review Choice",
+    "operationId": "post_review_choice_v1_jobs__job_id__review__item_id__post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Z]\\d{2}$",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReviewChoice"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/marks": {
+   "post": {
+    "summary": "Post Mark",
+    "operationId": "post_mark_v1_jobs__job_id__marks_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MarkRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/accept": {
+   "post": {
+    "summary": "Accept",
+    "operationId": "accept_v1_jobs__job_id__accept_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/files/{path}": {
+   "get": {
+    "summary": "Get File",
+    "operationId": "get_file_v1_jobs__job_id__files__path__get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "path",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/meta/models": {
    "get": {
     "summary": "Meta Models",
@@ -505,6 +1018,46 @@
  },
  "components": {
   "schemas": {
+   "AnswersRequest": {
+    "properties": {
+     "answers": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "string"
+        }
+       ]
+      },
+      "type": "object",
+      "maxProperties": 20,
+      "title": "Answers"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "answers"
+    ],
+    "title": "AnswersRequest"
+   },
+   "CorrectionRequest": {
+    "properties": {
+     "correction": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Correction"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "correction"
+    ],
+    "title": "CorrectionRequest"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -716,6 +1269,60 @@
     ],
     "title": "JobError"
    },
+   "MarkRequest": {
+    "properties": {
+     "point": {
+      "items": {
+       "type": "number"
+      },
+      "type": "array",
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Point"
+     },
+     "radius_mm": {
+      "type": "number",
+      "maximum": 20.0,
+      "minimum": 0.5,
+      "title": "Radius Mm",
+      "default": 3.0
+     },
+     "normal": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "number"
+        },
+        "type": "array",
+        "maxItems": 3,
+        "minItems": 3
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Normal"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "point"
+    ],
+    "title": "MarkRequest"
+   },
    "MetaModels": {
     "properties": {
      "mode": {
@@ -793,6 +1400,21 @@
      "last_ok_at"
     ],
     "title": "ModelState"
+   },
+   "ReviewChoice": {
+    "properties": {
+     "choice": {
+      "type": "string",
+      "maxLength": 40,
+      "title": "Choice"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "choice"
+    ],
+    "title": "ReviewChoice"
    },
    "StartRequest": {
     "properties": {
