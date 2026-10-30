@@ -1,6 +1,6 @@
 # SnapPart API (v1)
 
-JSON over HTTPS. The machine-readable contract is `docs/openapi.json` (regenerate with `python scripts/export_openapi.py`). Mock mode (`SNAPPART_MOCK=1`) and real mode share this contract, so the frontend can be wired now against mock mode. This document covers backend stages 1 to 3; Muse Spark and Muse Voice (stage 4) and the accuracy and completeness fields (stage 5) come later.
+JSON over HTTPS. The machine-readable contract is `docs/openapi.json` (regenerate with `python scripts/export_openapi.py`). Mock mode (`SNAPPART_MOCK=1`) and real mode share this contract, so the frontend can be wired now against mock mode. This document covers backend stages 1 to 5.
 
 ## Every response
 
@@ -84,7 +84,7 @@ Deterministic and fast: 0.7 s for 120 frames at 1920 px, measured on synthetic f
 - **Per video:** a verdict (`ok`, `weak`, `unusable` or `missing`) and concrete tips.
 - **Coverage map:** frame counts per 30° azimuth sector × elevation band.
 - **Sides** are named relative to the printed mat: right = +x of the page, far = +y.
-- **`second_opinion`** is `null` until the optional Muse Spark check (stage 4).
+- **`second_opinion`:** in real mode, Muse Spark looks at up to 4 frames and returns `{"status": "ok", "source": "muse-spark-1.3", "frames": [{"video", "index", "mat_visible", "part_fully_visible", "blurry", "glare", "hand_in_frame"}], "overall": "looks_fine" | "has_problems", "tip"}`. If it is down, in mock mode, or its answer does not validate, this is `{"status": "unavailable", "reason"}`, and the deterministic verdict stands on its own either way.
 - The job moves to `ready_to_build` either way. Start is refused while the verdict is `unusable`.
 
 ```json
@@ -305,14 +305,131 @@ Only these names exist. Every other name is a 404, and no user-supplied path rea
 | Design element | Status |
 |---|---|
 | Question `impact` ("impact high") | `impact` is `null`. Not computed yet; a measured version would rebuild with the answer changed and report how much the model moves. |
-| Plate "conflict" question (video 0.90 mm vs earlier 2.6 mm) | Supported (`kind: "conflict"` with `candidates`) when the report carries the measured separation. The v4 part B report does not, so it shows as a number question until stage 5 stores it. |
+| Plate "conflict" question (video 0.90 mm vs earlier 2.6 mm) | Supported: after an answer that disagrees with the measured separation by more than 0.3 mm, the question becomes `kind: "conflict"` with `candidates` (video, your answer), a `conflict_message` and `status: "conflict"`, and counts as open again. It needs a report that stores the measured separation (real builds); the v4 part B report does not. |
 | Review chips "9 measured / n you answered / n estimated / n waiting" | Derive them from `report.json` `features[].status` and the questions' `status`. |
-| Result row "Inside the slots: can't be seen" | Stage 5 (`not_detected` regions with reasons). |
-| Per-dimension `±` error bars, accuracy estimate at capture | Stage 5. No accuracy percentage anywhere. |
+| Result row "Inside the slots: can't be seen" | `report.not_detected` (with reasons), and each depth that only an image saw (`details[].not_detected`). |
+| Per-dimension `±` error bars, accuracy estimate at capture | `gates.error_bars` is available for builds that measure held-out folds (real builds, stage 8). On part B the bars are ±0.10 mm and do not cover the caliper errors, so the UI should present them as "at least". There is no accuracy estimate at capture time and no accuracy percentage anywhere. |
 | "Fits well / Too tight / Too loose" and the clearance rebuild (−0.3 to +0.4 mm on mating faces) | Not supported: the corrections engine has no clearance op, and the prompt allows only its five ops. Needs a decision. |
-| "Tell SnapPart something" box and the mic | Stage 4 (Muse Spark correction proposals, Muse Voice). |
-| Meta model badges | `GET /v1/meta/models` now; real calls start in stage 4. |
+| "Tell SnapPart something" box and the mic | `POST .../proposals` and `POST .../voice` (stage 4). |
+| Meta model badges | `GET /v1/meta/models?job_id=`, from recorded calls. Real builds (SAM in a job) arrive with stage 8. |
 | Capture coverage ring | `capture_check.coverage_map` (azimuth × elevation counts); the ring's drawing is the frontend's. |
 | QR link and short link `/p/<code>` | The frontend builds it from the resume code; the backend serves `GET /v1/resume/{code}`. The prototype's "amber river hinge" is not a valid real code (those words are not on the BIP-39 list). |
 | GLB of the part | `preview.glb` (preview resolution). |
+
+## Meta models (stage 4)
+
+**Rules for every Meta call:**
+- **Running state:** a model counts as running only when a call to it succeeded. Every call is recorded in `model_calls`, and `GET /v1/meta/models` reads those rows.
+- **Mock mode** never calls a model, and every endpoint below then uses its deterministic fallback.
+- **Daily budget:** all calls share one daily count. When it is used up, endpoints that need a model answer `503 daily_capacity_used`, with the time until midnight UTC in `Retry-After`. Endpoints with a fallback use the fallback and say so.
+
+### Friendlier question wording
+
+Each question from `GET /questions` carries `friendly: {"title", "detail", "hint", "source"}`.
+
+- The wording comes from Muse Spark, made once per job and cached.
+- Spark may not introduce any number that is not in the question; an answer that does is rejected.
+- Otherwise the original text is used, with `"source": "fallback"` and a `reason`.
+
+### `POST /v1/jobs/{job_id}/proposals`
+
+Body: `{"text": "this part is flat like the bottom", "item_id": "M01"}`. `item_id` is the review item or marked spot the user is looking at, and is optional.
+
+The answer is a **proposal**; nothing is applied. The user confirms by sending its `correction` to `POST .../corrections`.
+
+**How a proposal is made:**
+- Muse Spark only picks typed options:
+  - `action`: `make_flat`, `remove`, `move_to_opposite_side`, `set_shape` or `none`;
+  - the ridge `shape` and `top`;
+  - a short `explanation`.
+- The region comes from the selected item, so the model never writes geometry, code or paths.
+- The correction is built from those choices and validated against the corrections-engine schema.
+- **Untrusted text:** the user's text is cut to 1000 characters and placed in a delimited field that the fixed prompt says to treat as data.
+- **Fallback:** keyword rules, with `"source": "fallback (keyword rules)"`.
+
+```json
+{"correction": {"op": "remove_region", "region": {"polygon_xy": [[149.5, 86.0], [153.0, 86.0], [153.0, 117.0], [149.5, 117.0]], "z_mm": [4.5, 8.5]},
+                "source": "review", "review_item": "R01", "reason": "user chose make flat"},
+ "explanation": "User confirms the lump area should be flat like the bottom surface.", "action": "make_flat",
+ "text": "this part is flat like the bottom", "confirm_with": "POST /v1/jobs/{job_id}/corrections", "source": "muse-spark-1.3"}
+```
+
+If the action needs an area and none is selected, the response is `correction: null` with an explanation asking the user to select one. Rate limited per client.
+
+### `POST /v1/jobs/{job_id}/voice`
+
+`multipart/form-data` with `audio` (the recording) and an optional `item_id`. Rate limited per client.
+
+**Audio handling:**
+- At most 32 MB and 10 minutes.
+- WAV in any PCM format is converted in memory to mono 16-bit 24 kHz. Other formats need `ffmpeg` on the server.
+- The audio is transcribed by Muse Voice Transcribe, with part vocabulary as keywords (slot, ridge, plate, depth, flat, ...).
+- The audio is dropped at once and never stored.
+
+**Response:**
+
+```json
+{"transcript": "please make this area flat, like the bottom of the part.", "audio_seconds": 3.08, "source": "muse-voice-transcribe-1.0",
+ "audio_kept": false, "proposal": {"...": "as POST .../proposals"}}
+```
+
+**Errors** (each message says "type instead", so the UI can fall back to the text box):
+
+| Code | Status | When |
+|---|---|---|
+| `bad_audio` | 422 | Unreadable or too short audio |
+| `voice_unavailable` | 503 | Mock mode, or no key |
+| `transcription_failed` | 502 | The transcription call failed |
+| `daily_capacity_used` | 503 | The daily budget is used up |
+
+### `GET /v1/jobs/{job_id}/summary`
+
+`{"job_id", "summary", "source"}`: a plain-language summary of the current report by Muse Spark.
+
+- Every number in it must exist in the report. Otherwise, or if Spark is unavailable, a template summary is used (`"source": "fallback (template)"`).
+
+## Accuracy and completeness (stage 5)
+
+### Per-job defaults
+
+Each question has `default` and `default_source`:
+- `measured`: from the video, and at least 1 mm (for example the ridge's height out of its wall);
+- `estimated`: a stated estimate, for example slot depth = half the part's height.
+
+No part-specific values live in the generic code. In the report, features keep `status` `measured`, `user_supplied`, `estimated` or `not_detected`.
+
+### New report fields
+
+| Field | Meaning |
+|---|---|
+| `not_detected` | Recesses: weakly seen areas that 3 or more cameras faced, so more footage would not help. Each has `centre_mm`, `area_mm2` and `reason`. |
+| `coverage_requests` | Areas that few cameras faced: `{"id": "film_1", "message": "The camera barely saw the left side of the part. Film about 8 more seconds of it (a low orbit, near table height).", "blocking", "area_mm2", "normal", "cameras_facing", ...}`. |
+| `low_confidence_regions.coverage_map` | Every 8 mm cell of the surface with its median number of silhouettes. |
+| `checks` | Learnings rules applied to per-video detections (registration gap, location agreement). |
+| `details` | Small-detail candidates (holes, slots, bosses, fillets, chamfers, steps, text or marks), each with `size_mm`, `evidence` (views or surface points) and `status` (`measured` or `question`). Image-only openings say their depth is `not_detected`. |
+| `quality` | `{"status": "ready" or "draft", "gates": [...], "reasons": [...], "not_run": [...], "roughness": [...]}`. |
+
+### `GET /v1/jobs/{job_id}/questions`
+
+The response also has:
+- **`coverage_requests`:** each request with its `decision` (`filming`, `skipped` or `null`).
+- **Detail questions** among `review_items`, with ids `D01`, `D02`, ...:
+  - choices are `["It is a hole", "Just a mark"]` or `["Text", "Just a mark"]`;
+  - the answer is recorded and does not change the geometry.
+
+### `POST /v1/jobs/{job_id}/more-footage`
+
+Body: `{"request_id": "film_1", "action": "film" | "skip"}`.
+
+- **`skip`** accepts the area as not seen.
+- **`film`** moves the job back to `uploading` and returns `next_frame_index` per video. Upload new frames from those indices on, run the capture check, then `start`.
+  - **The footage is checked:** `start` refuses with `409 footage_missing_area` if no new usable frame faces the requested area. Only video 1's frames can be checked against the part frame; new frames of other videos are accepted with a warning that they were not checked.
+  - **Only then is the part re-carved:** the build runs again with all frames.
+
+### Drafts
+
+A model that fails a quality gate is a draft:
+- **Downloads:** `model.stl`, `preview.stl` and `preview.glb` get `X-SnapPart-Draft: true` and a file name ending in `-DRAFT`. Otherwise the header is `false`.
+- **Accept:** `POST .../accept` refuses with `409 draft_model` (giving the reasons). It also refuses with `409 footage_requested` while a blocking coverage request has no decision.
+- **Rebuild:** the response includes `quality: {"status", "reasons"}`.
 

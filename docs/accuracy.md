@@ -97,6 +97,55 @@ The owner marked the v3 model on five screenshots. A camera was fitted to each s
 - **Question cards** (`backend/capture/question_cards.py`): one card per question and review item, each checked by eye to mark the right feature. Two cards (ridge base width, plate thickness) use a frame where the dimension arrow is under 12 px, because no frame shows it larger.
 - Two cached crops (A_orbit_02_1586, A_orbit_03_910) are the owner's annotated label images. Cards skip them; neither was used for the ridge detection.
 
+## Generic path checks (backend stage 5)
+
+- **Part B's answers are now fixture data** (`backend/tests/fixtures/part_b.json`): slot depth 3.7, ridge 19.7 / 2.3 / 2.3, plate 2.6. The pipeline's defaults are per-job estimates:
+  - measured where the video gives a value of at least 1 mm (for example the ridge's 1.90 mm extent, its 19.37 mm length);
+  - otherwise estimated (slot depth = half the part's height) and asked.
+  - The golden test passes with unchanged numbers: footprint 51.32 x 41.69 mm, height 11.70, held-out IoU 0.9512, bump 19.37 mm.
+- **Colour model:** the part's colour is learned per job from SAM's own masks; an achromatic part turns colour gating off. On 204 cached part-B crops:
+  - the learned hue window starts at 38.3 deg (the hand-tuned value was 38);
+  - the refined masks equal the old ones, median IoU 0.9997 (min 0.9983, 68 crops).
+- **SAM concepts** are generic now ("object", "plastic part", "part"; a job's part name goes first). The generic concepts have not been tried on real frames yet.
+- **Coverage on part B:**
+  - 2.8 % of the surface is fixed by fewer than 3 silhouettes;
+  - one area of 31.2 mm2 (the plate's face) had 69 cameras facing it, so it is reported as a recess, not_detected;
+  - no area needs more footage.
+- **Quality gates on part B:**
+  - the plain carve passes every gate;
+  - the v4 model (with the owner's corrections) fails the zero-thickness gate: two one-voxel fins (4.2 and 3.4 mm2) at x 167, z 9.3, where the re-placed plate meets the bevelled slot column, a defect of the v4 plate correction. It is a draft until that is fixed.
+- **Error bars on part B** (spread of 3 held-out carves at 0.25 mm, half the 0.125 mm registration gap, half a voxel): +-0.10 mm on length, width and height.
+  - They do NOT cover the caliper errors (-0.26, -0.20, -0.11).
+  - The folds hardly differ (spread under 0.01 mm), so the bars capture random spread, not part B's systematic under-size.
+  - Treat them as a lower bound until a systematic term is measured on more than one part.
+
+## Synthetic parts
+
+SYNTHETIC: CadQuery shapes, not real parts.
+
+**Capture:** three videos rendered on the mat, 60 views in total: high orbit, low orbit, and the part turned over. Marker poses come from a noisy rendered mat (largest camera-centre error 0.2 mm). Silhouettes have SAM-like edge noise (sub-pixel jitter; 1 px erosion or dilation in 40 % of views).
+
+**Simplifications:** registration of the flipped video is perfect (its error is not simulated), the voxels are 0.25 mm, and 10 views are held out.
+
+**Reproduce:** `python scripts/synthetic_parts.py`.
+
+| Part (synthetic) | Truth L x W x H (mm) | Error L / W / H (mm) | Held-out IoU | Volume ratio | Not detected (mm2) |
+|---|---|---|---|---|---|
+| box | 30.0 x 20.0 x 10.0 | +0.96 / +1.15 / +0.05 | 0.974 | 1.05 | 0 |
+| cylinder | 20.0 x 20.0 x 12.0 | +0.42 / +0.40 / +0.05 | 0.969 | 1.05 | 0 |
+| L-bracket | 30.0 x 20.0 x 15.0 | +0.96 / +1.30 / +0.05 | 0.964 | 1.33 | 95 |
+| plate with holes | 40.0 x 30.0 x 4.0 | +0.58 / +0.60 / +0.05 | 0.978 | 1.02 | 0 |
+| plate with slots | 40.0 x 30.0 x 4.0 | +0.58 / +0.60 / +0.05 | 0.978 | 1.02 | 0 |
+| hill ridge part | 30.0 x 20.0 x 6.5 | +0.57 / +0.62 / +0.04 | 0.964 | 1.38 | 0 |
+| thin-walled part | 30.0 x 20.0 x 12.0 | +1.09 / +1.29 / +0.05 | 0.974 | 3.88 | 0 |
+
+**Findings:**
+- **Footprint overshoot:** footprints come out 0.4-1.3 mm too large, while heights are within 0.06 mm (fixed by the two mat planes). The overshoot stays with all noise off (box: +0.96 / +1.14) and grows with k (k = 6: +1.50 / +1.73). It comes from the robust carve keeping material near convex edges that fewer than k views see tangentially.
+  - Real part B (229 views, k = 12) was 0.2-0.26 mm under-size instead.
+  - No threshold was tuned on these parts.
+- **Volume:** the hull fills what silhouettes cannot see: the hill ridge part (x1.38) and the L-bracket's inside corner (x1.33).
+- **Known gap:** the thin-walled cup (x3.88) is filled solid and NOT reported as not_detected. Its open side rests on the mat in the flipped video, so the filled area looks fixed by the mat plane. `test_synthetic_parts.py` keeps this as a strict expected failure.
+
 ## Regression tests
 
 - `backend/tests/test_golden_B.py` reruns the carve and feature steps from the private cache at 0.25 mm voxels in 114 s. v4 adds these checks:
@@ -119,3 +168,7 @@ The owner marked the v3 model on five screenshots. A camera was fitted to each s
 - `backend/tests/test_rebuild.py` checks `rebuild()` on a synthetic part, with no private data.
 - `backend/tests/test_corrections.py` checks each correction, the hill profile, the schema and the sentence hook (with a fake model call) on a synthetic slab.
 - `backend/tests/test_question_cards.py` checks the answer sanity rules (for example, a slot deeper than the part is tall is rejected), the diagrams and the highlight-colour choice.
+- `backend/tests/test_learnings.py` covers each learnings rule (`backend/capture/learnings.py`), the per-job answers (no part-B constants) and the learned colour model.
+- `backend/tests/test_details.py` checks the small-detail candidates on synthetic CadQuery parts (holes, boss, step, fillets, chamfers) and on a synthetic face image (hole, slot, text; a 0.3 mm speck is never claimed).
+- `backend/tests/test_synthetic_parts.py` checks three synthetic parts against the bounds above, plus the cup gap as a strict expected failure.
+

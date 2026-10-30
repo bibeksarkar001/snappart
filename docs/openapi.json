@@ -923,6 +923,188 @@
     }
    }
   },
+  "/v1/jobs/{job_id}/more-footage": {
+   "post": {
+    "summary": "More Footage",
+    "description": "Answer a \"film N more seconds of this area\" request: film (the job goes back to uploading; add frames after the existing ones,\nthen capture-check and start: the build re-carves only with footage that shows the area) or skip (the area stays not seen).",
+    "operationId": "more_footage_v1_jobs__job_id__more_footage_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MoreFootage"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/proposals": {
+   "post": {
+    "summary": "Post Proposal",
+    "description": "User text -> a correction proposal from the engine's ops. Nothing is applied: the user confirms with POST .../corrections.",
+    "operationId": "post_proposal_v1_jobs__job_id__proposals_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProposalRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/voice": {
+   "post": {
+    "summary": "Post Voice",
+    "description": "Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> correction proposal. The audio is\nheld in memory only and dropped as soon as it is transcribed. If transcription is not possible the error says to type instead.",
+    "operationId": "post_voice_v1_jobs__job_id__voice_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_post_voice_v1_jobs__job_id__voice_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/summary": {
+   "get": {
+    "summary": "Get Summary",
+    "description": "Plain-language summary of the current report (Muse Spark, numbers checked against the report; a template otherwise).",
+    "operationId": "get_summary_v1_jobs__job_id__summary_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/jobs/{job_id}/files/{path}": {
    "get": {
     "summary": "Get File",
@@ -1042,6 +1224,32 @@
      "answers"
     ],
     "title": "AnswersRequest"
+   },
+   "Body_post_voice_v1_jobs__job_id__voice_post": {
+    "properties": {
+     "audio": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio"
+     },
+     "item_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[A-Z][0-9]{2}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Item Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "audio"
+    ],
+    "title": "Body_post_voice_v1_jobs__job_id__voice_post"
    },
    "CorrectionRequest": {
     "properties": {
@@ -1400,6 +1608,55 @@
      "last_ok_at"
     ],
     "title": "ModelState"
+   },
+   "MoreFootage": {
+    "properties": {
+     "request_id": {
+      "type": "string",
+      "pattern": "^film_[0-9]{1,3}$",
+      "title": "Request Id"
+     },
+     "action": {
+      "type": "string",
+      "pattern": "^(film|skip)$",
+      "title": "Action"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "request_id",
+     "action"
+    ],
+    "title": "MoreFootage"
+   },
+   "ProposalRequest": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Text"
+     },
+     "item_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[A-Z][0-9]{2}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Item Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "title": "ProposalRequest"
    },
    "ReviewChoice": {
     "properties": {

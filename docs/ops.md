@@ -18,8 +18,11 @@ SNAPPART_MOCK=1 python -m backend.app.worker
 - `SNAPPART_MOCK=1` serves canned results of a synthetic part, which is enough for frontend work. Every response then says `X-SnapPart-Mode: mock`.
 - The first mock build on a fresh data directory takes about 20 s, because it generates the canned bundle once.
 - Mock mode refuses to start with `SNAPPART_ENVIRONMENT=production` unless `SNAPPART_ALLOW_MOCK_IN_PRODUCTION=1` is also set.
-- Real builds are not wired yet (stage 4), so real-mode jobs fail with `real_build_not_available`.
-- The Meta API key is read from `MODEL_API_KEY` in the environment only. It never appears in a response, a log or `repr(settings)`.
+- Real builds are not wired into the worker yet (planned with the end-to-end run, stage 8), so real-mode jobs fail with `real_build_not_available`. The Meta model calls themselves work (stage 4).
+- **Meta API key:** read from `MODEL_API_KEY`, either in the environment or in the repo's `.env`, which settings load with pydantic-settings. It never appears in a response, a log, an error or `repr(settings)`.
+- **Model access:** `python scripts/meta_models_check.py` lists the model ids the key can use (it prints ids only).
+- **Live check:** `python scripts/meta_live_check.py OUT_DIR` makes real calls (about 40 SAM calls, 6 Spark calls and 1 transcription; small cost) and writes `OUT_DIR/live_check.json`.
+- **Voice input:** WAV is converted in memory. Other formats (webm, ogg, mp4 from the browser's recorder) need `ffmpeg` on the PATH; without it they are refused with "please send WAV / type instead".
 
 ## Settings (environment, prefix `SNAPPART_`)
 
@@ -70,9 +73,25 @@ Host, domain, contact email and governing law are not backend settings. They are
 | Setting | Default |
 |---|---|
 | `SNAPPART_SAM_CONCURRENCY` | 16 |
-| `SNAPPART_SAM_RPS` | 8 |
+| `SNAPPART_SAM_RPS` | 40 (the API's limit is 3,000 per minute) |
 | `SNAPPART_BREAKER_FAILURES` | 5 |
 | `SNAPPART_BREAKER_OPEN_S` | 30 |
+
+**Meta models:**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SNAPPART_META_BASE_URL` | `https://api.meta.ai/v1` | |
+| `SNAPPART_META_TIMEOUT_S` | 60 | Per request; transcription gets 4x |
+| `SNAPPART_META_RETRIES` | 4 | Retries for 429 / 500 / 503 / network errors only; never 504 or other 4xx |
+| `SNAPPART_META_CONCURRENCY` | 16 | Per process, per model |
+| `SNAPPART_SPARK_REASONING_EFFORT` | low | Muse Spark reasoning counts against the token cap |
+| `SNAPPART_SPARK_MAX_TOKENS` | 4000 | Reasoning plus answer |
+| `SNAPPART_SPARK_TEMPERATURE` | 0.1 | |
+| `SNAPPART_SPARK_SECOND_OPINION` | on | Capture-check second opinion (real mode) |
+| `SNAPPART_DAILY_BUDGET_CALLS` | 20000 | All Meta calls per UTC day; then "today's free capacity is used up" |
+| `SNAPPART_RATE_VOICE_PER_HOUR` | 30 | Per client |
+| `SNAPPART_RATE_PROPOSALS_PER_HOUR` | 120 | Per client |
 
 **Capture check:**
 
