@@ -113,6 +113,29 @@ Host, domain, contact email and governing law are not backend settings. They are
 | `SNAPPART_RATE_CREATE_PER_HOUR` | 20 | Per client |
 | `SNAPPART_RATE_START_PER_HOUR` | 20 | Per client |
 | `SNAPPART_RATE_RESUME_PER_HOUR` | 60 | Per client |
+| `SNAPPART_RATE_ANY_PER_MIN` / `SNAPPART_RATE_ANY_BURST` | 600 / 300 | Every route except health checks, per client |
+| `SNAPPART_DAILY_REQUESTS_PER_IP` | 50000 | Per client per day |
+| `SNAPPART_DAILY_JOBS_PER_IP` / `SNAPPART_DAILY_JOBS_GLOBAL` | 60 / 20000 | New parts per day |
+| `SNAPPART_GLOBAL_RPS` | 1000 | All clients together, per database |
+| `SNAPPART_TURNSTILE_SECRET` | none | Set it to require a Cloudflare Turnstile token on `POST /v1/jobs` (owner decision) |
+
+**Resource limits and retention (docs/security.md):**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SNAPPART_UPLOAD_STALL_S` | 20 | A request body that sends nothing this long gets 408 |
+| `SNAPPART_SSE_PER_JOB` / `SNAPPART_SSE_PER_IP` | 4 / 8 | Open event streams, per API process |
+| `SNAPPART_SSE_MAX_S` | 1800 | A stream closes after this; clients reconnect with `Last-Event-ID` |
+| `SNAPPART_MIN_FREE_BYTES` | 2 GiB | Below this free disk, new parts and uploads get 503 |
+| `SNAPPART_MAX_JOB_OUTPUT_BYTES` | 300 MiB | Outputs one part may hold |
+| `SNAPPART_MAX_IMAGE_PIXELS` | 1920 x 1920 | Pillow's decompression-bomb limit |
+| `SNAPPART_RETENTION_DAYS` | 7 | Owner decision. Every job is deleted this long after its last change |
+| `SNAPPART_DELETE_FRAMES_WHEN_DONE` | false | Owner decision. Also delete the frames once a part is finished |
+| `SNAPPART_SWEEP_EVERY_S` | 3600 | Each worker runs the sweep this often; `python -m app.retention` (from `backend/`) runs it once |
+
+The reverse proxy in `deploy/nginx.conf` repeats the body, time and rate limits as a second layer and terminates TLS. Set
+`SNAPPART_TRUSTED_PROXIES` to its address so the API reads the client from `X-Forwarded-For`. The server name and certificate paths there
+are owner decisions.
 
 ## How it scales
 

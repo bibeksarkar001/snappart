@@ -28,9 +28,13 @@ Error codes used so far:
 | `unsupported_media_type` | 415 | The frame is not JPEG, or `Content-Type` is not `image/jpeg`. |
 | `bad_image` | 422 | Unreadable JPEG, or its dimensions are out of range. |
 | `too_many_frames` | 422 | Frame index or video number beyond the limits. |
-| `frame_too_large`, `job_too_large` | 413 | A size limit was exceeded. |
-| `rate_limited`, `too_many_builds`, `locked` | 429 | Too many requests, too many active builds, or a resume lockout. |
-| `queue_full` | 503 | The build queue is full. |
+| `frame_too_large`, `job_too_large`, `payload_too_large` | 413 | A size limit was exceeded (frame 3 MB, voice 32 MB, any other body 64 KB). |
+| `bad_request` | 400 | A malformed `Content-Length`. |
+| `upload_stalled` | 408 | The request body stopped arriving for `upload_stall_s` (20 s). |
+| `challenge_failed` | 403 | Only when Turnstile is configured: `POST /v1/jobs` without a valid `CF-Turnstile-Response` header. |
+| `rate_limited`, `too_many_builds`, `locked`, `too_many_streams` | 429 | Too many requests (every route except health checks is metered per client, per day and for the whole service), too many active builds, a resume lockout, or too many open event streams. `Retry-After` is always set. |
+| `queue_full`, `storage_full` | 503 | The build queue is full, or the server's disk is below its free-space floor. |
+| `job_storage_full` | 507 | A part's outputs reached `max_job_output_bytes`; delete it and start again. |
 | `internal` | 500 | Anything unexpected. |
 
 ## Job states

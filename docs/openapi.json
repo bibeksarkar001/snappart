@@ -1203,15 +1203,18 @@
    "AnswersRequest": {
     "properties": {
      "answers": {
-      "additionalProperties": {
-       "anyOf": [
-        {
-         "type": "number"
-        },
-        {
-         "type": "string"
-        }
-       ]
+      "patternProperties": {
+       "^[a-z0-9_]{1,40}$": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "string",
+          "maxLength": 40
+         }
+        ]
+       }
       },
       "type": "object",
       "maxProperties": 20,
