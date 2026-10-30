@@ -10,6 +10,7 @@ import resource
 import secrets
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -78,8 +79,11 @@ class Worker:
                 break
             except subprocess.TimeoutExpired:
                 pass
-            with db.session(self.s.db_path) as c:
-                alive = jobqueue.heartbeat(c, jid, self.owner, self.s)
+            try:
+                with db.session(self.s.db_path) as c:
+                    alive = jobqueue.heartbeat(c, jid, self.owner, self.s)
+            except sqlite3.OperationalError:                        # database busy: try again next beat (a lost lease shows up then)
+                alive = True
             if not alive:                                           # deleted, cancelled, or another worker took it over
                 self._kill()
                 return
