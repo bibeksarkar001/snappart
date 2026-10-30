@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import db, jobqueue
+from . import db, jobqueue, retention
 from .settings import Settings, get_settings
 from .storage import LocalStorage
 
@@ -115,7 +115,12 @@ class Worker:
     def run_forever(self):
         signal.signal(signal.SIGTERM, lambda *a: setattr(self, "stopping", True))
         signal.signal(signal.SIGINT, lambda *a: setattr(self, "stopping", True))
+        swept = 0.0
         while not self.stopping:
+            if time.monotonic() - swept > self.s.sweep_every_s:
+                with db.session(self.s.db_path) as c:
+                    retention.sweep(c, self.storage, self.s)
+                swept = time.monotonic()
             if self.step() is None:
                 time.sleep(self.s.worker_poll_s)
 
