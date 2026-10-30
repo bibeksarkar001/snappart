@@ -273,10 +273,15 @@ def load(path: Path):
     return {"field": z["field"], "grid": g, "features": feats}
 
 
-def rebuild(model, answers, corrections=None):
-    """Apply the answers (any missing key falls back to the frozen defaults) and the corrections (in order) to the stored carve field and
-    re-mesh. Returns (verts, faces)."""
+def resolve_answers(answers):
+    """Answers as apply() uses them: frozen defaults for missing keys, the top-shape choice turned into a radius."""
     a = {**default_answers(), **(answers or {})}
     if a.get("bump_top_shape"):                                       # the card's choice -> radius
         a["bump_top_radius_mm"] = C.TOP_SHAPE_RADIUS_MM[a["bump_top_shape"]]
-    return mesh(apply(model["field"], model["grid"], model["features"], a, corrections), model["grid"])
+    return a
+
+
+def rebuild(model, answers, corrections=None):
+    """Apply the answers (any missing key falls back to the frozen defaults) and the corrections (in order) to the stored carve field and
+    re-mesh. Returns (verts, faces)."""
+    return mesh(apply(model["field"], model["grid"], model["features"], resolve_answers(answers), corrections), model["grid"])

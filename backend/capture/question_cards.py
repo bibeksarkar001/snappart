@@ -14,7 +14,7 @@ from . import carve, config as C, review as Rv
 
 HIGHLIGHTS = {"magenta": (255, 0, 255), "cyan": (255, 220, 0), "yellow": (0, 230, 255)}     # BGR, reserved for cards
 TEXT = {
-    "groove_depth_mm": ("How deep are the rectangular slots? (one answer for all 4)", "mm", "Push the depth rod of your calipers into a slot until it touches the bottom."),
+    "groove_depth_mm": ("How deep are the rectangular slots? (one answer for all of them)", "mm", "Push the depth rod of your calipers into a slot until it touches the bottom."),
     "bump_height_mm": ("How far does the lock ridge stand out from the wall it is on?", "mm", "Rest the depth rod on the wall beside the ridge; measure to its top."),
     "bump_width_mm": ("How wide is the lock ridge at its base?", "mm", "Close the outside jaws across the ridge where it meets the wall."),
     "bump_length_mm": ("How long is the lock ridge (end to end)?", "mm", "Close the outside jaws over its two ends."),
@@ -25,6 +25,18 @@ CHOICES = {"bump_top_shape": list(C.TOP_SHAPE_RADIUS_MM)}
 
 
 # ---------- answer sanity checks ----------
+
+MIN_MM = 0.2                                           # answers under ~0.2 mm are not printable features
+
+
+def bounds(qid, part):
+    """(min, max) mm a numeric answer may take for this part (max exclusive where it equals a part dimension), or None for choices."""
+    if qid in CHOICES:
+        return None
+    if qid == "bump_length_mm":
+        return MIN_MM, round(max(part["length_mm"], part["width_mm"]), 2)
+    return MIN_MM, round(part["height_mm"], 2)
+
 
 def check_answer(qid, value, part):
     """None if the answer is plausible for this part, else the reason it is rejected. part: {"height_mm", "length_mm", "width_mm",
@@ -37,6 +49,8 @@ def check_answer(qid, value, part):
         return "enter a number in mm"
     if not np.isfinite(x) or x <= 0:
         return "must be a positive number of mm"
+    if x < MIN_MM:
+        return f"at least {MIN_MM} mm"
     if qid == "groove_depth_mm" and x >= part["height_mm"]:
         return f"a slot deeper than the part is tall ({part['height_mm']:.1f} mm) would cut through it"
     if qid == "plate_thickness_mm" and x >= part["height_mm"]:
