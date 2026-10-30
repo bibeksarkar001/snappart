@@ -8,13 +8,15 @@ import hashlib
 import io
 import json
 import logging
+import re
 import secrets
+import threading
 
 from fastapi import FastAPI, Path as P, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import capture_check, db, events, jobqueue, jobs, models, ratelimit, resume
+from . import capture_check, db, events, jobqueue, jobs, models, ratelimit, results, resume
 from .errors import ApiError, envelope, install
 from .settings import Settings, get_settings
 from .storage import JOB_ID, LocalStorage
@@ -309,6 +311,142 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ratelimit.fail(c, key, s.resume_max_fails, s.resume_lock_base_s, s.resume_lock_max_s)
                 raise miss
         return {"job_id": row["id"], "state": row["state"]}
+
+    # ------------------------------------------------------------------ questions, answers, corrections, rebuild, review
+
+    EDITABLE = ("needs_input", "reviewing", "done")
+    rebuild_slots = threading.BoundedSemaphore(s.max_concurrent_rebuilds)
+
+    def editable(c, job_id: str) -> dict:
+        row = jobs.get(c, job_id_ok(job_id))
+        if row["state"] not in EDITABLE:
+            raise ApiError(409, "not_ready", "Answers and changes are possible once the build has finished.")
+        return row
+
+    def touched(c, job_id: str):
+        """A change after the part was marked done reopens it for review."""
+        if jobs.get(c, job_id)["state"] == "done":
+            jobs.transition(c, job_id, "reviewing", "changed after it was done")
+
+    @app.get("/v1/jobs/{job_id}/report")
+    def get_report(job_id: str):
+        with conn() as c:
+            jobs.get(c, job_id_ok(job_id))
+        return results.current_report(st, job_id)
+
+    @app.get("/v1/jobs/{job_id}/questions")
+    def get_questions(job_id: str):
+        with conn() as c:
+            editable(c, job_id)
+            ans = results.stored_answers(c, job_id)
+            items = results.review_items(c, st, job_id)
+        qs = results.questions_view(st, job_id, ans)
+        return {"job_id": job_id, "questions": qs, "open_questions": sum(not q["answered"] for q in qs), "review_items": items}
+
+    @app.post("/v1/jobs/{job_id}/answers")
+    def post_answers(job_id: str, body: models.AnswersRequest):
+        with conn() as c:
+            editable(c, job_id)
+            out = results.save_answers(c, st, job_id, body.answers)
+            touched(c, job_id)
+        return out
+
+    @app.get("/v1/jobs/{job_id}/corrections")
+    def get_corrections(job_id: str):
+        with conn() as c:
+            editable(c, job_id)
+            return {"job_id": job_id, "corrections": results.correction_rows(c, job_id, include_reverted=True)}
+
+    @app.post("/v1/jobs/{job_id}/corrections", status_code=201)
+    def post_correction(job_id: str, body: models.CorrectionRequest):
+        if len(json.dumps(body.correction)) > s.max_json_bytes:
+            raise ApiError(413, "payload_too_large", "This correction is too large.")
+        with conn() as c:
+            editable(c, job_id)
+            cid = results.add_correction(c, st, job_id, body.correction)
+            touched(c, job_id)
+        return {"correction_id": cid, "rebuild_needed": True}
+
+    @app.delete("/v1/jobs/{job_id}/corrections/{correction_id}")
+    def undo_correction(job_id: str, correction_id: str = P(pattern=r"^c_[0-9a-f]{12}$")):
+        with conn() as c:
+            editable(c, job_id)
+            results.revert_correction(c, job_id, correction_id)
+            touched(c, job_id)
+        return {"undone": correction_id, "rebuild_needed": True}
+
+    @app.post("/v1/jobs/{job_id}/rebuild")
+    def post_rebuild(job_id: str):
+        if not rebuild_slots.acquire(blocking=False):
+            raise ApiError(503, "busy", "Several rebuilds are running. Please try again in a moment.", retry_after_s=2)
+        try:
+            with conn() as c:
+                editable(c, job_id)
+                out = results.rebuild(c, st, job_id)
+                row = jobs.get(c, job_id)
+                if row["state"] == "needs_input" and out["open_questions"] == 0:
+                    jobs.transition(c, job_id, "reviewing", "all questions answered")
+                out["state"] = jobs.get(c, job_id)["state"]
+            return out
+        finally:
+            rebuild_slots.release()
+
+    @app.get("/v1/jobs/{job_id}/review")
+    def get_review(job_id: str):
+        with conn() as c:
+            editable(c, job_id)
+            return {"job_id": job_id, "items": results.review_items(c, st, job_id)}
+
+    @app.post("/v1/jobs/{job_id}/review/{item_id}")
+    def post_review_choice(job_id: str, body: models.ReviewChoice, item_id: str = P(pattern=r"^[A-Z]\d{2}$")):
+        with conn() as c:
+            editable(c, job_id)
+            out = results.choose(c, st, job_id, item_id, body.choice)
+            touched(c, job_id)
+        return out
+
+    @app.post("/v1/jobs/{job_id}/marks", status_code=201)
+    def post_mark(job_id: str, body: models.MarkRequest):
+        with conn() as c:
+            editable(c, job_id)
+            if len(results.user_marks(st, job_id)) >= 20:
+                raise ApiError(422, "too_many_marks", "At most 20 marked spots per part.")
+            return results.add_mark(st, job_id, body.point, body.radius_mm, body.normal, body.note)
+
+    @app.post("/v1/jobs/{job_id}/accept", response_model=models.Job)
+    def accept(job_id: str):
+        with conn() as c:
+            row = jobs.get(c, job_id_ok(job_id))
+            open_q = sum(not q["answered"] for q in results.questions_view(st, job_id, results.stored_answers(c, job_id))) \
+                if row["state"] in EDITABLE else 0
+            if open_q:
+                raise ApiError(409, "questions_open", f"{open_q} question(s) still need an answer (or 'I don't know').")
+            if row["state"] == "needs_input":
+                jobs.transition(c, job_id, "reviewing", "all questions answered")
+            jobs.transition(c, job_id, "done", "accepted by the user", expect="reviewing")
+            return job_view(c, job_id)
+
+    # ------------------------------------------------------------------ downloads (server-chosen names only)
+
+    FILES = re.compile(r"^(model\.stl|preview\.stl|preview\.glb|report\.json|cards/[a-z0-9_]{1,40}/(card\.png|card\.json|diagram\.svg)"
+                       r"|review/[A-Z][0-9]{2}\.png)$")
+    TYPES = {".stl": "model/stl", ".glb": "model/gltf-binary", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml"}
+
+    @app.get("/v1/jobs/{job_id}/files/{path:path}")
+    def get_file(job_id: str, path: str):
+        if not FILES.match(path):
+            raise ApiError(404, "not_found", "No such file.")
+        with conn() as c:
+            jobs.get(c, job_id_ok(job_id))
+        key = "outputs/" + path
+        if not st.exists(job_id, key):
+            raise ApiError(404, "not_found", "No such file.")
+        ext = path[path.rfind("."):]
+        name = f"snappart-{job_id[:8]}-{path.replace('/', '-')}"
+        disp = "inline" if ext in (".png", ".svg") else "attachment"
+        return Response(st.get(job_id, key), media_type=TYPES[ext], headers={
+            "Content-Disposition": f'{disp}; filename="{name}"', "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
 
     # ------------------------------------------------------------------ Meta model state (truthful, from recorded calls)
 

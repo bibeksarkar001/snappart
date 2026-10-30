@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     max_concurrent_builds: int = Field(default_factory=lambda: max(1, (os.cpu_count() or 3) // 3))
     build_timeout_s: int = 12 * 60
     mock_build_s: float = 5.0                            # mock build duration (progress events spread over it)
+    max_concurrent_rebuilds: int = 2                     # per API process; each rebuild is about 2 s of CPU (part B)
 
     max_queued_per_ip: int = 2                           # queued builds one client may have at once
     max_attempts: int = 3                                # a build whose worker keeps disappearing fails after this many tries

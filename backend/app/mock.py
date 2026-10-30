@@ -36,12 +36,18 @@ def synthetic_model():
 def make_bundle(out: Path) -> None:
     """Write model.npz/.json, model.stl, report.json and cards/<id>/ for the synthetic part into out."""
     import cv2
-    from capture import carve, model as Mo, question_cards as Q, render as Rn, report as Rp
+    from capture import model as Mo, question_cards as Q, render as Rn, report as Rp
     field, g, feats = synthetic_model()
     ans = Mo.default_answers()
     v0, f0 = Mo.mesh(field, g)
     v, fc = Mo.rebuild({"field": field, "grid": g, "features": feats}, ans)
-    carve.write_stl(out / "model.stl", v, fc)
+    from . import results
+    a_full = Mo.resolve_answers(ans)
+    f_full = Mo.apply(field, g, feats, a_full)
+    pv, pf = results.preview_mesh(f_full, g, v, fc)
+    (out / "model.stl").write_bytes(results.write_stl_bytes(v, fc))
+    (out / "preview.stl").write_bytes(results.write_stl_bytes(pv, pf))
+    (out / "preview.glb").write_bytes(results.glb_bytes(pv, pf))
     Mo.save(out / "model", field, g, feats)
     rep = Rp.build((v0, f0), feats, ans, user_given=())
     rep.update(mode="mock", synthetic=True, meta_models_ran=[],
@@ -57,6 +63,18 @@ def make_bundle(out: Path) -> None:
             cv2.putText(im, "MOCK", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (60, 60, 255), 3, cv2.LINE_AA)
             views.append(("mock", vw))
             imgs.append(im)
+    # one canned review item so the review screen can be wired: a patch of the top face (the synthetic part has no real defects)
+    from capture import review as Rv
+    poly = [[3.0, -6.0], [9.0, -6.0], [9.0, 6.0], [3.0, 6.0]]
+    ctr = (v[fc].mean(1))
+    tri = np.nonzero((ctr[:, 0] > 3) & (ctr[:, 0] < 9) & (np.abs(ctr[:, 1]) < 6) & (ctr[:, 2] > 5.5))[0]
+    q_, ch = Rv.QUESTIONS["lump"]
+    rep["review_items"] = [{"id": "M01", "kind": "lump", "reason": "MOCK: a canned example of a flagged area, not a real finding",
+                            "question": q_, "choices": ch, "centre": [6.0, 0.0, 6.0], "normal": [0, 0, 1.0], "polygon_xy": poly,
+                            "z_mm": [5.9, 6.0, 6.1], "area_mm2": 72.0, "triangles": int(len(tri))}]
+    img, _ = Q.region_card(tri, v, fc, [0, 0, 1.0], views, imgs, (v, fc), "M01: MOCK review item")
+    (out / "review").mkdir(exist_ok=True)
+    cv2.imwrite(str(out / "review" / "M01.png"), img)
     for q in rep["questions"]:
         img, rec = Q.frame_card(Q.anchors(q["id"], feats, ans), views, imgs, (v, fc))
         cv2.putText(img, "MOCK", (12, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (60, 60, 255), 3, cv2.LINE_AA)   # the crop drops the frame's label
@@ -66,7 +84,7 @@ def make_bundle(out: Path) -> None:
 
 def bundle(data_dir: Path) -> Path:
     """The canned bundle, generated once per data dir (atomic: built in a temp dir, then renamed into place)."""
-    final = Path(data_dir) / "mock_bundle"
+    final = Path(data_dir) / "mock_bundle_v2"                           # bump the version when the bundle's contents change
     if (final / "report.json").exists():
         return final
     tmp = Path(tempfile.mkdtemp(dir=data_dir, prefix=".mock-"))

@@ -14,6 +14,25 @@ class StartRequest(Strict):
     build_anyway: bool = False                     # start although the capture check said the footage is not good enough
 
 
+class AnswersRequest(Strict):
+    answers: dict[str, float | str] = Field(..., max_length=20)     # question id -> mm, a choice, or "skip" (I don't know)
+
+
+class CorrectionRequest(Strict):
+    correction: dict                                                 # validated against capture/corrections.py SCHEMA
+
+
+class ReviewChoice(Strict):
+    choice: str = Field(..., max_length=40)
+
+
+class MarkRequest(Strict):
+    point: list[float] = Field(..., min_length=3, max_length=3)     # part frame, mm (from the 3D viewer)
+    radius_mm: float = Field(3.0, ge=0.5, le=20.0)
+    normal: list[float] | None = Field(None, min_length=3, max_length=3)
+    note: str | None = Field(None, max_length=200)
+
+
 class ErrorBody(BaseModel):
     code: str
     message: str
