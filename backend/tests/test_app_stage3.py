@@ -100,6 +100,8 @@ def test_rebuild_corrections_undo_review_and_accept(env):
     assert cl.post(f"/v1/jobs/{jid}/accept").json()["error"]["code"] == "questions_open"
     cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {k: "skip" for k in ("bump_height_mm", "bump_width_mm", "bump_length_mm", "bump_top_shape")}})
     assert cl.post(f"/v1/jobs/{jid}/rebuild").json()["state"] == "reviewing"
+    assert cl.post(f"/v1/jobs/{jid}/accept").json()["error"]["code"] == "footage_requested"            # a blocking coverage request is open
+    assert cl.post(f"/v1/jobs/{jid}/more-footage", json={"request_id": "film_1", "action": "skip"}).json()["request"]["decision"] == "skipped"
     assert cl.post(f"/v1/jobs/{jid}/accept").json()["state"] == "done"
     cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"groove_depth_mm": 3.0}})
     assert cl.get(f"/v1/jobs/{jid}").json()["state"] == "reviewing"
