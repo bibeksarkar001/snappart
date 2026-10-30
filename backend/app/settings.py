@@ -39,6 +39,38 @@ class Settings(BaseSettings):
     build_timeout_s: int = 12 * 60
     mock_build_s: float = 5.0                            # mock build duration (progress events spread over it)
 
+    max_queued_per_ip: int = 2                           # queued builds one client may have at once
+    max_attempts: int = 3                                # a build whose worker keeps disappearing fails after this many tries
+    lease_s: float = 30.0                                # a worker's claim on a build; renewed by its heartbeat
+    heartbeat_s: float = 10.0
+    worker_poll_s: float = 1.0
+    build_mem_mb: int = 12000                            # rlimit for the isolated build subprocess
+    sse_heartbeat_s: float = 15.0
+    sse_poll_s: float = 0.5
+    longpoll_max_s: float = 25.0
+
+    # SAM 3.1 call limits (shared by every worker on this machine)
+    sam_concurrency: int = 16                            # measured sweet spot (v3 stage 3b: 40 calls at 16 parallel in 14.9 s)
+    sam_rps: float = 8.0                                 # token bucket: sustained requests per second, burst = sam_concurrency
+    breaker_failures: int = 5                            # consecutive failures that open the circuit breaker ...
+    breaker_open_s: float = 30.0                         # ... for this long
+
+    # capture check (deterministic)
+    min_usable_frames: int = 12                          # per video
+    blur_min_laplacian_var: float = 60.0                 # Laplacian variance at 1280 px; sharp real frames of part B: 200-730
+    min_coverage_bins: int = 9                           # of 12 azimuth sectors of 30 deg
+    orbit_deg_per_s: float = 12.0                        # assumed orbit speed for "film N more seconds" tips (a 30 s orbit)
+
+    # resume codes and abuse limits (per client IP hash)
+    resume_pepper: SecretStr | None = None               # if unset, generated once into DATA_DIR/.resume_pepper (0600)
+    resume_max_fails: int = 5                            # wrong codes before a lockout ...
+    resume_lock_base_s: float = 60.0                     # ... of this long, doubling per further failure ...
+    resume_lock_max_s: float = 24 * 3600.0               # ... up to this
+    trusted_proxies: tuple[str, ...] = ()                # X-Forwarded-For is used only when the peer is one of these
+    rate_create_per_hour: float = 20.0
+    rate_start_per_hour: float = 20.0
+    rate_resume_per_hour: float = 60.0
+
     # retention (owner decision; default 7 days)
     retention_days: int = 7
 

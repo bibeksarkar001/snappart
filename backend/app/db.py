@@ -93,6 +93,17 @@ MIGRATIONS = [
         PRIMARY KEY (day, model)
     );
     """),
+    (2, """
+    ALTER TABLE jobs ADD COLUMN part_name TEXT;
+    ALTER TABLE jobs ADD COLUMN build_anyway INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE jobs ADD COLUMN build_started_at REAL;
+    ALTER TABLE jobs ADD COLUMN build_finished_at REAL;
+    CREATE INDEX jobs_resume ON jobs(resume_hash);
+    CREATE TABLE tombstones (
+        id_hash TEXT PRIMARY KEY,
+        deleted_at REAL NOT NULL
+    )
+    """),
 ]
 
 
