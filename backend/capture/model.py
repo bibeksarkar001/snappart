@@ -294,7 +294,7 @@ def save(path: Path, field, g, feats):
 
 
 def load(path: Path):
-    z = np.load(path.with_suffix(".npz"))
+    z = np.load(path.with_suffix(".npz"), allow_pickle=False)
     g = carve.Grid(z["lo"], z["lo"] + float(z["vs"]), float(z["vs"]))
     g.shape = tuple(int(x) for x in z["shape"])
     feats = json.loads(path.with_suffix(".json").read_text())

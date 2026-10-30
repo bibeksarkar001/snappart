@@ -27,7 +27,9 @@ def marker_sharpness(gray, corners) -> float:
 
 
 def scan(path: Path, stride=3, cache: Path | None = None, limit=None, log=print) -> dict:
-    """Detect markers on every `stride`-th frame. {"n_read", "size", "fps", "frames": {idx: (ids, corners, sharp)}}; cached."""
+    """Detect markers on every `stride`-th frame. {"n_read", "size", "fps", "frames": {idx: (ids, corners, sharp)}}; cached.
+    The cache is pickle, so it is only for internal runs on the owner's own videos (spikes, golden test): the API never calls this, and
+    tests/test_security.py fails if app/ ever does."""
     if cache is not None and cache.exists():
         return pickle.loads(cache.read_bytes())
     cap = cv2.VideoCapture(str(path))
