@@ -10,19 +10,31 @@ import json
 import logging
 import re
 import secrets
+import shutil
 import threading
+import warnings
+from collections import Counter
+
+import httpx
 
 from fastapi import FastAPI, File, Form, Path as P, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import capture_check, db, events, jobqueue, jobs, meta_client, models, ratelimit, results, resume, spark, voice
+from . import capture_check, db, events, imagesafe, jobqueue, jobs, meta_client, models, ratelimit, results, resume, retention, spark, voice
+from .guard import BodyGuard
 from .errors import ApiError, envelope, install
 from .settings import Settings, get_settings
 from .storage import JOB_ID, LocalStorage
 
 log = logging.getLogger("snappart.api")
 TERMINAL = {"failed", "cancelled", "expired"}
+UNMETERED = {"/healthz", "/readyz"}
+HEADERS = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
+           "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+           "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",   # the API serves no HTML; files set their own
+           "Cross-Origin-Opener-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(), geolocation=()"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -35,20 +47,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     pep = resume.pepper(s)
     app.state.settings, app.state.storage = s, st
     install(app)
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = s.max_image_pixels                       # Pillow raises on images over twice this (decompression bombs)
+    app.add_middleware(BodyGuard, settings=s)                          # inner: runs after the request id and the rate gate
+
+    def gate(ip: str):
+        with db.session(s.db_path) as c:
+            return ratelimit.gate(c, ip, s)
 
     @app.middleware("http")
     async def frame(request: Request, call_next):
         request.state.request_id = secrets.token_hex(8)                 # server-made; a client-sent id is not trusted
         try:
-            resp = await call_next(request)
+            wait, what = (0, "") if request.url.path in UNMETERED or request.method == "OPTIONS" else \
+                await run_in_threadpool(gate, who(request))
+            if wait > 0:
+                n = max(1, int(wait) + 1)
+                resp = envelope(request, 429, "rate_limited", f"Too many {what} from your connection. Try again in {n} s." if what != "requests to the service"
+                                else f"The service is very busy. Try again in {n} s.", retry_after_s=n)
+            else:
+                resp = await call_next(request)
         except Exception:                                               # never leak a trace, path or SQL
             log.exception("unhandled error, request %s", request.state.request_id)
             resp = envelope(request, 500, "internal", "Something went wrong on our side. Please try again.")
         resp.headers["X-SnapPart-Mode"] = s.mode
         resp.headers["X-Request-ID"] = request.state.request_id
-        resp.headers["X-Content-Type-Options"] = "nosniff"
+        for k, v in HEADERS.items():
+            resp.headers.setdefault(k, v)
         resp.headers.setdefault("Cache-Control", "no-store")
         return resp
+
+    app.add_middleware(CORSMiddleware, allow_origins=list(s.cors_origins), allow_methods=["GET", "POST", "PUT", "DELETE"],
+                       allow_headers=["Content-Type", "Last-Event-ID", "CF-Turnstile-Response"], expose_headers=["Retry-After", "X-Request-ID",
+                       "X-SnapPart-Mode", "X-SnapPart-Draft", "Content-Disposition"], max_age=600)   # outermost: errors carry CORS headers too
 
     def conn():
         return db.session(s.db_path)
@@ -74,6 +105,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             out["capture_check"] = None
         return out
+
+    def disk_ok():
+        if shutil.disk_usage(s.data_dir).free < s.min_free_bytes:
+            raise ApiError(503, "storage_full", "The service is out of storage space right now. Please try again later.", retry_after_s=600)
+
+    def turnstile_ok(request: Request):
+        """Optional bot check on new parts (Cloudflare Turnstile), only when a secret is configured."""
+        token = request.headers.get("cf-turnstile-response", "")
+        if not token or len(token) > 2048:
+            raise ApiError(403, "challenge_failed", "Please complete the check on the page, then try again.")
+        try:
+            with httpx.Client(timeout=5.0, transport=getattr(app.state, "turnstile_transport", None)) as h:
+                ok = h.post(s.turnstile_url, data={"secret": s.turnstile_secret.get_secret_value(), "response": token}).json().get("success") is True
+        except (httpx.HTTPError, ValueError):
+            ok = False
+        if not ok:
+            raise ApiError(403, "challenge_failed", "Please complete the check on the page, then try again.")
 
     def meta(job_id: str | None):
         """The Meta client for real mode with a key, else None (callers then use their deterministic fallback)."""
@@ -113,9 +161,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/jobs", response_model=models.JobCreated, status_code=201)
     def create_job(request: Request, body: models.JobCreate | None = None):
         ip = who(request)
+        disk_ok()
+        if s.turnstile_secret is not None:
+            turnstile_ok(request)
         code = resume.new_code()
         with conn() as c:
             ratelimit.limit(c, f"create:{ip}", s.rate_create_per_hour, what="new parts")
+            ratelimit.limit(c, f"jobs_day:{ip}", s.daily_jobs_per_ip / 24, burst=s.daily_jobs_per_ip, what="new parts today")
+            ratelimit.limit(c, "jobs_day:all", s.daily_jobs_global / 24, burst=s.daily_jobs_global, what="new parts on the service today")
             jid = jobs.create(c, s.mode, ip)
             with db.tx(c):
                 c.execute("UPDATE jobs SET resume_hash = ?, part_name = ? WHERE id = ?",
@@ -132,12 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Deletes frames, outputs, answers, corrections, events and the job row; keeps only an anonymous tombstone (hash, time)."""
         with conn() as c:
             jobs.get(c, job_id_ok(job_id))
-            st.delete_job(job_id)
-            with db.tx(c):
-                c.execute("DELETE FROM jobs WHERE id = ?", (job_id,))       # uploads, events, answers, corrections cascade
-                c.execute("INSERT OR REPLACE INTO tombstones (id_hash, deleted_at) VALUES (?, ?)",
-                          (hashlib.sha256(job_id.encode()).hexdigest(), db.now()))
-        st.delete_job(job_id)                                           # again: a build may have written meanwhile
+            retention.purge(c, st, job_id)
         return {"deleted": True}
 
     # ------------------------------------------------------------------ uploads
@@ -147,12 +195,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if data[:3] != b"\xff\xd8\xff":
             raise ApiError(415, "unsupported_media_type", "Frames must be JPEG images.")
         try:
-            with Image.open(io.BytesIO(data)) as im:                     # header only: no full decode here
-                w, h, fmt = im.width, im.height, im.format
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(io.BytesIO(data)) as im:                 # header only: no full decode here
+                    w, h, fmt = im.width, im.height, im.format
+            data = imagesafe.strip_metadata(data)                       # no EXIF / GPS is ever stored
         except Exception:
             raise ApiError(422, "bad_image", "This frame could not be read as a JPEG image.") from None
         if fmt != "JPEG" or max(w, h) > s.max_frame_long_edge_px or min(w, h) < 240:
             raise ApiError(422, "bad_image", f"Frames must be JPEG, at most {s.max_frame_long_edge_px} px on the long edge and at least 240 px.")
+        disk_ok()
         sha = hashlib.sha256(data).hexdigest()
         key = f"videos/{v}/frames/{i:04d}.jpg"
         with conn() as c:
@@ -277,10 +329,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             row = c.execute("SELECT state FROM jobs WHERE id = ?", (job_id,)).fetchone()
             return (row["state"] if row else None), events.after(c, job_id, after)
 
-    async def stream(request: Request, job_id: str, after: int):
-        last, quiet = after, 0.0
+    streams: Counter = Counter()                                        # open event streams per job and per client, in this process
+    app.state.streams = streams
+
+    def stream_slot(job_id: str, ip: str):
+        if streams[job_id] >= s.sse_per_job or streams[ip] >= s.sse_per_ip:
+            raise ApiError(429, "too_many_streams", "Too many open progress streams. Close another tab, or try again shortly.", retry_after_s=5)
+        streams[job_id] += 1
+        streams[ip] += 1
+        done = []
+
+        def release():
+            if not done:
+                done.append(1)
+                for k in (job_id, ip):
+                    streams[k] -= 1
+                    if streams[k] <= 0:
+                        del streams[k]
+        return release
+
+    async def stream(request: Request, job_id: str, after: int, release):
+        try:
+            async for chunk in stream_body(request, job_id, after):
+                yield chunk
+        finally:
+            release()
+
+    async def stream_body(request: Request, job_id: str, after: int):
+        last, quiet, age = after, 0.0, 0.0
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or age >= s.sse_max_s:     # the client reconnects with Last-Event-ID
                 return
             state, evs = await run_in_threadpool(fetch, job_id, last)
             for e in evs:
@@ -296,6 +374,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 quiet = 0.0
             await asyncio.sleep(s.sse_poll_s)
             quiet += s.sse_poll_s
+            age += s.sse_poll_s
 
     @app.get("/v1/jobs/{job_id}/events")
     async def get_events(request: Request, job_id: str, after: int = Query(0, ge=0), wait: float = Query(0, ge=0)):
@@ -306,7 +385,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if "text/event-stream" in request.headers.get("accept", ""):
             last = request.headers.get("last-event-id", "")
             start_at = int(last) if last.isdigit() else after
-            return StreamingResponse(stream(request, job_id, start_at), media_type="text/event-stream",
+            release = stream_slot(job_id, who(request))
+            from starlette.background import BackgroundTask
+            return StreamingResponse(stream(request, job_id, start_at, release), media_type="text/event-stream", background=BackgroundTask(release),
                                      headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
         t = 0.0
         while not evs and t < min(wait, s.longpoll_max_s) and state not in TERMINAL:   # long-poll: wait for the next event
@@ -430,6 +511,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             with conn() as c:
                 editable(c, job_id)
+                if st.size(job_id) - c.execute("SELECT COALESCE(SUM(size), 0) FROM uploads WHERE job_id = ?", (job_id,)).fetchone()[0] \
+                        > s.max_job_output_bytes:
+                    raise ApiError(507, "job_storage_full", "This part has used all its storage. Delete it and start again.")
                 out = results.rebuild(c, st, job_id)
                 row = jobs.get(c, job_id)
                 if row["state"] == "needs_input" and out["open_questions"] == 0:
@@ -606,4 +690,5 @@ def __getattr__(name):                                                  # `uvico
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(create_app(), host="127.0.0.1", port=8000)
+    uvicorn.run(create_app(), host="127.0.0.1", port=8000, limit_concurrency=2000, timeout_keep_alive=5,
+                h11_max_incomplete_event_size=16 * 1024, server_header=False)  # behind the reverse proxy (deploy/nginx.conf)

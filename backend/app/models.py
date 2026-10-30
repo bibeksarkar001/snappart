@@ -1,5 +1,7 @@
 """Request and response schemas. Requests forbid unknown fields; responses are what docs/api.md documents."""
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class Strict(BaseModel):
@@ -15,7 +17,8 @@ class StartRequest(Strict):
 
 
 class AnswersRequest(Strict):
-    answers: dict[str, float | str] = Field(..., max_length=20)     # question id -> mm, a choice, or "skip" (I don't know)
+    answers: dict[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")], float | Annotated[str, StringConstraints(max_length=40)]] \
+        = Field(..., max_length=20)                                  # question id -> mm, a choice, or "skip" (I don't know)
 
 
 class CorrectionRequest(Strict):

@@ -7,20 +7,37 @@ from . import db
 from .errors import ApiError
 
 
+def _take(conn, key: str, capacity: float, refill_per_s: float, cost: float = 1.0) -> float:
+    t = db.now()
+    row = conn.execute("SELECT tokens, updated_at FROM rate_limits WHERE key = ?", (key,)).fetchone()
+    tokens = capacity if row is None else min(capacity, row["tokens"] + (t - row["updated_at"]) * refill_per_s)
+    if tokens >= cost:
+        tokens -= cost
+        wait = 0.0
+    else:
+        wait = (cost - tokens) / refill_per_s if refill_per_s > 0 else math.inf
+    conn.execute("INSERT INTO rate_limits (key, tokens, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET tokens = ?, updated_at = ?",
+                 (key, tokens, t, tokens, t))
+    return wait
+
+
 def take(conn, key: str, capacity: float, refill_per_s: float, cost: float = 1.0) -> float:
     """Spend `cost` tokens from bucket `key` (capacity, refill rate). Returns 0 if allowed, else the seconds until enough tokens exist."""
     with db.tx(conn):
-        t = db.now()
-        row = conn.execute("SELECT tokens, updated_at FROM rate_limits WHERE key = ?", (key,)).fetchone()
-        tokens = capacity if row is None else min(capacity, row["tokens"] + (t - row["updated_at"]) * refill_per_s)
-        if tokens >= cost:
-            tokens -= cost
-            wait = 0.0
-        else:
-            wait = (cost - tokens) / refill_per_s if refill_per_s > 0 else math.inf
-        conn.execute("INSERT INTO rate_limits (key, tokens, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET tokens = ?, updated_at = ?",
-                     (key, tokens, t, tokens, t))
-    return wait
+        return _take(conn, key, capacity, refill_per_s, cost)
+
+
+def gate(conn, ip: str, s) -> tuple[float, str]:
+    """The limit every route shares, in one transaction: per client per minute, per client per day, and all clients per second.
+    Returns (seconds to wait, which limit) or (0, "")."""
+    with db.tx(conn):
+        for key, cap, rate, what in ((f"any:{ip}", s.rate_any_burst, s.rate_any_per_min / 60, "requests"),
+                                     (f"day:{ip}", s.daily_requests_per_ip, s.daily_requests_per_ip / 86400, "requests today"),
+                                     ("global", s.global_rps, s.global_rps, "requests to the service")):
+            wait = _take(conn, key, cap, rate)
+            if wait > 0:
+                return wait, what
+    return 0.0, ""
 
 
 def limit(conn, key: str, per_hour: float, burst: float | None = None, what="requests"):

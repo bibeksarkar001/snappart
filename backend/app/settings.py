@@ -81,9 +81,28 @@ class Settings(BaseSettings):
     rate_resume_per_hour: float = 60.0
     rate_voice_per_hour: float = 30.0
     rate_proposals_per_hour: float = 120.0
+    rate_any_per_min: float = 600.0                      # every route except health, per client: one frame upload per request is the busy case
+    rate_any_burst: float = 300.0                        # one video's frames (60) x 3 plus polling, with room
+    daily_requests_per_ip: int = 50_000
+    daily_jobs_per_ip: int = 60
+    daily_jobs_global: int = 20_000
+    global_rps: float = 1000.0                           # all clients together (per database); the reverse proxy is the first layer
+    turnstile_secret: SecretStr | None = None            # set to require a Cloudflare Turnstile token on POST /v1/jobs
+    turnstile_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+    # resource exhaustion
+    upload_stall_s: float = 20.0                         # a request body that sends nothing for this long is cut off (408)
+    sse_per_job: int = 4                                 # open event streams per job, per API process
+    sse_per_ip: int = 8                                  # ... and per client
+    sse_max_s: float = 1800.0                            # a stream ends after this long; the client reconnects with Last-Event-ID
+    min_free_bytes: int = 2 * 1024 ** 3                  # below this much free disk, new parts and uploads are refused
+    max_job_output_bytes: int = 300 * 1024 * 1024        # outputs a job may hold (models, previews, cards)
+    max_image_pixels: int = 1920 * 1920                  # Pillow decompression-bomb limit for any image the API reads
 
     # retention (owner decision; default 7 days)
-    retention_days: int = 7
+    retention_days: int = 7                              # everything about a job is deleted this long after its last change
+    delete_frames_when_done: bool = False                # also delete uploaded frames as soon as a part is done (keeps the model)
+    sweep_every_s: float = 3600.0                        # how often each worker runs the retention sweep
 
     cors_origins: tuple[str, ...] = ()
 
@@ -91,6 +110,12 @@ class Settings(BaseSettings):
     def _no_silent_mock_in_production(self):
         if self.mock and self.environment == "production" and not self.allow_mock_in_production:
             raise ValueError("SNAPPART_MOCK=1 in production needs SNAPPART_ALLOW_MOCK_IN_PRODUCTION=1 (mock mode is never enabled silently)")
+        return self
+
+    @model_validator(mode="after")
+    def _no_wildcard_cors(self):
+        if any(o.strip() == "*" for o in self.cors_origins):
+            raise ValueError("SNAPPART_CORS_ORIGINS must list origins; '*' is not allowed")
         return self
 
     @property
