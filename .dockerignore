@@ -1,0 +1,13 @@
+# Only backend/ source goes into the image: never secrets, private assets, storage or caches.
+*
+!backend/environment.docker.yml
+!backend/app/
+!backend/capture/
+!backend/cad/
+!backend/measure/
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+assets/
+backend/storage/
