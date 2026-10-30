@@ -12,11 +12,11 @@ import re
 import secrets
 import threading
 
-from fastapi import FastAPI, Path as P, Query, Request
+from fastapi import FastAPI, File, Form, Path as P, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import capture_check, db, events, jobqueue, jobs, models, ratelimit, results, resume
+from . import capture_check, db, events, jobqueue, jobs, meta_client, models, ratelimit, results, resume, spark, voice
 from .errors import ApiError, envelope, install
 from .settings import Settings, get_settings
 from .storage import JOB_ID, LocalStorage
@@ -74,6 +74,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             out["capture_check"] = None
         return out
+
+    def meta(job_id: str | None):
+        """The Meta client for real mode with a key, else None (callers then use their deterministic fallback)."""
+        if s.mock or s.model_api_key is None:
+            return None
+        return meta_client.MetaClient(s, job_id)
+
+    def unavailable_reason() -> str:
+        return "mock mode: no Meta model is called" if s.mock else "no Meta API key is configured"
 
     # ------------------------------------------------------------------ health
 
@@ -213,6 +222,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for r in c.execute("SELECT video, frame_index FROM uploads WHERE job_id = ?", (job_id,)).fetchall():
                     frames.setdefault(r["video"], {})[r["frame_index"]] = st.get(job_id, f"videos/{r['video']}/frames/{r['frame_index']:04d}.jpg")
                 res = capture_check.check(frames, s)
+                cl_ = meta(job_id)
+                if cl_ is not None and s.spark_second_opinion:          # optional: the deterministic result stands on its own
+                    pick = [(v, fr[sorted(fr)[len(fr) // 2]]) for v, fr in sorted(frames.items()) if fr][:3]
+                    pick += [(v, fr[sorted(fr)[0]]) for v, fr in sorted(frames.items()) if fr][:4 - len(pick)]
+                    res["second_opinion"] = spark.capture_opinion(cl_, pick)
+                else:
+                    res["second_opinion"] = {"status": "unavailable", "reason": unavailable_reason()}
             except Exception:
                 jobs.transition(c, job_id, "uploading", "capture check could not run")
                 raise
@@ -240,6 +256,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         raise ApiError(409, "capture_unusable", f"The footage is not good enough to build from yet. {reasons} "
                                        "You can film more, or start anyway.")
                     warning = f"Built although the capture check said the footage is not good enough: {reasons}"
+            if st.exists(job_id, "more_footage.json"):                  # after "film more": the new frames must show the asked-for area
+                cov = results.footage_covers(st, job_id, c)
+                if not cov["ok"]:
+                    raise ApiError(409, "footage_missing_area", cov["message"])
+                if not cov["verified"]:
+                    warning = ((warning + " ") if warning else "") + ("The new footage could not be checked against the requested area "
+                                                                     "(only video 1 can be); it is used as filmed.")
+                st.put(job_id, "more_footage_used.json", st.get(job_id, "more_footage.json"))
+                st.delete(job_id, "more_footage.json")
             jobqueue.enqueue(c, job_id, s, row["ip_hash"], warning)
             if anyway:
                 c.execute("UPDATE jobs SET build_anyway = 1 WHERE id = ?", (job_id,))
@@ -341,7 +366,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ans = results.stored_answers(c, job_id)
             items = results.review_items(c, st, job_id)
         qs = results.questions_view(st, job_id, ans)
-        return {"job_id": job_id, "questions": qs, "open_questions": sum(not q["answered"] for q in qs), "review_items": items}
+        wording = friendly_wording(job_id, qs)
+        for q in qs:
+            q["friendly"] = wording.get(q["id"])
+        with conn() as c:
+            cov = results.coverage_items(c, st, job_id)
+        return {"job_id": job_id, "questions": qs, "open_questions": sum(not q["answered"] for q in qs), "review_items": items,
+                "coverage_requests": cov}
+
+    def friendly_wording(job_id: str, qs: list) -> dict:
+        """Muse Spark's wording per question, made once per job and cached (outputs/wording.json); the original text otherwise."""
+        key = "outputs/wording.json"
+        cache = json.loads(st.get(job_id, key)) if st.exists(job_id, key) else {}
+        todo = [q for q in qs if q["id"] not in cache]
+        cl_ = meta(job_id)
+        if todo and cl_ is not None:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(6, len(todo))) as ex:
+                for q, w in zip(todo, ex.map(lambda q: spark.word_question(cl_, q), todo)):
+                    cache[q["id"]] = w
+            st.put(job_id, key, json.dumps(cache).encode())
+        elif todo:
+            return {q["id"]: {"title": q["title"], "detail": q["detail"], "hint": q["hint"], "source": "fallback",
+                              "reason": unavailable_reason()} for q in qs}
+        return cache
 
     @app.post("/v1/jobs/{job_id}/answers")
     def post_answers(job_id: str, body: models.AnswersRequest):
@@ -421,10 +469,95 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if row["state"] in EDITABLE else 0
             if open_q:
                 raise ApiError(409, "questions_open", f"{open_q} question(s) still need an answer (or 'I don't know').")
+            q = results.quality_status(st, job_id)
+            if row["state"] in EDITABLE and q["status"] == "draft":
+                raise ApiError(409, "draft_model", "The model did not pass its quality checks: " + " ".join(q["reasons"]) +
+                               " Review it (or answer the open questions) and rebuild.")
+            if row["state"] in EDITABLE and results.open_blocking(c, st, job_id):
+                raise ApiError(409, "footage_requested", "Part of the model was barely seen. Film it, or choose to skip it, before finishing.")
             if row["state"] == "needs_input":
                 jobs.transition(c, job_id, "reviewing", "all questions answered")
             jobs.transition(c, job_id, "done", "accepted by the user", expect="reviewing")
             return job_view(c, job_id)
+
+    @app.post("/v1/jobs/{job_id}/more-footage")
+    def more_footage(job_id: str, body: models.MoreFootage):
+        """Answer a "film N more seconds of this area" request: film (the job goes back to uploading; add frames after the existing ones,
+        then capture-check and start: the build re-carves only with footage that shows the area) or skip (the area stays not seen)."""
+        with conn() as c:
+            editable(c, job_id)
+            item = results.decide_coverage(c, st, job_id, body.request_id, body.action)
+            if body.action == "film":
+                if jobs.get(c, job_id)["state"] == "done":
+                    jobs.transition(c, job_id, "reviewing", "more footage requested")
+                jobs.transition(c, job_id, "uploading", f"filming more of an area ({body.request_id})")
+            nxt = {str(r["video"]): r["m"] + 1 for r in c.execute("SELECT video, MAX(frame_index) m FROM uploads WHERE job_id = ? GROUP BY video", (job_id,))}
+            return {"request": item, "state": jobs.get(c, job_id)["state"], "next_frame_index": nxt}
+
+    # ------------------------------------------------------------------ Muse Spark / Muse Voice: proposals, voice, summary
+
+    def proposal_for(c, job_id: str, text: str, item_id: str | None) -> dict:
+        item = None
+        if item_id:
+            item = next((x for x in results.review_items(c, st, job_id) if x["id"] == item_id), None)
+            if item is None:
+                raise ApiError(404, "not_found", "No such review item.")
+        feats = results.load_model(st, job_id)["features"]
+        return spark.propose(meta(job_id), text, item, list(feats) + ["bump"])
+
+    @app.post("/v1/jobs/{job_id}/proposals")
+    def post_proposal(request: Request, job_id: str, body: models.ProposalRequest):
+        """User text -> a correction proposal from the engine's ops. Nothing is applied: the user confirms with POST .../corrections."""
+        with conn() as c:
+            editable(c, job_id)
+            ratelimit.limit(c, f"proposals:{who(request)}", s.rate_proposals_per_hour, what="requests to change the model")
+            return proposal_for(c, job_id, body.text, body.item_id)
+
+    @app.post("/v1/jobs/{job_id}/voice")
+    async def post_voice(request: Request, job_id: str, audio: UploadFile = File(...), item_id: str | None = Form(None, pattern=r"^[A-Z][0-9]{2}$")):
+        """Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> correction proposal. The audio is
+        held in memory only and dropped as soon as it is transcribed. If transcription is not possible the error says to type instead."""
+        job_id_ok(job_id)
+        if int(request.headers.get("content-length") or 0) > s.max_audio_bytes + 64 * 1024:
+            raise ApiError(413, "payload_too_large", f"The recording is larger than {s.max_audio_bytes // 2**20} MB.")
+        data = await audio.read(s.max_audio_bytes + 1)
+        await audio.close()
+
+        def work():
+            nonlocal data
+            with conn() as c:
+                editable(c, job_id)
+                ratelimit.limit(c, f"voice:{who(request)}", s.rate_voice_per_hour, what="voice messages")
+            cl_ = meta(job_id)
+            if cl_ is None:
+                raise ApiError(503, "voice_unavailable", f"Voice is not available here ({unavailable_reason()}). Please type instead.")
+            try:
+                wav, dur = voice.to_wav(data, s.max_audio_bytes)
+            except voice.AudioError as e:
+                raise ApiError(422, "bad_audio", f"{e} You can also type instead.") from None
+            finally:
+                data = None                                             # drop the upload as early as possible
+            try:
+                tr = meta_client.run(cl_.transcribe(wav, voice.KEYWORDS))
+            except meta_client.BudgetExceeded as e:
+                raise ApiError(503, "daily_capacity_used", e.message, retry_after_s=e.retry_after_s) from None
+            except meta_client.MetaError:
+                raise ApiError(502, "transcription_failed", "The recording could not be transcribed. Please type instead.") from None
+            finally:
+                del wav
+            with conn() as c:
+                prop = proposal_for(c, job_id, tr["transcript"], item_id) if tr["transcript"].strip() else \
+                    {"correction": None, "explanation": "Nothing was heard in the recording.", "action": "none", "text": ""}
+            return {"transcript": tr["transcript"], "audio_seconds": round(dur, 2), "source": meta_client.VOICE, "audio_kept": False, "proposal": prop}
+        return await run_in_threadpool(work)
+
+    @app.get("/v1/jobs/{job_id}/summary")
+    def get_summary(job_id: str):
+        """Plain-language summary of the current report (Muse Spark, numbers checked against the report; a template otherwise)."""
+        with conn() as c:
+            editable(c, job_id)
+        rep = results.current_report(st, job_id)
+        return {"job_id": job_id, **spark.summarize(meta(job_id), rep)}
 
     # ------------------------------------------------------------------ downloads (server-chosen names only)
 
@@ -442,10 +575,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not st.exists(job_id, key):
             raise ApiError(404, "not_found", "No such file.")
         ext = path[path.rfind("."):]
+        draft = path in ("model.stl", "preview.stl", "preview.glb") and results.quality_status(st, job_id)["status"] == "draft"
         name = f"snappart-{job_id[:8]}-{path.replace('/', '-')}"
+        if draft:
+            name = name[:-len(ext)] + "-DRAFT" + ext                     # a model that failed a quality gate is labelled draft
         disp = "inline" if ext in (".png", ".svg") else "attachment"
         return Response(st.get(job_id, key), media_type=TYPES[ext], headers={
-            "Content-Disposition": f'{disp}; filename="{name}"', "Cache-Control": "no-store",
+            "Content-Disposition": f'{disp}; filename="{name}"', "Cache-Control": "no-store", "X-SnapPart-Draft": "true" if draft else "false",
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
 
     # ------------------------------------------------------------------ Meta model state (truthful, from recorded calls)

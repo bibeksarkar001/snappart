@@ -17,7 +17,7 @@ TRANSITIONS = {
     "queued": {"building", "ready_to_build"} | _ANY_LIVE,               # back to ready_to_build: shed from the queue
     "building": {"needs_input", "reviewing", "queued"} | _ANY_LIVE,     # back to queued: lease lost, resumes from its checkpoint
     "needs_input": {"reviewing", "queued", "uploading"} | _ANY_LIVE,    # uploading: more footage requested
-    "reviewing": {"done", "needs_input", "queued"} | _ANY_LIVE,
+    "reviewing": {"done", "needs_input", "queued", "uploading"} | _ANY_LIVE,          # uploading: the user films more of an area
     "done": {"reviewing", "expired"},
     "failed": {"expired"},
     "cancelled": {"expired"},

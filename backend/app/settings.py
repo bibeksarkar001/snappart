@@ -12,7 +12,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SNAPPART_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="SNAPPART_", extra="ignore", env_file=BACKEND.parent / ".env", env_file_encoding="utf-8")
 
     environment: str = Field("development", pattern="^(development|test|production)$")
     mock: bool = False                                   # SNAPPART_MOCK=1: canned build, same API, exposed in every response header
@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     meta_base_url: str = "https://api.meta.ai/v1"
     meta_models: tuple[str, ...] = ("sam-3.1", "muse-spark-1.3", "muse-voice-transcribe-1.0")
     model_running_window_s: int = 24 * 3600              # global "running" = a successful call within this window
+    meta_timeout_s: float = 60.0                         # per request (connect 10 s); transcription gets 4x
+    meta_retries: int = 4                                # retries after the first try, for 429 / 500 / 503 / network errors (not 504, not 4xx)
+    meta_concurrency: int = 16                           # per process, per model (SAM additionally uses the machine-wide slots)
+    spark_temperature: float = 0.1
+    spark_reasoning_effort: str = Field("low", pattern="^(minimal|low|medium|high|xhigh|max)$")
+    spark_max_tokens: int = 4000                         # reasoning + answer (reasoning counts against max_tokens)
+    spark_second_opinion: bool = True                    # capture check: ask Muse Spark about a few frames (real mode only)
+    daily_budget_calls: int = 20000                      # all Meta calls per UTC day; then a friendly hard stop
 
     # upload limits
     videos_per_job: int = 3
@@ -52,7 +60,7 @@ class Settings(BaseSettings):
 
     # SAM 3.1 call limits (shared by every worker on this machine)
     sam_concurrency: int = 16                            # measured sweet spot (v3 stage 3b: 40 calls at 16 parallel in 14.9 s)
-    sam_rps: float = 8.0                                 # token bucket: sustained requests per second, burst = sam_concurrency
+    sam_rps: float = 40.0                                # token bucket, burst = sam_concurrency; docs: sam-3.1 standard limit 3,000 RPM (50/s)
     breaker_failures: int = 5                            # consecutive failures that open the circuit breaker ...
     breaker_open_s: float = 30.0                         # ... for this long
 
@@ -71,6 +79,8 @@ class Settings(BaseSettings):
     rate_create_per_hour: float = 20.0
     rate_start_per_hour: float = 20.0
     rate_resume_per_hour: float = 60.0
+    rate_voice_per_hour: float = 30.0
+    rate_proposals_per_hour: float = 120.0
 
     # retention (owner decision; default 7 days)
     retention_days: int = 7

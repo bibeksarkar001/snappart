@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from capture import carve, corrections as Cr, model as Mo, question_cards as Q, report as Rp, review as Rv
+from capture import carve, corrections as Cr, gates as G, learnings as L, model as Mo, question_cards as Q, report as Rp, review as Rv
 
 from . import db, events
 from .errors import ApiError
@@ -91,18 +91,19 @@ def questions_view(storage, jid, answers) -> list[dict]:
     for q in rep["questions"]:
         qid, b = q["id"], Q.bounds(q["id"], part)
         sep = _feature_value(rep, "plate.faces_separation") if qid == "plate_thickness_mm" else None
-        conflict = bool(sep and sep["value"] is not None and abs(sep["value"] - q["default"]) > 0.3)
         a = answers.get(qid)
+        conflict = L.plate_conflict(sep["value"] if sep else None, a if isinstance(a, (int, float)) else None)   # learnings rule 4
         card = f"outputs/cards/{qid}/"
         out.append({
             "id": qid, "feature": q["feature_id"], "label": LABEL.get(q["feature_id"], q["feature_id"]),
-            "kind": "choice" if q.get("choices") else "conflict" if conflict else "number",
+            "kind": "choice" if q.get("choices") else "conflict" if conflict else "number", "default_source": q.get("default_source"),
             "title": q["question"], "detail": _detail(q, rep), "hint": q["hint"], "unit": q["unit"], "default": q["default"],
             "min": b[0] if b else None, "max": b[1] if b else None, "choices": q.get("choices"),
-            "candidates": [{"label": "video", "value": sep["value"]}, {"label": "earlier answer", "value": q["default"]}] if conflict else None,
+            "candidates": conflict["candidates"] if conflict else None, "conflict_message": conflict["message"] if conflict else None,
             "applies_to": (_feature_value(rep, "grooves.count") or {}).get("value") if q["feature_id"] == "grooves" else None,
             "impact": None,
-            "answered": a is not None, "answer": a, "status": None if a is None else "estimated" if a == "skip" else "user_supplied",
+            "answered": a is not None and not conflict, "answer": a,
+            "status": None if a is None else "estimated" if a == "skip" else "conflict" if conflict else "user_supplied",
             "card": {"image": file_url(jid, f"cards/{qid}/card.png"), "diagram": file_url(jid, f"cards/{qid}/diagram.svg"),
                      "meta": file_url(jid, f"cards/{qid}/card.json")} if storage.exists(jid, card + "card.png") else None,
         })
@@ -259,7 +260,8 @@ def rebuild(conn, storage, jid) -> dict:
     a, given = model_answers(stored, qids)
     user_corr = correction_rows(conn, jid)
     corr = list(base.get("corrections") or []) + [r["correction"] for r in user_corr]
-    full = Mo.resolve_answers(a)
+    height = Mo.part_height(m["field"], m["grid"])
+    full = Mo.resolve_answers(a, m["features"], height)
     try:
         field = Mo.apply(m["field"], m["grid"], m["features"], full, corr)
         feats_eff = Mo.correct_features(m["field"], m["grid"], m["features"], corr)
@@ -267,22 +269,24 @@ def rebuild(conn, storage, jid) -> dict:
         raise ApiError(422, "rebuild_rejected", f"This change cannot be applied to the model: {e}") from None
     v, f = Mo.mesh(field, m["grid"])
     out = write_deliverables(storage, jid, field, m["grid"], v, f)
+    quality = G.check(v, f, field, base.get("held_out_iou"), m["grid"])
     cen, pl = carve.edge_census(v, f), carve.obb_plan(v)
     rep = copy.deepcopy(base)
-    rep["features"] = Rp.features_list(feats_eff, full, set(given))
-    rep["questions"] = Rp.questions(feats_eff, {k: stored[k] for k in given})
+    rep["features"] = Rp.features_list(feats_eff, full, set(given), Mo.estimate_answers(feats_eff, height)[1])
+    rep["questions"] = Rp.questions(feats_eff, {k: stored[k] for k in given}, height)
     rep["answers"] = stored
     rep["corrections"] = corr
     rep["user_corrections"] = [{"id": r["id"], "correction": r["correction"]} for r in user_corr]
     rep["rebuild"] = {"seconds": round(time.perf_counter() - t0, 2), "at": db.now(), "watertight": bool(cen["watertight"]),
                       "volume_mm3": round(float(cen["volume_mm3"]), 1), "model_size_mm": [round(pl["length_mm"], 2), round(pl["width_mm"], 2),
                                                                                       round(pl["z_max"] - pl["z_min"], 2)], **out}
+    rep["quality"] = quality
     storage.put(jid, "outputs/report.json", json.dumps(rep, indent=1, default=float).encode())
     changes = _diff(old, rep)
     open_q = sum(1 for q in qids if q not in stored)
     events.emit(conn, jid, "build_finished", {"rebuild": True, "seconds": rep["rebuild"]["seconds"], "changes": len(changes)})
     return {"seconds": rep["rebuild"]["seconds"], "changes": changes, "open_questions": open_q, "watertight": rep["rebuild"]["watertight"],
-            "volume_mm3": rep["rebuild"]["volume_mm3"], **out}
+            "volume_mm3": rep["rebuild"]["volume_mm3"], "quality": {"status": quality["status"], "reasons": quality["reasons"]}, **out}
 
 
 # ---------------------------------------------------------------- review items
@@ -295,7 +299,12 @@ def review_items(conn, storage, jid) -> list[dict]:
     rep = base_report(storage, jid)
     ans = stored_answers(conn, jid)
     out = []
-    for it in list(rep.get("review_items") or []) + user_marks(storage, jid):
+    details = [{"id": f"D{i + 1:02d}", "kind": "detail", "reason": f"possible {d['kind'].replace('_', ' ')}, {d['size_mm']}, "
+                f"{d['evidence']}", "question": "Is this text or a mark?" if d["kind"] == "text_or_mark" else f"Is this a {d['kind']} or a mark?",
+                "choices": ["Text", "Just a mark"] if d["kind"] == "text_or_mark" else [f"It is a {d['kind']}", "Just a mark"],
+                "centre": d.get("centre"), "normal": d.get("normal") or d.get("axis"), "polygon_xy": None, "z_mm": None, "feature_id": None}
+               for i, d in enumerate(d for d in rep.get("details") or [] if d["status"] == "question")]
+    for it in list(rep.get("review_items") or []) + details + user_marks(storage, jid):
         pic = f"review/{it['id']}.png"
         out.append({**{k: it.get(k) for k in ("id", "kind", "reason", "question", "choices", "centre", "normal", "polygon_xy", "z_mm", "area_mm2",
                                               "feature_id", "note")},
@@ -322,7 +331,7 @@ def add_mark(storage, jid, point, radius_mm, normal, note) -> dict:
 def review_correction(it: dict, choice: str) -> dict | None:
     """The corrections-engine op for a review choice (None = keep as is). Make flat trims what stands above (or below) the region's middle
     height; it never adds material."""
-    if choice in ("Keep", "Current side"):
+    if choice in ("Keep", "Current side") or it["kind"] == "detail":       # detail answers are recorded; they do not change the geometry
         return None
     fid = MODEL_KEY.get(it.get("feature_id"), it.get("feature_id"))
     if choice == "Opposite side":
@@ -359,3 +368,63 @@ def choose(conn, storage, jid, item_id: str, choice: str) -> dict:
         conn.execute("INSERT INTO answers (job_id, question_id, value, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(job_id, question_id) "
                      "DO UPDATE SET value = excluded.value, created_at = excluded.created_at", (jid, f"review:{item_id}", json.dumps(choice), db.now()))
     return {"item": item_id, "decision": choice, "correction_id": cid, "rebuild_needed": cid is not None}
+
+
+# ---------------------------------------------------------------- coverage: "film N more seconds of this area"
+
+def coverage_items(conn, storage, jid) -> list[dict]:
+    """The build's requests for more footage, each with the user's decision (filming / skipped / None)."""
+    rep = base_report(storage, jid)
+    ans = stored_answers(conn, jid)
+    return [{**r, "decision": ans.get(f"coverage:{r['id']}")} for r in rep.get("coverage_requests") or []]
+
+
+def open_blocking(conn, storage, jid) -> list[dict]:
+    return [r for r in coverage_items(conn, storage, jid) if r.get("blocking") and r["decision"] is None]
+
+
+def decide_coverage(conn, storage, jid, request_id: str, action: str) -> dict:
+    item = next((r for r in coverage_items(conn, storage, jid) if r["id"] == request_id), None)
+    if item is None:
+        raise ApiError(404, "not_found", "No such request.")
+    value = {"film": "filming", "skip": "skipped"}[action]
+    with db.tx(conn):
+        conn.execute("INSERT INTO answers (job_id, question_id, value, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(job_id, question_id) "
+                     "DO UPDATE SET value = excluded.value, created_at = excluded.created_at", (jid, f"coverage:{request_id}", json.dumps(value), db.now()))
+    if action == "film":
+        base = {str(r["video"]): r["m"] for r in conn.execute("SELECT video, MAX(frame_index) m FROM uploads WHERE job_id = ? GROUP BY video", (jid,))}
+        storage.put(jid, "more_footage.json", json.dumps({"request": item, "baseline": base, "at": db.now()}).encode())
+    return {**item, "decision": value}
+
+
+def footage_covers(storage, jid, conn) -> dict:
+    """After 'film more': do the new frames face the requested area? Only video 1's frames can be checked (its mat frame is the part frame);
+    new usable frames of other videos are accepted but marked unverified. Returns {ok, verified, new_frames, facing_frames, message}."""
+    mf = json.loads(storage.get(jid, "more_footage.json"))
+    cc = json.loads(storage.get(jid, "capture_check.json")) if storage.exists(jid, "capture_check.json") else {"videos": {}}
+    n = np.asarray(mf["request"]["normal"], float)
+    new, facing, other = 0, 0, 0
+    for v, vd in cc["videos"].items():
+        for fr in vd.get("frame_stats", []):
+            if fr["index"] <= mf["baseline"].get(str(v), -1) or not fr.get("usable"):
+                continue
+            new += 1
+            if str(v) == "1" and fr["az"] is not None:
+                a, e = np.radians(fr["az"]), np.radians(fr["el"])
+                d = np.array([np.cos(e) * np.cos(a), np.cos(e) * np.sin(a), np.sin(e)])
+                facing += int(d @ n > 0.5)
+            else:
+                other += 1
+    ok = facing > 0 or other > 0
+    return {"ok": ok, "verified": facing > 0, "new_frames": new, "facing_frames": facing,
+            "message": None if ok else "The new frames do not show the area that was asked for. " + mf["request"]["message"]}
+
+
+def quality_status(storage, jid) -> dict:
+    """{"status": ready | draft | unknown, "reasons"} of the current model."""
+    try:
+        q = current_report(storage, jid).get("quality") or {}
+    except ApiError:
+        return {"status": "unknown", "reasons": []}
+    return {"status": q.get("status", "unknown"), "reasons": q.get("reasons", [])}
+

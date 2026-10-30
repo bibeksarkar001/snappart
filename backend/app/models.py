@@ -99,3 +99,14 @@ class MetaModels(BaseModel):
     mode: str
     job_id: str | None
     models: list[ModelState]
+
+
+class ProposalRequest(Strict):
+    text: str = Field(..., min_length=1, max_length=2000)            # untrusted; cut to 1000 characters before any model sees it
+    item_id: str | None = Field(None, pattern=r"^[A-Z][0-9]{2}$")
+
+
+class MoreFootage(Strict):
+    request_id: str = Field(..., pattern=r"^film_[0-9]{1,3}$")
+    action: str = Field(..., pattern=r"^(film|skip)$")                 # film: upload more frames of the area; skip: accept it as not seen
+

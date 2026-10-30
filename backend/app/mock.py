@@ -38,18 +38,19 @@ def make_bundle(out: Path) -> None:
     import cv2
     from capture import model as Mo, question_cards as Q, render as Rn, report as Rp
     field, g, feats = synthetic_model()
-    ans = Mo.default_answers()
+    ans = Mo.default_answers(feats, Mo.part_height(field, g))
+    a_full = Mo.resolve_answers(ans, feats, Mo.part_height(field, g))
+    f_full = Mo.apply(field, g, feats, a_full)
     v0, f0 = Mo.mesh(field, g)
     v, fc = Mo.rebuild({"field": field, "grid": g, "features": feats}, ans)
     from . import results
-    a_full = Mo.resolve_answers(ans)
-    f_full = Mo.apply(field, g, feats, a_full)
     pv, pf = results.preview_mesh(f_full, g, v, fc)
     (out / "model.stl").write_bytes(results.write_stl_bytes(v, fc))
     (out / "preview.stl").write_bytes(results.write_stl_bytes(pv, pf))
     (out / "preview.glb").write_bytes(results.glb_bytes(pv, pf))
     Mo.save(out / "model", field, g, feats)
-    rep = Rp.build((v0, f0), feats, ans, user_given=())
+    from capture import details as Dt, gates as G
+    rep = Rp.build((v0, f0), feats, ans, user_given=(), details=Dt.mesh_candidates(v, fc), quality=G.check(v, fc, f_full, None, g))
     rep.update(mode="mock", synthetic=True, meta_models_ran=[],
                timings={"per_stage_s": {name: None for name, _ in STAGES}, "note": "mock: no stage ran"})
     rep["warnings"].insert(0, "Mock mode: a canned result of a synthetic test part. Nothing you uploaded was processed and no Meta model ran.")
@@ -72,6 +73,9 @@ def make_bundle(out: Path) -> None:
     rep["review_items"] = [{"id": "M01", "kind": "lump", "reason": "MOCK: a canned example of a flagged area, not a real finding",
                             "question": q_, "choices": ch, "centre": [6.0, 0.0, 6.0], "normal": [0, 0, 1.0], "polygon_xy": poly,
                             "z_mm": [5.9, 6.0, 6.1], "area_mm2": 72.0, "triangles": int(len(tri))}]
+    rep["coverage_requests"] = [{"id": "film_1", "centre_mm": [-20.0, 0.0, 3.0], "area_mm2": 60.0, "normal": [-1.0, 0, 0], "cameras_facing": 0,
+                                 "blocking": True, "message": "MOCK: The camera barely saw the left side of the part. Film about 8 more seconds of it "
+                                                              "(a low orbit, near table height)."}]
     img, _ = Q.region_card(tri, v, fc, [0, 0, 1.0], views, imgs, (v, fc), "M01: MOCK review item")
     (out / "review").mkdir(exist_ok=True)
     cv2.imwrite(str(out / "review" / "M01.png"), img)
@@ -84,7 +88,7 @@ def make_bundle(out: Path) -> None:
 
 def bundle(data_dir: Path) -> Path:
     """The canned bundle, generated once per data dir (atomic: built in a temp dir, then renamed into place)."""
-    final = Path(data_dir) / "mock_bundle_v2"                           # bump the version when the bundle's contents change
+    final = Path(data_dir) / "mock_bundle_v5"                           # bump the version when the bundle's contents change
     if (final / "report.json").exists():
         return final
     tmp = Path(tempfile.mkdtemp(dir=data_dir, prefix=".mock-"))
