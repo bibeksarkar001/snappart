@@ -21,28 +21,36 @@ class Unavailable(Exception):
         self.reason, self.retry_after_s = reason, retry_after_s
 
 
+def try_slot(lock_dir: Path, n: int) -> int | None:
+    """Take one of n machine-wide slots without waiting (fcntl lock; the OS frees a dead process's lock). Returns the fd, or None."""
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        fd = os.open(lock_dir / f"slot{i}", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except BlockingIOError:
+            os.close(fd)
+    return None
+
+
+def release_slot(fd: int) -> None:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+
+
 @contextmanager
 def slot(lock_dir: Path, n: int, poll_s: float = 0.05, timeout_s: float = 600.0):
-    """Hold one of n machine-wide slots (fcntl locks; the OS frees a dead process's lock)."""
-    lock_dir.mkdir(parents=True, exist_ok=True)
+    """Hold one of n machine-wide slots, waiting (blocking) for a free one."""
     t0 = time.monotonic()
-    while True:
-        for i in range(n):
-            fd = os.open(lock_dir / f"slot{i}", os.O_RDWR | os.O_CREAT, 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                os.close(fd)
-                continue
-            try:
-                yield i
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                os.close(fd)
-            return
+    while (fd := try_slot(lock_dir, n)) is None:
         if time.monotonic() - t0 > timeout_s:
             raise TimeoutError("no free slot")
         time.sleep(poll_s)
+    try:
+        yield fd
+    finally:
+        release_slot(fd)
 
 
 def rate(conn, key: str, rps: float, burst: float, sleep=time.sleep) -> float:
