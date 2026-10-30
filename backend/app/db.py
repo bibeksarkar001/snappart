@@ -111,9 +111,17 @@ def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=30000")
+    for i in range(300):                                    # WAL is persistent; switching a fresh file can report "locked" without
+        try:                                                # waiting when several processes start at once (the busy handler is not used)
+            if conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal" or conn.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal":
+                break
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or i == 299:
+                raise
+            time.sleep(0.1)
+    conn.execute("PRAGMA synchronous=NORMAL")              # WAL: no corruption on a crash; a power cut may lose the last commits
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
