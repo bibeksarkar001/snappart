@@ -11,6 +11,7 @@ import logging
 import re
 import secrets
 import shutil
+import sqlite3
 import threading
 import warnings
 from collections import Counter
@@ -51,25 +52,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Image.MAX_IMAGE_PIXELS = s.max_image_pixels                       # Pillow raises on images over twice this (decompression bombs)
     app.add_middleware(BodyGuard, settings=s)                          # inner: runs after the request id and the rate gate
 
-    def gate(ip: str):
-        with db.session(s.db_path) as c:
-            return ratelimit.gate(c, ip, s)
+    gate = ratelimit.Gate(s)
+    inflight = [0]                                                     # requests being handled by this process (one event loop)
 
     @app.middleware("http")
     async def frame(request: Request, call_next):
         request.state.request_id = secrets.token_hex(8)                 # server-made; a client-sent id is not trusted
+        metered = request.url.path not in UNMETERED and request.method != "OPTIONS"
+        counts = metered and not request.url.path.endswith("/events")    # long-polls and streams only sleep on the event loop
+        counted = False
         try:
-            wait, what = (0, "") if request.url.path in UNMETERED or request.method == "OPTIONS" else \
-                await run_in_threadpool(gate, who(request))
+            wait, what = gate.check(who(request)) if metered else (0, "")
             if wait > 0:
                 n = max(1, int(wait) + 1)
                 resp = envelope(request, 429, "rate_limited", f"Too many {what} from your connection. Try again in {n} s." if what != "requests to the service"
                                 else f"The service is very busy. Try again in {n} s.", retry_after_s=n)
+            elif counts and inflight[0] >= s.max_inflight:            # shed at once rather than queue work clients will give up on
+                resp = envelope(request, 503, "busy", "The service is very busy. Please try again in a moment.", retry_after_s=2)
             else:
+                inflight[0] += counts
+                counted = counts
                 resp = await call_next(request)
+        except sqlite3.OperationalError as e:                           # the database stayed locked past busy_timeout: busy, not broken
+            if "locked" not in str(e):
+                log.exception("unhandled error, request %s", request.state.request_id)
+                resp = envelope(request, 500, "internal", "Something went wrong on our side. Please try again.")
+            else:
+                resp = envelope(request, 503, "busy", "The service is very busy. Please try again in a moment.", retry_after_s=2)
         except Exception:                                               # never leak a trace, path or SQL
             log.exception("unhandled error, request %s", request.state.request_id)
             resp = envelope(request, 500, "internal", "Something went wrong on our side. Please try again.")
+        finally:
+            inflight[0] -= counted
         resp.headers["X-SnapPart-Mode"] = s.mode
         resp.headers["X-Request-ID"] = request.state.request_id
         for k, v in HEADERS.items():
@@ -403,14 +417,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Same answer and similar time for a wrong, malformed or missing code; per-IP lockout after repeated misses."""
         ip = who(request)
         norm = resume.normalise(code)
-        h = resume.hash_code(norm or code[:80], pep)                     # always hash: timing does not reveal malformed codes
         miss = ApiError(404, "not_found", "No part matches this code. Check the words and the number.")
-        with conn() as c:
-            for key in (f"resume_fail:{ip}", f"resume_fail_code:{h[:16]}"):
-                left = ratelimit.locked_for(c, key)
-                if left > 0:
-                    raise ApiError(429, "locked", f"Too many wrong codes. Try again in {int(left) + 1} s.", retry_after_s=int(left) + 1)
+
+        def locked(c, key):
+            left = ratelimit.locked_for(c, key)
+            if left > 0:
+                raise ApiError(429, "locked", f"Too many wrong codes. Try again in {int(left) + 1} s.", retry_after_s=int(left) + 1)
+        with conn() as c:                                               # per-IP checks first: a locked-out guesser costs no scrypt
+            locked(c, f"resume_fail:{ip}")
             ratelimit.limit(c, f"resume:{ip}", s.rate_resume_per_hour, what="code lookups")
+        h = resume.hash_code(norm or code[:80], pep)                     # always hash: timing does not reveal malformed codes
+        with conn() as c:
+            locked(c, f"resume_fail_code:{h[:16]}")
             row = c.execute("SELECT id, state, resume_hash FROM jobs WHERE resume_hash = ?", (h,)).fetchone() if norm else None
             if row is None or not resume.same(row["resume_hash"], h):
                 for key in (f"resume_fail:{ip}", f"resume_fail_code:{h[:16]}"):

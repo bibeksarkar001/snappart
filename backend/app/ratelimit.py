@@ -2,6 +2,7 @@
 salted hash of the IP (X-Forwarded-For trusted only from configured proxies); raw IPs are never stored."""
 import hashlib
 import math
+import time
 
 from . import db
 from .errors import ApiError
@@ -27,17 +28,35 @@ def take(conn, key: str, capacity: float, refill_per_s: float, cost: float = 1.0
         return _take(conn, key, capacity, refill_per_s, cost)
 
 
-def gate(conn, ip: str, s) -> tuple[float, str]:
-    """The limit every route shares, in one transaction: per client per minute, per client per day, and all clients per second.
-    Returns (seconds to wait, which limit) or (0, "")."""
-    with db.tx(conn):
+class Gate:
+    """The limit every route shares, kept in this process's memory (no database write per request): per client per minute, per client
+    per day, and all clients per second. Limits are therefore per API process (they multiply with processes); the stricter per-route
+    limits above are in the database and shared."""
+
+    def __init__(self, s, clock=time.monotonic):
+        self.s, self.clock, self.b = s, clock, {}
+
+    def _take(self, key, cap, rate) -> float:
+        t = self.clock()
+        tokens, last = self.b.get(key, (cap, t))
+        tokens = min(cap, tokens + (t - last) * rate)
+        if tokens >= 1:
+            self.b[key] = (tokens - 1, t)
+            return 0.0
+        self.b[key] = (tokens, t)
+        return (1 - tokens) / rate
+
+    def check(self, ip: str) -> tuple[float, str]:
+        if len(self.b) > 500_000:                     # ponytail: forget everyone at a size cap; an LRU if clients notice the reset
+            self.b.clear()
+        s = self.s
         for key, cap, rate, what in ((f"any:{ip}", s.rate_any_burst, s.rate_any_per_min / 60, "requests"),
                                      (f"day:{ip}", s.daily_requests_per_ip, s.daily_requests_per_ip / 86400, "requests today"),
                                      ("global", s.global_rps, s.global_rps, "requests to the service")):
-            wait = _take(conn, key, cap, rate)
+            wait = self._take(key, cap, rate)
             if wait > 0:
                 return wait, what
-    return 0.0, ""
+        return 0.0, ""
 
 
 def limit(conn, key: str, per_hour: float, burst: float | None = None, what="requests"):

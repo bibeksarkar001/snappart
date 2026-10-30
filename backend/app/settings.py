@@ -81,12 +81,13 @@ class Settings(BaseSettings):
     rate_resume_per_hour: float = 60.0
     rate_voice_per_hour: float = 30.0
     rate_proposals_per_hour: float = 120.0
-    rate_any_per_min: float = 600.0                      # every route except health, per client: one frame upload per request is the busy case
+    rate_any_per_min: float = 600.0                      # every route except health, per client, per API process (in memory)
     rate_any_burst: float = 300.0                        # one video's frames (60) x 3 plus polling, with room
     daily_requests_per_ip: int = 50_000
     daily_jobs_per_ip: int = 60
     daily_jobs_global: int = 20_000
-    global_rps: float = 1000.0                           # all clients together (per database); the reverse proxy is the first layer
+    global_rps: float = 1000.0                           # all clients together, per API process; the reverse proxy is the first layer
+    max_inflight: int = 64                               # requests one API process works on at once; beyond this, 503 busy at once
     turnstile_secret: SecretStr | None = None            # set to require a Cloudflare Turnstile token on POST /v1/jobs
     turnstile_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 

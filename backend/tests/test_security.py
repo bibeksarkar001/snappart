@@ -376,3 +376,28 @@ def test_dependencies_are_pinned():
     pip = (REPO / "backend" / "environment.yml").read_text().split("- pip:")[1]
     deps = [l.strip()[2:] for l in pip.splitlines() if l.strip().startswith("- ")]
     assert deps and all(re.fullmatch(r"[A-Za-z0-9_.\-\[\]]+==[^=\s]+", d) for d in deps), [d for d in deps if "==" not in d]
+
+
+def test_locked_out_guesser_costs_no_hash(tmp_path, monkeypatch):
+    s, cl, st = app_for(tmp_path, resume_max_fails=3)
+    from app import resume
+    n = [0]
+    real = resume.hash_code
+    monkeypatch.setattr(resume, "hash_code", lambda *a: (n.__setitem__(0, n[0] + 1), real(*a))[1])
+    codes = [cl.get(f"/v1/resume/river-taxi-orbit-{k:02d}").status_code for k in range(8)]
+    assert codes[:3] == [404] * 3 and set(codes[3:]) == {429}
+    assert n[0] == 3                                                                                # no scrypt once the IP is locked out
+
+
+def test_overload_sheds_at_once(tmp_path, monkeypatch):
+    import sqlite3
+    s, cl, st = app_for(tmp_path, max_inflight=0)
+    r = cl.post("/v1/jobs")
+    assert r.status_code == 503 and r.json()["error"]["code"] == "busy" and r.headers["retry-after"] == "2"
+    assert cl.get("/healthz").status_code == 200
+    s.max_inflight = 64
+    jid = cl.post("/v1/jobs").json()["job_id"]
+    from app import results
+    monkeypatch.setattr(results, "current_report", lambda *a: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
+    r = cl.get(f"/v1/jobs/{jid}/report")
+    assert r.status_code == 503 and r.json()["error"]["code"] == "busy"                             # a locked database is "busy", not a 500
