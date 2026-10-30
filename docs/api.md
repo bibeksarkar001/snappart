@@ -33,7 +33,7 @@ Error codes used so far:
 | `upload_stalled` | 408 | The request body stopped arriving for `upload_stall_s` (20 s). |
 | `challenge_failed` | 403 | Only when Turnstile is configured: `POST /v1/jobs` without a valid `CF-Turnstile-Response` header. |
 | `rate_limited`, `too_many_builds`, `locked`, `too_many_streams` | 429 | Too many requests (every route except health checks is metered per client, per day and for the whole service), too many active builds, a resume lockout, or too many open event streams. `Retry-After` is always set. |
-| `queue_full`, `storage_full` | 503 | The build queue is full, or the server's disk is below its free-space floor. |
+| `queue_full`, `storage_full`, `busy` | 503 | The build queue is full, the server's disk is below its free-space floor, or the server is overloaded right now (`busy`: retry after `Retry-After`). |
 | `job_storage_full` | 507 | A part's outputs reached `max_job_output_bytes`; delete it and start again. |
 | `internal` | 500 | Anything unexpected. |
 
@@ -130,9 +130,9 @@ Build error codes:
 | `build_timeout` | The watchdog stopped the build. |
 | `build_crashed` | The build kept crashing. |
 | `build_interrupted` | The worker was lost too often. |
-| `real_build_not_available` | Real mode before stage 4. |
+| `real_build_not_available` | Real mode on a server where the real build is not switched on. |
 
-`outputs` lists stored result files (`outputs/model.stl`, `outputs/report.json`, `outputs/cards/<question>/card.png`, ...). Downloads arrive in stage 3.
+`outputs` lists stored result files (`outputs/model.stl`, `outputs/report.json`, `outputs/cards/<question>/card.png`, ...). Download them with `GET /v1/jobs/{job_id}/files/{path}`.
 
 ### `GET /v1/jobs/{job_id}/events`
 

@@ -1,6 +1,6 @@
 # SnapPart backend: operations
 
-This file is extended in stage 7 (Docker, compose, deployment sketch).
+How to run, configure, package and deploy the backend. Owner decisions (host, domain, retention, TLS) are marked as such.
 
 ## Run locally
 
@@ -113,10 +113,11 @@ Host, domain, contact email and governing law are not backend settings. They are
 | `SNAPPART_RATE_CREATE_PER_HOUR` | 20 | Per client |
 | `SNAPPART_RATE_START_PER_HOUR` | 20 | Per client |
 | `SNAPPART_RATE_RESUME_PER_HOUR` | 60 | Per client |
-| `SNAPPART_RATE_ANY_PER_MIN` / `SNAPPART_RATE_ANY_BURST` | 600 / 300 | Every route except health checks, per client |
+| `SNAPPART_RATE_ANY_PER_MIN` / `SNAPPART_RATE_ANY_BURST` | 600 / 300 | Every route except health checks, per client, per API process (in memory) |
 | `SNAPPART_DAILY_REQUESTS_PER_IP` | 50000 | Per client per day |
 | `SNAPPART_DAILY_JOBS_PER_IP` / `SNAPPART_DAILY_JOBS_GLOBAL` | 60 / 20000 | New parts per day |
-| `SNAPPART_GLOBAL_RPS` | 1000 | All clients together, per database |
+| `SNAPPART_GLOBAL_RPS` | 1000 | All clients together, per API process |
+| `SNAPPART_MAX_INFLIGHT` | 64 | Requests one API process works on at once; beyond this, 503 `busy` straight away |
 | `SNAPPART_TURNSTILE_SECRET` | none | Set it to require a Cloudflare Turnstile token on `POST /v1/jobs` (owner decision) |
 
 **Resource limits and retention (docs/security.md):**
@@ -154,4 +155,23 @@ are owner decisions.
   - Replace SQLite with Postgres. The SQL is plain; the queue claim needs `SELECT ... FOR UPDATE SKIP LOCKED`.
   - Replace `LocalStorage` with an S3-compatible store implementing the same six methods (`app/storage.py`).
   - Replace the file-lock SAM semaphore with a database or Redis semaphore.
-- **Real build throughput** per worker is measured in stage 7 (`docs/load-test.md`). One real build used about 3 to 4 minutes in the v3/v4 runs.
+- **Build throughput:** see `docs/load-test.md`. Real builds are not wired into the worker yet, so real throughput per worker has not been measured through the API. One real build of part B took about 3 to 4 minutes in the v3/v4 runs.
+
+## Docker (one command)
+
+```bash
+docker compose up --build
+```
+
+- `Dockerfile`: micromamba base (`mambaorg/micromamba:2.0.5`), env from `backend/environment.docker.yml`, non-root user, healthcheck on `/healthz`. The API and the worker share the image.
+- `docker-compose.yml`: `api` (2 uvicorn processes), `worker` x `SNAPPART_WORKERS` (default 2), `proxy` (nginx with `deploy/nginx.conf`), one `data` volume. Containers run read-only with a `/tmp` tmpfs, no capabilities and `no-new-privileges`.
+- The Meta key comes from `.env` at run time and is never copied into the image (`.dockerignore` lets in only `backend/` source and the env file).
+- TLS: put `fullchain.pem` and `privkey.pem` in `deploy/tls/` (git-ignored) and set `server_name` in `deploy/nginx.conf`. Both are owner decisions.
+- Mock demo: `SNAPPART_MOCK=1 SNAPPART_ALLOW_MOCK_IN_PRODUCTION=1 docker compose up --build`.
+- **Not verified yet:** there is no Docker on the dev machine, so the image has not been built and `environment.docker.yml` has not been solved on Linux. On first build, check that the solve succeeds, that `python -m pytest` passes inside the image (tests are not copied in; mount `backend/tests`), and that the healthcheck goes green.
+
+## Deployment sketch (host-agnostic)
+
+- **One VPS (supported today):** a machine with 8 or more cores and 16 GB or more, Docker installed. Clone, add `.env` and the TLS files, `docker compose up -d --build`. Size workers to cores: each real build is CPU-heavy (about 3 to 4 minutes of several cores), so start with `SNAPPART_WORKERS` = cores / 3 and `SNAPPART_MAX_CONCURRENT_BUILDS` to match. Back up the `data` volume (SQLite database and job files); the retention sweep keeps it to 7 days of jobs.
+- **Modal or another container platform:** run the same image twice, the API as a web endpoint and the worker as a scaled function or service. Both need the same `DATA_DIR`. SQLite on a shared network volume is not safe for concurrent writers, so this needs the Postgres and S3 changes listed under "Beyond one machine" first.
+- **Reverse proxy:** any TLS proxy works if it sets `X-Forwarded-For` and its address is in `SNAPPART_TRUSTED_PROXIES`. Keep its body, time and rate limits (see `deploy/nginx.conf`).

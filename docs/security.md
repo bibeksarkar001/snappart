@@ -2,7 +2,7 @@
 
 What the API defends against, how, where the code is, and which test proves it. Tests are in `backend/tests/` (`test_security.py` unless
 named otherwise). Everything here runs in the API itself. `deploy/nginx.conf` repeats the body, time and rate limits as a second layer, but
-it has **not been run yet** because there is no nginx or Docker on the dev machine. Stage 7 runs it.
+it has **not been run yet** because there is no nginx or Docker on the dev machine. The stage 7 load test ran uvicorn directly.
 
 ## Threats
 
@@ -17,9 +17,9 @@ it has **not been run yet** because there is no nginx or Docker on the dev machi
 | Decompression bombs, huge images | `Image.MAX_IMAGE_PIXELS` is 1920 x 1920. The header is read first, without decoding, and a bomb warning counts as an error. The long edge must be 1920 px or less, so OpenCV never gets more pixels than that. | `main.create_app`, `main.store_frame` | `test_image_safety` (forged 40000 x 40000 header) |
 | Location and identity in photos | EXIF, GPS, XMP, IPTC, maker notes and comments are removed losslessly before the frame is stored or hashed. The pixels do not change. | `app/imagesafe.py` | `test_image_safety` |
 | Unsafe deserialization | The app never uses pickle. Model fields load with `np.load(..., allow_pickle=False)`. The only pickle in the repo is the marker-scan cache of the owner's own videos (`capture/frames.scan`). The API never calls it. | `capture/model.py`, `capture/frames.py` | `test_no_pickle_on_user_data` |
-| Request floods | Every route except health checks shares one DB token bucket per client per minute, one per client per day, and one for the whole service. Stricter buckets apply to `POST /jobs` (hourly, daily per client, daily global), `start`, `voice`, `proposals` and `resume`. Every 429 sets `Retry-After`. | `app/ratelimit.py` (`gate`, `limit`), `main.frame` | `test_rate_limits_and_proxies`, `test_app_stage2.py::test_shared_limits` |
+| Request floods | Every route except health checks shares an in-memory bucket per client per minute, one per client per day, and one for the whole service. These are per API process (see `docs/load-test.md` for the trade-off). Stricter buckets in the database, shared by every process, apply to `POST /jobs` (hourly, daily per client, daily global), `start`, `voice`, `proposals` and `resume`. Overload sheds at once with 503 `busy` (in-flight cap per process; a locked database is also `busy`). Every 429 and 503 sets `Retry-After`. | `app/ratelimit.py` (`Gate`, `limit`), `main.frame` | `test_rate_limits_and_proxies`, `test_overload_sheds_at_once`, `test_app_stage2.py::test_shared_limits` |
 | Spoofed client IP | `X-Forwarded-For` is read only when the peer is in `trusted_proxies`. The client is the right-most hop that is not a trusted proxy. | `ratelimit.client_ip` | `test_rate_limits_and_proxies` |
-| Resume-code guessing | Codes have about 40 bits of entropy (3 BIP-39 words and 2 digits). They are stored as a peppered scrypt hash. Lookups use a constant-time compare and give the same 404 for wrong, malformed and missing codes. There is a lockout per IP and per code (5 misses, then 60 s doubling up to a day). | `app/resume.py`, `main.resume_job` | `test_app_stage2.py::test_resume_codes_and_lockout` |
+| Resume-code guessing | Codes have about 40 bits of entropy (3 BIP-39 words and 2 digits). They are stored as a peppered scrypt hash. Lookups use a constant-time compare and give the same 404 for wrong, malformed and missing codes. There is a lockout per IP and per code (5 misses, then 60 s doubling up to a day). The per-IP checks run before the hash, so a locked-out guesser costs no scrypt. | `app/resume.py`, `main.resume_job` | `test_app_stage2.py::test_resume_codes_and_lockout`, `test_locked_out_guesser_costs_no_hash` |
 | Bots creating parts | Optional Cloudflare Turnstile check on `POST /v1/jobs` when `SNAPPART_TURNSTILE_SECRET` is set. It fails closed if Cloudflare cannot be reached. | `main.turnstile_ok` | `test_turnstile_hook` |
 | Too many event streams | Capped per job (4) and per client (8) in each API process. Each stream ends after 30 min and the client resumes with `Last-Event-ID`. | `main.stream_slot` | `test_sse_caps_and_lifetime` |
 | Queue flooding | The queue is bounded (503 with `Retry-After`). Each client may have at most 2 queued builds and one active build. | `app/jobqueue.py` | `test_app_stage2.py::test_queue_admission_fairness_and_leases` |
@@ -36,14 +36,14 @@ it has **not been run yet** because there is no nginx or Docker on the dev machi
 
 ## Supply chain
 
-- `pip-audit` 2.10.1 was run on 2026-10-30 against all 152 Python packages in the `snappart` environment (`pip list --format=freeze`, `--no-deps`). Result: **no known vulnerabilities**. It does not cover the 192 native conda packages (openssl, ffmpeg, OpenCASCADE and others). Those need a separate scanner (for example `conda audit` or an image scanner in stage 7).
+- `pip-audit` 2.10.1 was run on 2026-10-30 against all 152 Python packages in the `snappart` environment (`pip list --format=freeze`, `--no-deps`). Result: **no known vulnerabilities**. It does not cover the 192 native conda packages (openssl, ffmpeg, OpenCASCADE and others). Those need a separate scanner (for example an image scanner once the Docker image is built).
 - Licences (`docs/licences.md`, regenerated with `python scripts/licences.py`):
   - `meta-sam-parser` is under Meta's SAM License, not an open-source licence.
-  - The environment includes GPL-licensed native packages, notably `ffmpeg` (GPL-2.0-or-later), which comes in through `vtk-io-ffmpeg`. That matters if a Docker image is distributed. The owner should check this before stage 7 packaging.
+  - The environment includes GPL-licensed native packages, notably `ffmpeg` (GPL-2.0-or-later), which comes in through `vtk-io-ffmpeg`. That matters if a Docker image is distributed; the image has not been built yet.
 
 ## Not covered (known limits)
 
-- The per-process caps (event streams, rebuild slots) multiply by the number of API replicas. The DB rate limits do not, because all replicas share them.
+- The per-process caps (every-route rate limit, in-flight cap, event streams, rebuild slots) multiply with the number of API processes. The database rate limits do not, because all processes share them.
 - Stripping metadata stops at the first scan. Metadata placed after the image data (rare vendor trailers) is kept.
-- Slow-header protection depends on the proxy and uvicorn settings, which have not been load-tested yet (stage 7).
+- Slow-header protection depends on the proxy. In the stage 7 load test, uvicorn alone kept all 300 slowloris sockets open (`docs/load-test.md`), and the proxy has not been run yet.
 - The key scan can only find key shapes it knows, plus the configured key itself.
