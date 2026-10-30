@@ -24,7 +24,7 @@ def make(data_dir, **kw):
 
 def test_migrations_idempotent(data_dir):
     with db.session(data_dir / "m.db") as c:
-        assert db.migrate(c) == 1 and db.migrate(c) == 1
+        assert db.migrate(c) == len(db.MIGRATIONS) and db.migrate(c) == len(db.MIGRATIONS)
         names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"jobs", "uploads", "events", "answers", "corrections", "model_calls", "rate_limits", "budget_ledger"} <= names
 
@@ -51,12 +51,15 @@ def test_state_machine(data_dir):
         with pytest.raises(ApiError) as e:
             jobs.transition(c, jid, "done")
         assert e.value.status == 409 and jobs.get(c, jid)["state"] == "ready_to_build"
+    assert cl.post(f"/v1/jobs/{jid}/start").json()["error"]["code"] == "check_needed"
+    LocalStorage(data_dir).put(jid, "capture_check.json", json.dumps({"usable": True, "verdict": "usable", "videos": {}}).encode())
     assert cl.post(f"/v1/jobs/{jid}/start").json()["state"] == "queued"
     assert cl.post(f"/v1/jobs/{jid}/start").status_code == 409                # not twice
     ev = cl.get(f"/v1/jobs/{jid}/events").json()["events"]
     assert [e["data"]["to"] for e in ev if e["type"] == "state_changed"] == ["created", "uploading", "checking", "ready_to_build", "queued"]
     assert all(e["ts"] > 0 for e in ev) and [e["seq"] for e in ev] == list(range(1, len(ev) + 1))
     assert cl.get(f"/v1/jobs/{jid}/events?after=3").json()["events"][0]["seq"] == 4
+    assert cl.get(f"/v1/jobs/{jid}").json()["queue_position"] >= 1
     assert all(t <= set(jobs.STATES) for t in jobs.TRANSITIONS.values()) and not jobs.TRANSITIONS["expired"]
 
 
@@ -107,11 +110,11 @@ def test_mock_build(data_dir):
     st = LocalStorage(data_dir)
     slept = []
     with db.session(s.db_path) as c:
-        for to in ("uploading", "checking", "ready_to_build", "queued"):
+        for to in ("uploading", "checking", "ready_to_build", "queued", "building"):
             jobs.transition(c, jid, to)
-        row = mock.run_build(c, st, s.model_copy(update={"mock_build_s": 5.0}), jid, sleep=slept.append)
+        nxt = mock.run_build(c, st, s.model_copy(update={"mock_build_s": 5.0}), jid, sleep=slept.append)
         ev = events.after(c, jid)
-    assert row["state"] == "needs_input" and abs(sum(slept) - 5.0) < 1e-6
+    assert nxt[0] == "needs_input" and abs(sum(slept) - 5.0) < 1e-6
     started = [e["data"]["stage"] for e in ev if e["type"] == "stage_started"]
     assert started == [n for n, _ in mock.STAGES] and [e for e in ev if e["type"] == "progress"][-1]["data"]["fraction"] == 1.0
     out = cl.get(f"/v1/jobs/{jid}").json()["outputs"]
