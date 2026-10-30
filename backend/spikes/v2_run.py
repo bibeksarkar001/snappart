@@ -436,7 +436,8 @@ def stage4():
             fh.write(m + "\n")
         print(m, flush=True)
 
-    rep = P.run(vids, roles, V2 / "pipeline", cache=V2 / "cache", sam_dir=CACHE / "sam", log=log)
+    rep = P.run(vids, roles, V2 / "pipeline", cache=V2 / "cache", sam_dir=CACHE / "sam", log=log, groove_depth_mm=GROOVE_DEPTH_USER,
+                concepts=("brown plastic buckle", "brown plastic part", "brown object"))
     T1 = load_T()
     pts = load_mesh(V1 / "A_final.stl")[0]
     gaps = {n: P.transform_gap(P.run.T[n], T1[n], pts) for n in NAMES}

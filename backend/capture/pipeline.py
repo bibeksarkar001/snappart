@@ -116,7 +116,7 @@ def _cached_sam(sam_dir: Path, key: str):
     return [(c, cv2.imread(str(sam_dir / f"{key}_{i}.png"), 0)) for i, c in enumerate(json.loads(meta.read_text())["confs"])]
 
 
-def masks_for(sel, sam_dir: Path, live_call=None, budget=0, log=print):
+def masks_for(sel, sam_dir: Path, live_call=None, budget=0, log=print, concepts=None):
     """Crop around the part, SAM per frame (cache '<video>_<frame>'; fallback concepts '<key>__<concept>'), pick + edge refine, accept.
     live_call(key, crop_path, concept) -> [(conf, mask)] is used only on cache misses, at most `budget` times."""
     out, info = {}, {"calls": 0, "misses": 0, "frames": 0, "accepted": 0}
@@ -129,7 +129,7 @@ def masks_for(sel, sam_dir: Path, live_call=None, budget=0, log=print):
             crop = img[box[1]:box[3], box[0]:box[2]]
             col = M.colour_mask(crop)
             key, res = f"{n}_{i}", None
-            for ci, concept in enumerate(C.SAM_CONCEPTS):
+            for ci, concept in enumerate(concepts or C.SAM_CONCEPTS):
                 k2 = key if ci == 0 else f"{key}__{concept.replace(' ', '_')}"
                 res = _cached_sam(sam_dir, k2)
                 if res is None and live_call and info["calls"] < budget:
@@ -212,8 +212,9 @@ def _field_chunk(sl):
 
 
 def k_for(n_views):
-    """Robust k scaled with the number of views (k = 12 was tuned at 229 views)."""
-    return max(2, round(C.K_ROBUST * n_views / C.K_TUNED_AT_VIEWS))
+    """Robust k scaled with the number of views (learnings rule 1a)."""
+    from .learnings import k_for_views
+    return k_for_views(n_views)
 
 
 def carve_joint(views, T, ref, procs=PROCS, k=None, vs=None):
@@ -254,8 +255,9 @@ def mesh_of(field, g):
 
 
 def run(videos: dict, roles: dict, work: Path, cache: Path | None = None, sam_dir: Path | None = None, live_call=None, sam_budget=0,
-        T_cached: dict | None = None, log=print) -> dict:
-    """videos: {name: path}; roles: {"ref": name, "flat": name, "stand": name}. Writes work/part.stl and work/report.json."""
+        T_cached: dict | None = None, log=print, groove_depth_mm: float | None = None, concepts=None) -> dict:
+    """videos: {name: path}; roles: {"ref": name, "flat": name, "stand": name}. Writes work/part.stl and work/report.json.
+    groove_depth_mm: the slot depth (a user's answer); slots are cut only when it is given (the camera cannot see the depth)."""
     work.mkdir(parents=True, exist_ok=True)
     tm = Timer(log)
     rep = {}
@@ -266,7 +268,7 @@ def run(videos: dict, roles: dict, work: Path, cache: Path | None = None, sam_di
     with tm("poses, selection, frame extraction"):
         sel = select_frames(videos, scans, world, intr, work / "frames")
     with tm("crops + SAM (cached) + masks"):
-        msk, info = masks_for(sel, sam_dir or (cache / "sam"), live_call, sam_budget, log)
+        msk, info = masks_for(sel, sam_dir or (cache / "sam"), live_call, sam_budget, log, concepts)
     rep["masks"] = info
     views = build_views(sel, msk)
     with tm("registration"):
@@ -278,8 +280,8 @@ def run(videos: dict, roles: dict, work: Path, cache: Path | None = None, sam_di
     imgs = [cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) for n in msk for _, _, crop, _ in msk[n]]
     with tm("grooves + pockets"):
         face, ops, per, _ = find_grooves_parallel(v0, f0, vv, imgs)
-        if ops:
-            field = F.cut_pockets(field, g, F.groove_boxes(ops, face, C.GROOVE_DEPTH_USER_MM))
+        if ops and groove_depth_mm:
+            field = F.cut_pockets(field, g, F.groove_boxes(ops, face, groove_depth_mm))
             v1, f1 = mesh_of(field, g)
         else:
             v1, f1 = v0, f0
@@ -289,7 +291,7 @@ def run(videos: dict, roles: dict, work: Path, cache: Path | None = None, sam_di
     rep.update({"T": {n: m.tolist() for n, m in T.items()}, "registration_from_cache": T_cached is not None,
                 "footprint_mm": [pl["length_mm"], pl["width_mm"]], "height_mm": pl["z_max"] - pl["z_min"], "watertight": cen["watertight"], "volume_mm3": cen["volume_mm3"],
                 "grooves": [{"centre": o["centre"].tolist(), "long_mm": o["L"], "short_mm": o["S"], "views": o["n_views"]} for o in ops],
-                "groove_depth_mm": C.GROOVE_DEPTH_USER_MM, "groove_depth_source": "user (caliper)",
+                "groove_depth_mm": groove_depth_mm, "groove_depth_source": "user" if groove_depth_mm else "not given: slots not cut",
                 "views": {n: len(v) for n, v in views.items()}, "seconds": {k: v for k, v in tm.rows}, "total_s": sum(v for _, v in tm.rows)})
     (work / "report.json").write_text(json.dumps(rep, indent=1, default=float))
     run.views, run.T, run.mesh, run.unfeatured = views, T, (v1, f1), (v0, f0)
@@ -350,12 +352,12 @@ def crops_from_frames(frames_by_video, scans, world, intr):
     return out
 
 
-def masks_from_crops(crops, intr, sam):
+def masks_from_crops(crops, intr, sam, concepts=None):
     """sam(jobs) with jobs [(key, crop, concept, crop box in the frame)] -> {key: [(conf, crop-space mask)] or None}: main concept for every crop, fallbacks only for misses.
     Then pick + edge refine + accept (colour agreement, or area when the colour mask is unreliable). Returns ({video: [(idx, box, crop, mask, rvec, tvec)]}, calls)."""
     keys = {f"{n}_{i}": (n, i, crop, box) for n, rows in crops.items() for i, box, crop, _, _ in rows}
     got, calls, todo = {}, 0, list(keys)
-    for ci, concept in enumerate(C.SAM_CONCEPTS):
+    for ci, concept in enumerate(concepts or C.SAM_CONCEPTS):
         if not todo:
             break
         jobs = [(k if ci == 0 else f"{k}__{concept.replace(' ', '_')}", keys[k][2], concept, keys[k][3]) for k in todo]
@@ -365,6 +367,9 @@ def masks_from_crops(crops, intr, sam):
             if res.get(jk):
                 got[k] = res[jk]
         todo = [k for k in todo if k not in got]
+    # the part's colour, learned from SAM's best masks (None for an achromatic part: then no colour gating, area consistency only)
+    part_hue = M.learn_colour([(keys[k][2], max(got[k], key=lambda cm: cm[0])[1]) for k in list(got)[:12]])
+    masks_from_crops.part_hue = part_hue
     out = {}
     for n, rows in crops.items():
         K = intr[n][0]
@@ -373,12 +378,16 @@ def masks_from_crops(crops, intr, sam):
             r = got.get(f"{n}_{i}")
             if not r:
                 continue
-            col = M.colour_mask(crop)
-            pick = M.pick_component(r, col)
-            if pick is None:
-                continue
-            fin = M.refine_sam(pick[1], crop)
-            cis = M.agreement(pick[1], col)["colour_in_sam"]
+            if part_hue:
+                col = M.colour_mask(crop, hue_min=part_hue[0] - 2, hue_max=part_hue[1])
+                pick = M.pick_component(r, col)
+                fin = M.refine_sam(pick[1], crop, part_hue=part_hue)
+                cis = M.agreement(pick[1], col)["colour_in_sam"]
+            else:
+                col = np.zeros(crop.shape[:2], np.uint8)
+                pick = max(r, key=lambda cm: cm[0])
+                fin = (cv2.GaussianBlur((pick[1] > 0).astype(np.float32), (0, 0), 1.0) > 0.5).astype(np.uint8) * 255
+                cis = 0.0
             dist = np.linalg.norm(-cv2.Rodrigues(rv)[0].T @ tv - frames.CENTRE)
             cand.append((i, box, crop, fin, rv, tv, cis, pick[0], (col > 0).sum(), (pick[1] > 0).sum(), (pick[1] > 0).sum() / (K[0, 0] / dist) ** 2))
         med = float(np.median([c[10] for c in cand])) if cand else 0
@@ -401,7 +410,7 @@ def views_from_masks(msk, intr):
     return views
 
 
-def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print):
+def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print, concepts=None):
     """Browser path. frames_by_video: {video: {idx: BGR (~1920 px)}}; roles {"ref", "flat", "stand"}; sam: see masks_from_crops.
     Builds the editable model (carve field + measured features), applies the answers (frozen defaults where missing), writes work/part.stl,
     work/model.npz/.json and returns the run record (timings, features, measured values)."""
@@ -415,7 +424,7 @@ def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print)
     with tm("poses + undistorted crops"):
         crops = crops_from_frames(frames_by_video, scans, world, intr)
     with tm("SAM"):
-        msk_calls = masks_from_crops(crops, intr, sam)
+        msk_calls = masks_from_crops(crops, intr, sam, concepts)
     msk, calls = msk_calls
     views = views_from_masks(msk, intr)
     with tm("registration"):
@@ -444,7 +453,7 @@ def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print)
                     sep = pf["upper"]["z"] - pf["lower"]["z"] if "lower" in pf else None
                     feats["plate"] = {"normal": [0, 0, 1.0], "d": -pf["upper"]["z"], "mask": mask, "region_xy": list(region), "faces": pf, "measured_separation_mm": sep}
     with tm("apply answers + mesh + STL"):
-        a = {**Mo.default_answers(), **(answers or {})}
+        a = Mo.resolve_answers(answers, feats, Mo.part_height(field, g))
         if feats.get("plate") and feats["plate"]["measured_separation_mm"] is not None and abs(feats["plate"]["measured_separation_mm"] - a["plate_thickness_mm"]) <= 0.3:
             a["plate_thickness_mm"] = feats["plate"]["measured_separation_mm"]
         v1, f1 = Mo.mesh(Mo.apply(field, g, feats, a), g)

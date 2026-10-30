@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).parent))
 
+import part_b as PB  # noqa: E402
 import v2_run as V2R  # noqa: E402
 from spike_common import OUT  # noqa: E402
 
@@ -89,7 +90,7 @@ def stage1():
     t0, d0 = time.time(), date()
     feats = base_features()
     views, T, g, field = base_field()
-    ans = {**Mo.default_answers(), "plate_thickness_mm": None}
+    ans = {**PB.answers(), "plate_thickness_mm": None}
     f_g = Mo.apply(field, g, {"grooves": feats["grooves"]}, ans)
     f_b = Mo.apply(field, g, feats, ans)
     v0, fc0 = Mo.mesh(f_g, g)
@@ -195,8 +196,8 @@ def stage2():
         z, sd, sc = F.plane_sweep([v for v, _ in sel], [im for _, im in sel], lambda z: face_z(z, up), zs)
         meas[key] = {"z": z, "boot_sd": sd, "views": len(sel), "video": vid, "contrast": float(sc.max() / sc.min())}
     sep = meas["upper (faces +z)"]["z"] - meas["lower (faces -z)"]["z"]
-    use_meas = abs(sep - C.PLATE_THICKNESS_USER_MM) <= 0.3
-    th = sep if use_meas else C.PLATE_THICKNESS_USER_MM
+    use_meas = abs(sep - PB.PLATE_THICKNESS_USER_MM) <= 0.3
+    th = sep if use_meas else PB.PLATE_THICKNESS_USER_MM
     zu = meas["upper (faces +z)"]["z"]
     mask = np.zeros(field.shape[:2], bool)
     X = g.lo[0] + np.arange(field.shape[0]) * g.vs
@@ -205,7 +206,7 @@ def stage2():
     plate = {"normal": [0, 0, 1.0], "d": -zu, "mask": mask, "region_xy": [x0, x1, y0, y1], "anchor": "upper face, measured (video 1 plane sweep)",
              "measured_faces": meas, "measured_separation_mm": sep}
     feats["plate"] = plate
-    ans = {**Mo.default_answers(), "plate_thickness_mm": th}
+    ans = {**PB.answers(), "plate_thickness_mm": th}
     f_before = Mo.apply(field, g, {k: feats[k] for k in ("grooves", "bump")}, ans)
     vb, fb = Mo.mesh(f_before, g)
     f_after = Mo.apply(field, g, feats, ans)
@@ -242,7 +243,7 @@ def stage2():
           f"between the two videos' floors is 11.69 vs 11.8 caliper).",
           "  region sensitivity: an exploratory sweep over x 151..162.5, y 86..117 (same method) gave faces at 9.70 / 10.20 = 0.50 mm. So the measured "
           "separation is 0.2-0.5 mm depending on the region; the bootstrap sd (<= 0.07) understates that.",
-          f"  owner's caliper: {C.PLATE_THICKNESS_USER_MM} mm. |difference| {abs(sep - C.PLATE_THICKNESS_USER_MM):.2f} mm "
+          f"  owner's caliper: {PB.PLATE_THICKNESS_USER_MM} mm. |difference| {abs(sep - PB.PLATE_THICKNESS_USER_MM):.2f} mm "
           + ("<= 0.3: the MEASURED value is used." if use_meas else "> 0.3: per the rule, 2.6 mm is used and labelled USER-SUPPLIED. THE MEASUREMENT CONTRADICTS IT: the "
              "owner's caliper may have been taken at the plate's edge (the carve shows ~3.1 mm of material at the window edge), not in the middle; this needs the owner."),
           f"  model: plate = slab between the measured upper face z={zu:.2f} and z={zu - th:.2f} (thickness {th:.2f} mm, {'measured' if use_meas else 'user-supplied'}); "
@@ -506,7 +507,8 @@ def stage3(per_video=40, long_side=1920):
             fh.write(m + "\n")
         print(m, flush=True)
     roles = {"ref": NAMES[0], "flat": NAMES[2], "stand": NAMES[1]}
-    rep = P.run_frames(frames_by, roles, V3 / "pipeline", cached_sam_adapter(scale, {k: v for k, v in boxes.items()}, sizes), log=log)
+    rep = P.run_frames(frames_by, roles, V3 / "pipeline", cached_sam_adapter(scale, {k: v for k, v in boxes.items()}, sizes), log=log,
+                       answers=PB.answers(), concepts=("brown plastic buckle", "brown plastic part", "brown object"))
     st = json.loads((V3 / "sam_test" / "stats.json").read_text())["summary"]
     per_call = st["per_call_wall_s"]
     n_main = sum(len(v) for v in frames_by.values())
@@ -549,7 +551,7 @@ def stage4(reuse_iou=True):
     t0, d0 = time.time(), date()
     m = Mo.load(V3 / "model_B")
     field, g, feats = m["field"], m["grid"], m["features"]
-    answers = Mo.default_answers()
+    answers = PB.answers()
     user_given = list(answers)                                    # every value came from the owner's calipers
     v0, f0 = Mo.mesh(field, g)
     v1, f1 = Mo.rebuild(m, answers)

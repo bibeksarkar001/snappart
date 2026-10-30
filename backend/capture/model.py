@@ -246,9 +246,39 @@ def mesh(field, g):
     return carve.taubin(v, fc, C.TAUBIN_ITERS), fc
 
 
-def default_answers():
-    return {"groove_depth_mm": C.GROOVE_DEPTH_MM, "bump_length_mm": C.BUMP_LENGTH_USER_MM, "bump_width_mm": C.BUMP_WIDTH_USER_MM,
-            "bump_height_mm": C.BUMP_HEIGHT_USER_MM, "bump_top_radius_mm": C.BUMP_TOP_RADIUS_MM, "plate_thickness_mm": C.PLATE_THICKNESS_USER_MM}
+def part_height(field, g) -> float | None:
+    """Height (mm) of the carved part: z extent of the inside voxels."""
+    zs = np.nonzero((field > 0).any((0, 1)))[0]
+    return float((zs[-1] - zs[0]) * g.vs) if len(zs) else None
+
+
+def estimate_answers(features=None, height_mm=None) -> tuple[dict, dict]:
+    """Per-job defaults for every answer the geometry needs, and where each came from ("measured" from the video, or "estimated").
+    A measured value under learnings.MIN_FEATURE_MM is not claimed: it becomes an estimate and the question stays open."""
+    from .learnings import MIN_FEATURE_MM
+    f = features or {}
+    h = height_mm or 10.0
+    a, src = {}, {}
+
+    def put(k, v, measured):
+        a[k] = round(float(v), 3)
+        src[k] = "measured" if measured and v >= MIN_FEATURE_MM else "estimated"
+    put("groove_depth_mm", 0.5 * h, False)                             # the camera cannot see a pocket's depth
+    b = f.get("bump") or {}
+    put("bump_length_mm", b.get("detected_length_mm", 0.5 * h), "detected_length_mm" in b)
+    ext = b.get("extent_mm")
+    put("bump_height_mm", ext if ext else 1.0, bool(ext))
+    put("bump_width_mm", a["bump_height_mm"], False)                    # a hill about as wide as it is high, until someone measures it
+    put("bump_top_radius_mm", C.BUMP_TOP_RADIUS_MM, False)
+    sep = (f.get("plate") or {}).get("measured_separation_mm")
+    put("plate_thickness_mm", sep if sep else 0.25 * h, bool(sep))
+    if sep and sep < MIN_FEATURE_MM:
+        a["plate_thickness_mm"] = round(max(float(sep), 0.25 * h), 3)     # too thin to claim from the video
+    return a, src
+
+
+def default_answers(features=None, height_mm=None) -> dict:
+    return estimate_answers(features, height_mm)[0]
 
 
 def save(path: Path, field, g, feats):
@@ -273,9 +303,9 @@ def load(path: Path):
     return {"field": z["field"], "grid": g, "features": feats}
 
 
-def resolve_answers(answers):
-    """Answers as apply() uses them: frozen defaults for missing keys, the top-shape choice turned into a radius."""
-    a = {**default_answers(), **(answers or {})}
+def resolve_answers(answers, features=None, height_mm=None):
+    """Answers as apply() uses them: the job's estimates for missing keys, the top-shape choice turned into a radius."""
+    a = {**default_answers(features, height_mm), **(answers or {})}
     if a.get("bump_top_shape"):                                       # the card's choice -> radius
         a["bump_top_radius_mm"] = C.TOP_SHAPE_RADIUS_MM[a["bump_top_shape"]]
     return a
@@ -284,4 +314,5 @@ def resolve_answers(answers):
 def rebuild(model, answers, corrections=None):
     """Apply the answers (any missing key falls back to the frozen defaults) and the corrections (in order) to the stored carve field and
     re-mesh. Returns (verts, faces)."""
-    return mesh(apply(model["field"], model["grid"], model["features"], resolve_answers(answers), corrections), model["grid"])
+    a = resolve_answers(answers, model["features"], part_height(model["field"], model["grid"]))
+    return mesh(apply(model["field"], model["grid"], model["features"], a, corrections), model["grid"])

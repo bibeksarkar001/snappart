@@ -11,7 +11,8 @@ CALIB_FRAMES_PER_VIDEO = 120    # frames per video for the joint mat self-calibr
 MAT_PRIOR_PX_PER_MM = 2.0       # bundle-adjustment prior pulling marker corners toward the printed layout
 
 # masks (v1 stage 2)
-SAM_CONCEPTS = ("brown plastic buckle", "brown plastic part", "brown object")   # main concept, then fallbacks for frames it misses
+SAM_CONCEPTS = ("object", "plastic part", "part")   # generic: main concept, then fallbacks for frames it misses (a job's part name goes first)
+PART_HUE_DEFAULT = (38.0, 80.0)  # Lab hue window (deg) of the part when no colour model is learned yet (masks.learn_colour learns it per job)
 MIN_COLOUR_IN_SAM = 0.85
 MIN_SAM_CONF = 0.5
 
@@ -28,17 +29,10 @@ TAUBIN_ITERS = 5
 BOX_LO = (148.5 - 35, 105 - 35, -1.5)     # carve box in the mat frame (mm): 70 x 70 x 46.5 above the page centre
 BOX_HI = (148.5 + 35, 105 + 35, 45.0)
 
-# features (v2 stage 1)
-GROOVE_DEPTH_USER_MM = 3.7      # owner's caliper value, NOT measured from the videos
+# Answers (slot depth, ridge size, plate thickness) come from each job: measured where the video shows them, otherwise estimated
+# (model.estimate_answers) and asked. Part B's caliper values live in backend/tests/fixtures/part_b.json, not here.
 
-# owner facts: USER-SUPPLIED (calipers), not measured from the videos; editable answers for model.rebuild()
-GROOVE_DEPTH_MM = GROOVE_DEPTH_USER_MM
-BUMP_LENGTH_USER_MM = 19.7
-BUMP_WIDTH_USER_MM = 2.3        # owner also said 2.2 once: to be confirmed
-BUMP_HEIGHT_USER_MM = 2.3       # height above the surface the grooves open in
-PLATE_THICKNESS_USER_MM = 2.6   # thin flat plate between the window and the groove column (re-measured; replaces 0.9-1.0)
-
-# lock ridge cross-section (v4): a hill, straight sides from the 2.3 mm base to a rounded peak. ESTIMATE: no frame shows the profile edge-on.
+# ridge cross-section: a hill (straight sides, rounded peak). Its top radius is an ESTIMATE until a user answers: no frame shows it edge-on.
 BUMP_TOP_RADIUS_MM = 0.5
 TOP_SHAPE_RADIUS_MM = {"sharp": 0.1, "slightly rounded": 0.5, "quite rounded": 1.0}   # answers of the "top shape" card (estimates)
 

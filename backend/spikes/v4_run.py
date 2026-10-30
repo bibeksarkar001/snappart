@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).parent))
 
+import part_b as PB  # noqa: E402
 import v2_run as V2R  # noqa: E402
 import v3_run as V3R  # noqa: E402
 from spike_common import OUT, ROOT  # noqa: E402
@@ -134,7 +135,7 @@ def stage_views():
     from capture import model as Mo
     t0, d0 = time.time(), date()
     m = Mo.load(V3R.V3 / "model_B")
-    fv3 = Mo.apply(m["field"], m["grid"], m["features"], Mo.default_answers())
+    fv3 = Mo.apply(m["field"], m["grid"], m["features"], PB.answers())
     vc, fcc = coarse_mesh(fv3, m["grid"])
     scale = 0.25
     out, L = {}, [f"OWNER VIEWPOINTS. start {d0}. Camera fitted to each review screenshot by silhouette IoU against the v3 model (B_plate), "
@@ -322,7 +323,7 @@ def stage1():
     nrm /= np.linalg.norm(nrm)
     across = np.cross(nrm, axis)
     across *= np.sign(across @ -np.asarray(face["n"]))              # into the part from the rim
-    W = C.BUMP_WIDTH_USER_MM
+    W = PB.BUMP_WIDTH_USER_MM
     wall_mid = np.mean(rs["wall_line"], 0)
     ridge = {"kind": "ridge", "shape": "hill", "base_mid": (wall_mid + across * W / 2).tolist(), "axis": axis.tolist(), "across": across.tolist(),
              "normal": nrm.tolist(), "detected_length_mm": b["length_mm"], "ends": b["ends"], "wall_line": rs["wall_line"],
@@ -334,7 +335,7 @@ def stage1():
     plate = {k: v for k, v in feats["plate"].items() if k != "mask"}
     plate.update(polygon_xy=[[x0, y0], [xw, y0], [xw, y1], [x0, y1]], region_xy=[x0, xw, y0, y1])
     feats1 = {**feats, "bump": ridge, "plate": plate}
-    ans = Mo.default_answers()
+    ans = PB.answers()
     f_no = Mo.apply(field, g, {**feats1, "bump": None}, ans)
     f1 = Mo.apply(field, g, feats1, ans)
     v1, fc1 = Mo.mesh(f1, g)
@@ -342,8 +343,8 @@ def stage1():
     carve.write_stl(SEND / "B_ridge.stl", v1, fc1)
     Mo.save(V4 / "model_B_stage1", field, g, feats1)
     tick("model + mesh")
-    poly = Mo.profile("hill", W, C.BUMP_HEIGHT_USER_MM, C.BUMP_TOP_RADIUS_MM)
-    peak = np.asarray(ridge["base_mid"]) + nrm * C.BUMP_HEIGHT_USER_MM
+    poly = Mo.profile("hill", W, PB.BUMP_HEIGHT_USER_MM, PB.BUMP_TOP_RADIUS_MM)
+    peak = np.asarray(ridge["base_mid"]) + nrm * PB.BUMP_HEIGHT_USER_MM
     # overlays on two real frames: one used for the detection (video 3, head-on), one not used (video 2)
     tri = Mo.field_at(f_no, g, v1) < -0.05
     used = sorted(b["per_view"], key=lambda p: -p["cos"])[0]["name"]
@@ -396,11 +397,11 @@ def stage1():
           "MODEL (B_ridge.stl): v3 block removed; ridge = hill extruded along the edge. Values:",
           f"  position along the edge: centred on the detected ends' midpoint ({np.round(np.mean(ends, 0), 2).tolist()}): MEASURED",
           f"  face and direction: inner wall of the slot column, base line x {xw:.2f}, outward normal toward the plate: MEASURED",
-          f"  length {C.BUMP_LENGTH_USER_MM} mm: USER-SUPPLIED (detected {b['length_mm']:.2f})",
+          f"  length {PB.BUMP_LENGTH_USER_MM} mm: USER-SUPPLIED (detected {b['length_mm']:.2f})",
           f"  base width {W} mm (from the rim edge into the part): USER-SUPPLIED",
-          f"  height {C.BUMP_HEIGHT_USER_MM} mm out of the wall: USER-SUPPLIED (measured extent {rs['extent_mm']:.2f}); peak line at "
+          f"  height {PB.BUMP_HEIGHT_USER_MM} mm out of the wall: USER-SUPPLIED (measured extent {rs['extent_mm']:.2f}); peak line at "
           f"({peak[0]:.2f}, -, {peak[2]:.2f})",
-          f"  top radius {C.BUMP_TOP_RADIUS_MM} mm and side slope {Mo.side_slope_deg(poly, W):.1f} deg: ESTIMATED. No frame shows the profile edge-on: "
+          f"  top radius {PB.BUMP_TOP_RADIUS_MM} mm and side slope {Mo.side_slope_deg(poly, W):.1f} deg: ESTIMATED. No frame shows the profile edge-on: "
           "the ridge is inside the pocket, between the rails, so it is never on a silhouette.",
           f"  pocket opened up to the wall (x {xw:.2f}); the v3 plate stopped at the ridge's far edge (x {x0:.2f}..{feats['plate']['region_xy'][1]:.2f}). "
           "The plate itself is re-placed in stage 2.",
@@ -509,7 +510,7 @@ def stage2():
     win_poly = [[edge(y0) - 4.0, y0], [edge(y0), y0], [edge(y1), y1], [edge(y1) - 4.0, y1]]       # 4 mm strip of the window before the edge
     clip = lambda poly: [[min(max(x, edge(y)), xw), min(max(y, y0), y1)] for x, y in poly]
     plane = {"n": bp["n"], "d": bp["d"], "name": "bottom"}
-    th = C.PLATE_THICKNESS_USER_MM
+    th = PB.PLATE_THICKNESS_USER_MM
     corr = [{"op": "add_feature", "feature_id": "bump", "feature": ridge, "reason": "lock ridge measured from video (stage 1); replaces the v3 block",
              "source": "owner review_1/2/3 + video", "review_item": "review_1"},
             {"op": "flatten_region", "feature_id": "plate", "region": {"polygon_xy": plate_poly}, "to_plane": {"n": bp["n"], "d": bp["d"]},
@@ -521,7 +522,7 @@ def stage2():
              "thickness_answer": "plate_thickness_mm", "reason": "strip between the window and the plate is flat (review_5)", "source": "owner", "review_item": "review_5"},
             {"op": "remove_region", "region": {"polygon_xy": win_poly, "z_mm": None}, "reason": "straight window edge (line fitted to the silhouette-carved edge)",
              "source": "video", "review_item": "review_5"}]
-    ans = Mo.default_answers()
+    ans = PB.answers()
     f_v3 = Mo.apply(field, g, feats3, ans)
     f2 = Mo.apply(field, g, feats3, ans, corr)
     v2, fc2 = Mo.mesh(f2, g)
@@ -560,7 +561,7 @@ def stage2():
     tick("plate sweep")
     # flatness of the owner's regions before (v3) and after
     flat = {}
-    x_ok = xw - C.BUMP_HEIGHT_USER_MM - 0.5                         # flatness measured short of the ridge (its flanks are not the face)
+    x_ok = xw - PB.BUMP_HEIGHT_USER_MM - 0.5                         # flatness measured short of the ridge (its flanks are not the face)
     for k in ("review_4", "review_5"):
         poly = [[min(x, x_ok), y] for x, y in clip(regs[k]["polygon_xy"])]
         flat[k] = {"before": region_stats(*v3m, poly, bp), "after": region_stats(v2, fc2, poly, bp), "polygon_xy": poly}
@@ -669,7 +670,7 @@ def stage3():
     tick("owner regions")
     v2res = json.loads((V2R.SEND / "results.json").read_text())
     bump_by_video = {vid: r["agree"] for vid, r in v2res["2_bump"]["per_video"].items()}
-    boxes = [("lock_bump", Mo.bump_op(m3["features"]["bump"], *(Mo.default_answers()[k] for k in ("bump_length_mm", "bump_width_mm", "bump_height_mm"))), bump_by_video)]
+    boxes = [("lock_bump", Mo.bump_op(m3["features"]["bump"], *(PB.answers()[k] for k in ("bump_length_mm", "bump_width_mm", "bump_height_mm"))), bump_by_video)]
     for i, o in enumerate(v2res["1_grooves"]["openings"]):
         gfe = m3["features"]["grooves"][i]
         ax = np.asarray(gfe["axes"])
@@ -716,7 +717,7 @@ def stage3():
     tick("final items")
     # pictures: best frame crop | render of the same region, for every item
     imgs = color_crops(vv)
-    vcm, fcm = coarse_mesh(Mo.apply(m3["field"], m3["grid"], m3["features"], Mo.default_answers()), m3["grid"])
+    vcm, fcm = coarse_mesh(Mo.apply(m3["field"], m3["grid"], m3["features"], PB.answers()), m3["grid"])
     out_dir = SEND / "review_items"
     out_dir.mkdir(exist_ok=True)
     recs = []
@@ -792,7 +793,7 @@ def stage4():
     fids = list(m3["features"]) + ["bump"]
     for c in corr:
         Cr.validate(c, fids, [])
-    ans = Mo.default_answers()
+    ans = PB.answers()
     tick("load + validate")
     t1 = time.time()
     va, fa = Mo.rebuild(m3, ans, corr)
@@ -855,7 +856,7 @@ def stage5():
     rep = json.loads((SEND / "report.json").read_text())
     m3 = Mo.load(V3R.V3 / "model_B")
     corr = rep["corrections"]
-    ans = Mo.default_answers()
+    ans = PB.answers()
     feats = Mo.correct_features(m3["field"], m3["grid"], m3["features"], corr)
     f4 = Mo.apply(m3["field"], m3["grid"], m3["features"], ans, corr)
     vcm, fcm = coarse_mesh(f4, m3["grid"])

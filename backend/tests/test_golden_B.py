@@ -1,16 +1,19 @@
 """Golden regression on part B (the A_orbit_* videos): carve + feature steps rerun from the private cache with the frozen settings.
 
-Calipers: 51.6 x 41.9 mm footprint, 11.8 mm height; four end grooves. Owner answers (config.py) for groove depth, bump size, plate thickness.
+Calipers: 51.6 x 41.9 mm footprint, 11.8 mm height; four end grooves. Owner answers (tests/fixtures/part_b.json) for groove depth, bump size, plate thickness.
 Carves at 0.25 mm voxels (production: 0.15) to keep the run short; the time budget is 240 s; the 0.15 mm carve alone takes ~95 s on the 16 GB development laptop.
 Skipped when the private cache is missing."""
 import json
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 
 from capture import carve, config as C, dataset, features as F, holdout as H, model as Mo, pipeline as P
+
+PART_B = json.loads((Path(__file__).parent / "fixtures" / "part_b.json").read_text())   # owner's caliper answers
 
 NAMES = ["A_orbit_01", "A_orbit_02", "A_orbit_03"]
 CACHE = dataset.CACHE
@@ -67,7 +70,7 @@ def test_golden_B(tmp_path):
     mask[np.ix_((X >= region[0]) & (X <= region[1]), (Y >= region[2]) & (Y <= region[3]))] = True
     feats["plate"] = {"normal": [0, 0, 1.0], "d": -pf["upper"]["z"], "mask": mask, "region_xy": list(region)}
     model = {"field": field, "grid": g, "features": feats}
-    ans = Mo.default_answers()
+    ans = dict(PART_B["answers"])
     vb, fb = Mo.rebuild(model, {**ans, "plate_thickness_mm": None})            # grooves + bump, plate not snapped
     tick('rebuilds')
     va, fa = Mo.rebuild(model, ans)
@@ -75,7 +78,7 @@ def test_golden_B(tmp_path):
     assert va[:, 2].min() < v[:, 2].min() - 0.2                                 # the bump stands out of the face the grooves open in
     xc, yc = (region[0] + region[1]) / 2, (region[2] + region[3]) / 2
     col = va[(np.abs(va[:, 0] - xc) < 1.0) & (np.abs(va[:, 1] - yc) < 1.0)]
-    assert abs((col[:, 2].max() - col[:, 2].min()) - C.PLATE_THICKNESS_USER_MM) <= 0.15
+    assert abs((col[:, 2].max() - col[:, 2].min()) - PART_B["answers"]["plate_thickness_mm"]) <= 0.15
     for up in (False, True):                                                    # roughness of both plate faces: not worse than before the snap
         assert F.face_rms(va, fa, region, up, 50000)[0] <= F.face_rms(vb, fb, region, up, 50000)[0]
     tick('rms')
@@ -107,7 +110,7 @@ def v4_checks(vv):
     m3 = Mo.load(CACHE.parents[1] / "v3" / "model_B")
     for c in corr:
         Cr.validate(c, list(m3["features"]) + ["bump"], [])
-    ans = Mo.default_answers()
+    ans = dict(PART_B["answers"])
     v, fc = Mo.rebuild(m3, ans, corr)                                            # corrections reproduce the v4 model
     assert carve.edge_census(v, fc)["watertight"]
     from cad.section import read_stl

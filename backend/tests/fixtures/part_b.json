@@ -1,0 +1,13 @@
+{
+ "about": "Part B of the lock set (golden part): the owner's caliper values. USER-SUPPLIED answers for this one part, used by the golden test and the research spikes; the generic pipeline takes answers from each job instead.",
+ "calipers_mm": {"length": 51.6, "width": 41.9, "height": 11.8},
+ "answers": {
+  "groove_depth_mm": 3.7,
+  "bump_length_mm": 19.7,
+  "bump_width_mm": 2.3,
+  "bump_height_mm": 2.3,
+  "bump_top_radius_mm": 0.5,
+  "plate_thickness_mm": 2.6
+ },
+ "notes": {"bump_width_mm": "owner also said 2.2 once", "bump_top_radius_mm": "estimate, not a caliper value", "plate_thickness_mm": "conflicts with the video (0.2-0.9 mm)"}
+}
