@@ -28,7 +28,7 @@ FRIENDLY = {"build_timeout": "This build took too long and was stopped. Please t
 def settings_env(s: Settings) -> dict:
     """Environment for the build subprocess: the parent's, plus this worker's settings (so tests and CLI overrides reach it)."""
     env = dict(os.environ)
-    env.update({"SNAPPART_DATA_DIR": str(s.data_dir), "SNAPPART_MOCK": "1" if s.mock else "0", "SNAPPART_MOCK_BUILD_S": str(s.mock_build_s),
+    env.update({"SNAPPART_DATA_DIR": str(s.data_dir), "SNAPPART_MOCK": "1" if s.mock else "0", "SNAPPART_REPLAY": "1" if s.replay else "0", "SNAPPART_MOCK_BUILD_S": str(s.mock_build_s),
                 "SNAPPART_ENVIRONMENT": s.environment, "SNAPPART_ALLOW_MOCK_IN_PRODUCTION": "1" if s.allow_mock_in_production else "0"})
     return env
 
@@ -53,6 +53,9 @@ class Worker:
         self.storage = LocalStorage(self.s.data_dir)
         self.stopping = False
         self.child: subprocess.Popen | None = None
+        self.s.data_dir.mkdir(parents=True, exist_ok=True)
+        with db.session(self.s.db_path) as c:                          # tables exist before the first retention sweep, even on a fresh
+            db.migrate(c)                                               # data folder where no API has started yet
 
     def step(self) -> str | None:
         """Reap, claim, run one build. Returns the job id it ran, or None if there was nothing to do."""
@@ -133,6 +136,8 @@ def main():
     s = get_settings()
     s.data_dir.mkdir(parents=True, exist_ok=True)
     print(f"SnapPart worker starting: mode {s.mode}, data {s.data_dir}, max concurrent builds {s.max_concurrent_builds}", flush=True)
+    if s.replay:
+        print("Replay mode (no MODEL_API_KEY set): builds deliver the recorded part B run; no Meta model is called.", flush=True)
     Worker(s).run_forever()
 
 

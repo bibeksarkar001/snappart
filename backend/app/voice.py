@@ -51,28 +51,31 @@ def to_wav(data: bytes, max_bytes: int) -> tuple[bytes, float]:
 
 
 def _read_wav(data: bytes) -> tuple[np.ndarray, int]:
+    """Mono float samples and the rate, from PCM (8, 16, 24 or 32 bit) or float WAV, plain or WAVE_FORMAT_EXTENSIBLE (common from phone and
+    desktop recorders)."""
+    import warnings
+    from scipy.io import wavfile
     try:
-        with wave.open(io.BytesIO(data), "rb") as w:
-            ch, sw, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-            if n / max(rate, 1) > MAX_S + 1:
-                raise AudioError("The recording is longer than 10 minutes.")
-            raw = w.readframes(n)
-    except wave.Error:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", wavfile.WavFileWarning)  # unknown extra chunks (LIST, fact) are skipped
+            rate, x = wavfile.read(io.BytesIO(data))
+    except Exception:                                                   # scipy raises several kinds on broken files
         raise AudioError("This is not a readable PCM WAV file.") from None
-    if sw == 1:
-        x = (np.frombuffer(raw, np.uint8).astype(np.float32) - 128) / 128
-    elif sw == 2:
-        x = np.frombuffer(raw, "<i2").astype(np.float32) / 32768
-    elif sw == 3:
-        b = np.frombuffer(raw, np.uint8).reshape(-1, 3)
-        x = ((b[:, 0].astype(np.int32) | (b[:, 1].astype(np.int32) << 8) | (b[:, 2].astype(np.int32) << 16)) << 8 >> 8).astype(np.float32) / 2 ** 23
-    elif sw == 4:
-        x = np.frombuffer(raw, "<i4").astype(np.float32) / 2 ** 31
+    if not 8000 <= rate <= 96000:
+        raise AudioError("Unsupported WAV sample rate.")
+    if len(x) / rate > MAX_S + 1:
+        raise AudioError("The recording is longer than 10 minutes.")
+    if x.dtype == np.uint8:
+        x = (x.astype(np.float32) - 128) / 128
+    elif x.dtype == np.int16:
+        x = x.astype(np.float32) / 32768
+    elif x.dtype == np.int32:                                          # 24-bit arrives left-justified in int32
+        x = x.astype(np.float32) / 2 ** 31
+    elif x.dtype.kind == "f":
+        x = x.astype(np.float32)
     else:
         raise AudioError("Unsupported WAV sample size.")
-    if not 8000 <= rate <= 96000 or ch < 1:
-        raise AudioError("Unsupported WAV sample rate.")
-    return x.reshape(-1, ch).mean(1), rate
+    return x.reshape(len(x), -1).mean(1), rate
 
 
 def _ffmpeg(data: bytes) -> bytes:

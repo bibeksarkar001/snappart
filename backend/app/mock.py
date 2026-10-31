@@ -48,6 +48,7 @@ def make_bundle(out: Path) -> None:
     (out / "model.stl").write_bytes(results.write_stl_bytes(v, fc))
     (out / "preview.stl").write_bytes(results.write_stl_bytes(pv, pf))
     (out / "preview.glb").write_bytes(results.glb_bytes(pv, pf))
+    (out / "preview_before.glb").write_bytes((out / "preview.glb").read_bytes())   # before any answer or correction; rebuilds keep it
     Mo.save(out / "model", field, g, feats)
     from capture import details as Dt, gates as G
     rep = Rp.build((v0, f0), feats, ans, user_given=(), details=Dt.mesh_candidates(v, fc), quality=G.check(v, fc, f_full, None, g))
@@ -88,7 +89,7 @@ def make_bundle(out: Path) -> None:
 
 def bundle(data_dir: Path) -> Path:
     """The canned bundle, generated once per data dir (atomic: built in a temp dir, then renamed into place)."""
-    final = Path(data_dir) / "mock_bundle_v5"                           # bump the version when the bundle's contents change
+    final = Path(data_dir) / "mock_bundle_v6"                           # bump the version when the bundle's contents change
     if (final / "report.json").exists():
         return final
     tmp = Path(tempfile.mkdtemp(dir=data_dir, prefix=".mock-"))

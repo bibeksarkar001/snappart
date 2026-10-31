@@ -16,6 +16,15 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.retry_after_s = status, code, message, retry_after_s
 
 
+class BuildFailure(Exception):
+    """A build that cannot finish, with a plain reason (buildproc writes it to the job). Lives here so the worker's build subprocess, which
+    runs app.buildproc as __main__, catches the same class that app.realbuild raises."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code, self.message = code, message
+
+
 def not_found(what="job"):
     return ApiError(404, "not_found", f"No such {what}.")
 

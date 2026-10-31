@@ -220,8 +220,19 @@ def summary_template(rep: dict) -> str:
             + (f" {open_q} questions are still open." if open_q else ""))
 
 
+COORDS = re.compile(r"-?\d+(?:\.\d+)?\s*(?:mm)?\s*,\s*-?\d+(?:\.\d+)?\s*(?:mm)?\s*,\s*-?\d+(?:\.\d+)?|\b[xyz]\s*[=:]\s*-?\d|coordinate",
+                    re.IGNORECASE)                                     # "165.83, 101.98, 1.22", "x = 167", "coordinates"
+
+
+def summary_source(rep: dict) -> dict:
+    """What Muse Spark sees: no mat coordinates. Positions (lists of numbers in the mat's frame) are left out entirely."""
+    feats = [f for f in rep.get("features") or [] if not isinstance(f.get("value"), list)]
+    return {"dims_mm": rep.get("dims_mm"), "features": feats, "questions": rep.get("questions"), "warnings": rep.get("warnings"),
+            "rebuild": rep.get("rebuild")}
+
+
 def summarize(client, rep: dict) -> dict:
-    src = {k: rep.get(k) for k in ("dims_mm", "features", "questions", "warnings", "rebuild")}
+    src = summary_source(rep)
 
     def go():
         if client is None:
@@ -230,5 +241,7 @@ def summarize(client, rep: dict) -> dict:
                    "were measured, which the user gave and which are estimates. Use only numbers from the report.\n" + json.dumps(src))
         if not numbers_ok(out["summary"], src):
             raise ValueError("number not in the report")
+        if COORDS.search(out["summary"]):
+            raise ValueError("coordinates in the summary")
         return {"summary": out["summary"], "source": M.SPARK}
     return _try(go, lambda why: {"summary": summary_template(rep), "source": "fallback (template)", "reason": why})

@@ -66,6 +66,7 @@ class Job(BaseModel):
     outputs: list[str]
     uploads: dict | None = None
     capture_check: dict | None = None
+    recorded: dict | None = None                   # replay mode only: which recorded run is shown (never a live call)
 
 
 class JobCreated(BaseModel):
@@ -102,6 +103,7 @@ class MetaModels(BaseModel):
     mode: str
     job_id: str | None
     models: list[ModelState]
+    recorded: dict | None = None                   # replay mode only
 
 
 class ProposalRequest(Strict):

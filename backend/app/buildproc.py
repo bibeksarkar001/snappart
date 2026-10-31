@@ -11,15 +11,13 @@ from .settings import get_settings
 from .storage import LocalStorage
 
 
-class BuildFailure(Exception):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code, self.message = code, message
+from .errors import BuildFailure  # noqa: F401  (one class: this module also runs as __main__)
 
 
 def real_build(conn, storage, settings, job_id):
-    """Real pipeline run from the uploaded frames. Not wired yet: it needs the Meta client for SAM 3.1 (backend stage 4)."""
-    raise BuildFailure("real_build_not_available", "Building from your frames is not switched on yet on this server.")
+    """Real pipeline run from the uploaded frames (app/realbuild.py)."""
+    from . import realbuild
+    return realbuild.run(conn, storage, settings, job_id)
 
 
 def run(job_id: str) -> dict:
@@ -27,7 +25,13 @@ def run(job_id: str) -> dict:
     st = LocalStorage(s.data_dir)
     with db.session(s.db_path) as conn:
         try:
-            state, reason = (mock.run_build if s.mock else real_build)(conn, st, s, job_id)
+            if s.mock:
+                state, reason = mock.run_build(conn, st, s, job_id)
+            elif s.replay:
+                from . import replay
+                state, reason = replay.run_build(conn, st, s, job_id)
+            else:
+                state, reason = real_build(conn, st, s, job_id)
             out = {"state": state, "reason": reason, "error": None}
         except BuildFailure as e:
             out = {"state": "failed", "reason": e.message, "error": [e.code, e.message]}

@@ -79,7 +79,7 @@ def public(row: dict, outputs: list[str] | None = None) -> dict:
 
 def model_status(conn, models, mode: str, window_s: int, job_id: str | None = None) -> list[dict]:
     """Truthful model state from recorded calls only: "running" needs a successful recorded call (in this job, or globally within the
-    window). In mock mode no model is running, whatever the table says."""
+    window). In mock and replay modes no model is running, whatever the table says."""
     out, since = [], db.now() - window_s
     for m in models:
         q = "SELECT SUM(ok), SUM(1 - ok), MAX(CASE WHEN ok THEN ts END) FROM model_calls WHERE model = ?"
@@ -90,6 +90,7 @@ def model_status(conn, models, mode: str, window_s: int, job_id: str | None = No
         ok, bad, last_ok = conn.execute(q, args).fetchone()
         running = mode == "real" and last_ok is not None and (job_id is not None or last_ok >= since)
         reason = ("mock mode: no Meta model is called" if mode == "mock" else
+                  "replay mode: a recorded run is shown; no Meta model is called now" if mode == "replay" else
                   "a call succeeded" + (" in this job" if job_id else " recently") if running else "no successful call recorded")
         out.append({"id": m, "running": running, "reason": reason, "calls_ok": ok or 0, "calls_failed": bad or 0, "last_ok_at": last_ok})
     return out

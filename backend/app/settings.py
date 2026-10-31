@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     environment: str = Field("development", pattern="^(development|test|production)$")
     mock: bool = False                                   # SNAPPART_MOCK=1: canned build, same API, exposed in every response header
     allow_mock_in_production: bool = False               # mock mode in production refuses to start unless this is set explicitly
+    replay: bool | None = None                           # serve the recorded real run (app/replay.py); default: on when no key is set
+    replay_dir: Path = BACKEND.parent / "examples" / "recorded" / "part_b"
+    part_only_pictures: bool = False                     # recordings only: cards, review and inside images show the part alone (white background)
     data_dir: Path = BACKEND / "storage"                 # DATA_DIR: jobs/{id}/ files + the SQLite database (git-ignored)
     db_name: str = "snappart.db"
     model_api_key: SecretStr | None = Field(None, validation_alias=AliasChoices("MODEL_API_KEY", "SNAPPART_MODEL_API_KEY"))
@@ -114,6 +117,16 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _replay_without_key(self):
+        for k in ("model_api_key", "turnstile_secret", "resume_pepper"):   # a blank KEY= line (as in .env.example) means "not set"
+            v = getattr(self, k)
+            if v is not None and not v.get_secret_value().strip():
+                setattr(self, k, None)
+        if self.replay is None:
+            self.replay = not self.mock and self.model_api_key is None
+        return self
+
+    @model_validator(mode="after")
     def _no_wildcard_cors(self):
         if any(o.strip() == "*" for o in self.cors_origins):
             raise ValueError("SNAPPART_CORS_ORIGINS must list origins; '*' is not allowed")
@@ -121,7 +134,7 @@ class Settings(BaseSettings):
 
     @property
     def mode(self) -> str:
-        return "mock" if self.mock else "real"
+        return "mock" if self.mock else "replay" if self.replay else "real"
 
     @property
     def db_path(self) -> Path:
