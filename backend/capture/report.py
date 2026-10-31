@@ -13,9 +13,10 @@ from .model import estimate_answers, rebuild  # noqa: F401  (rebuild is part of 
 from .question_cards import CHOICES, TEXT
 
 FEATURE_OF = {"groove_depth_mm": "grooves", "bump_height_mm": "lock_bump", "bump_width_mm": "lock_bump", "bump_length_mm": "lock_bump",
-              "bump_shape": "lock_bump", "bump_top_shape": "lock_bump", "plate_thickness_mm": "plate"}
+              "bump_shape": "lock_bump", "plate_thickness_mm": "plate"}     # one shape question (box / rounded / hill); bump_top_shape is
+                                                                    # still accepted from older stored answers, but no longer asked
 QUESTIONS = {k: (FEATURE_OF[k], *TEXT[k]) for k in FEATURE_OF}
-RIDGE_ONLY = {"bump_top_shape", "bump_shape"}
+RIDGE_ONLY = {"bump_shape"}
 
 
 def questions(features, answers_given=None, height_mm=None):

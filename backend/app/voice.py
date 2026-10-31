@@ -13,8 +13,8 @@ import wave
 import numpy as np
 
 MAX_S = 600
-KEYWORDS = ["slot", "slots", "bump", "ridge", "lock ridge", "plate", "depth", "height", "width", "flat", "remove", "rounded", "sharp",
-            "underside", "opposite side", "millimetre", "millimetres", "mm"]
+KEYWORDS = ["slot", "slots", "depth", "deep", "ridge", "plate", "millimetres", "mm", "point", "bump", "lock ridge", "height", "width",
+            "flat", "remove", "rounded", "sharp", "underside", "opposite side", "millimetre"]   # hints for the speech recogniser
 
 
 class AudioError(ValueError):

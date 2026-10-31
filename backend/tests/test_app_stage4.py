@@ -337,3 +337,17 @@ def test_summary_never_carries_mat_coordinates(tmp_path):
     for bad in ("The ridge sits at 51.54, 41.99, 11.14 mm.", "The ridge is at x = 4 on the mat.", "Its coordinates are 4 and 4."):
         out = spark.summarize(client(s, Fake(chat_reply({"summary": bad}))), rep)
         assert out["source"] == "fallback (template)" and "51.54, 41.99" not in out["summary"], bad          # rejected: the template is used
+
+
+def test_voice_answers_the_open_question(tmp_path):
+    s = settings(tmp_path)
+    q = {"id": "groove_depth_mm", "title": "How deep are the slots?", "unit": "mm", "choices": None, "min": 0.2, "max": 11.0}
+    ok = lambda v: None if 0.2 <= float(v) < 11 else "out of range"
+    p = spark.propose_answer(client(s, Fake(chat_reply({"answer": "3.5", "explanation": "three point five mm"}))), "three point five millimetres", q, ok)
+    assert p["answer"] == 3.5 and p["source"] == "muse-spark-1.3" and p["question_id"] == "groove_depth_mm" and "answers" in p["confirm_with"]
+    assert spark.propose_answer(client(s, Fake(chat_reply({"answer": "40", "explanation": "x"}))), "forty", q, ok)["answer"] is None     # checked
+    fb = spark.propose_answer(None, "the slots are three point seven deep", q, ok)
+    assert fb["answer"] == 3.7 and fb["source"].startswith("fallback")
+    shape = {"id": "bump_shape", "title": "Shape?", "unit": "", "choices": ["box", "rounded", "hill"]}
+    assert spark.propose_answer(client(s, Fake(chat_reply({"answer": "pyramid", "explanation": "x"}))), "it is a hill", shape, lambda v: None)["answer"] == "hill"
+    assert set(["slot", "slots", "depth", "deep", "ridge", "plate", "millimetres", "mm", "point"]) <= set(voice.KEYWORDS)

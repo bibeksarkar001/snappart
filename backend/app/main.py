@@ -643,6 +643,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ------------------------------------------------------------------ Muse Spark / Muse Voice: proposals, voice, summary
 
+    def answer_proposal(c, job_id: str, qid: str, text: str) -> dict:
+        """What the user said, read as the answer to the open question qid (checked against the part like any typed answer)."""
+        q = next((x for x in results.questions_view(st, job_id, results.stored_answers(c, job_id)) if x["id"] == qid), None)
+        if q is None or q["answered"]:
+            raise ApiError(409, "question_not_open", "That question is not open for this part.")
+        from capture import question_cards as Q
+        part = results.part_dims(results.base_report(st, job_id))
+
+        def check(v):
+            why = Q.check_answer(qid, v, part)
+            if why is None and Q.bounds(qid, part) and not (Q.bounds(qid, part)[0] <= float(v) < Q.bounds(qid, part)[1]):
+                why = f"it must be between {Q.bounds(qid, part)[0]} and {Q.bounds(qid, part)[1]} mm"
+            return why
+        return spark.propose_answer(meta(job_id), text, q, check)
+
     def proposal_for(c, job_id: str, text: str, item_id: str | None) -> dict:
         item = None
         if item_id:
@@ -663,9 +678,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return out | {"label": replay.OFFLINE_PROPOSAL, "recorded": rec} if rec else out
 
     @app.post("/v1/jobs/{job_id}/voice")
-    async def post_voice(request: Request, job_id: str, audio: UploadFile = File(...), item_id: str | None = Form(None, pattern=r"^[A-Z][0-9]{2}$")):
-        """Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> correction proposal. The audio is
-        held in memory only and dropped as soon as it is transcribed. If transcription is not possible the error says to type instead."""
+    async def post_voice(request: Request, job_id: str, audio: UploadFile = File(...), item_id: str | None = Form(None, pattern=r"^[A-Z][0-9]{2}$"),
+                         question_id: str | None = Form(None, pattern=r"^[a-z0-9_]{1,40}$")):
+        """Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> a proposal: with question_id (a
+        question that is open), a proposed answer to it; otherwise a correction proposal. The audio is held in memory only and dropped as
+        soon as it is transcribed. Nothing is applied: the user confirms. If transcription is not possible the error says to type instead."""
         job_id_ok(job_id)
         if int(request.headers.get("content-length") or 0) > s.max_audio_bytes + 64 * 1024:
             raise ApiError(413, "payload_too_large", f"The recording is larger than {s.max_audio_bytes // 2**20} MB.")
@@ -695,8 +712,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finally:
                 del wav
             with conn() as c:
-                prop = proposal_for(c, job_id, tr["transcript"], item_id) if tr["transcript"].strip() else \
-                    {"correction": None, "explanation": "Nothing was heard in the recording.", "action": "none", "text": ""}
+                if not tr["transcript"].strip():
+                    prop = {"correction": None, "explanation": "Nothing was heard in the recording.", "action": "none", "text": ""}
+                elif question_id:
+                    prop = answer_proposal(c, job_id, question_id, tr["transcript"])
+                else:
+                    prop = proposal_for(c, job_id, tr["transcript"], item_id)
             return {"transcript": tr["transcript"], "audio_seconds": round(dur, 2), "source": meta_client.VOICE, "audio_kept": False, "proposal": prop}
         return await run_in_threadpool(work)
 
@@ -739,6 +760,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Content-Disposition": f'{disp}; filename="{name}"', "Cache-Control": "no-store", "X-SnapPart-Draft": "true" if draft else "false",
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
             **({"X-SnapPart-Label": replay.OFFLINE} if made else {})})
+
+    @app.get("/v1/recorded/calipers")
+    def recorded_calipers():
+        """The recorded part B run's sizes against the owner's calipers (any mode: the bundle is part of the repository)."""
+        t_ = replay.caliper_table(s)
+        if t_ is None:
+            raise ApiError(404, "not_found", "No recorded run with caliper readings is available.")
+        return t_
 
     @app.get("/v1/jobs/{job_id}/recorded-answers")
     def recorded_answers(job_id: str):

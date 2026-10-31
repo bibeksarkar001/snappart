@@ -56,6 +56,12 @@ How this part's build worked, for that part only. It is kept in the job's storag
 - `image` repeats `url`, `cameras` lists each frame's camera position (mm), and `stages` repeats `timings.per_stage_s`, in the shape the web app's panel reads.
 - In replay mode, `meta_calls` is the recorded run's call log, with every row carrying `recorded: "recorded run, <date>"`. `live_meta_calls` is empty, because nothing is called now. The frames are part-only crops.
 
+### `GET /v1/recorded/calipers` (any mode)
+
+The recorded part B run's sizes against the owner's caliper readings (`examples/recorded/part_b/calipers.json`, labelled `user_supplied`), for the Home and Result tables. Returns `rows` with `dimension`, `measured_mm`, `caliper_mm` and `error_mm` (measured minus caliper), plus `held_out_iou` and the `recorded` label. Returns 404 when no bundle with calipers is present. In replay, the job's report also carries `caliper`, `error` and `caliper_status` on each `dims_mm` entry.
+
+A conflict question (plate thickness against the video) also accepts `"keep my answer"` (the stored value stands, marked `confirmed`) or `"use video"` (the video's value is used).
+
 ### `GET /v1/jobs/{job_id}/recorded-answers` (replay only)
 
 The answers the owner gave in the recorded run: caliper values from `backend/tests/fixtures/part_b.json`, and the ridge shape. They are labelled `user_supplied`. The replay job starts with them applied. Each question in `GET .../questions` also carries `recorded_answer`, so the app can offer "Use this answer" after the user changes something. Outside replay mode this returns 404.
@@ -396,12 +402,15 @@ If the action needs an area and none is selected, the response is `correction: n
 
 ### `POST /v1/jobs/{job_id}/voice`
 
-`multipart/form-data` with `audio` (the recording) and an optional `item_id`. Rate limited per client.
+`multipart/form-data` with `audio` (the recording), and optionally `item_id` (a review item) or `question_id` (an open question). Rate limited per client.
+
+- **With `question_id`:** the transcript is read as the answer to that question. `proposal` is `{"question_id", "answer", "explanation", "source", "confirm_with"}`. `answer` is a number in the question's unit or one of its choices, checked against the part like a typed answer, or `null` when the words do not answer the question. Nothing is applied; the user confirms with `POST .../answers`. Without Muse Spark, a rule reads digits or spoken numbers ("three point five"). A question that is not open gives `409 question_not_open`.
+- **Without `question_id`:** the transcript becomes a correction proposal, as below.
 
 **Audio handling:**
 - At most 32 MB and 10 minutes.
-- WAV in any PCM format is converted in memory to mono 16-bit 24 kHz. Other formats need `ffmpeg` on the server.
-- The audio is transcribed by Muse Voice Transcribe, with part vocabulary as keywords (slot, ridge, plate, depth, flat, ...).
+- WAV (PCM or float, plain or WAVE_FORMAT_EXTENSIBLE) is converted in memory to mono 16-bit 24 kHz. Other formats need `ffmpeg` on the server.
+- The audio is transcribed by Muse Voice Transcribe, with part vocabulary as keywords (slot, slots, depth, deep, ridge, plate, millimetres, mm, point, ...).
 - The audio is dropped at once and never stored.
 
 **Response:**

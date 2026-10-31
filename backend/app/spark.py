@@ -177,6 +177,65 @@ def build_correction(choice: dict, item: dict | None, feature_ids) -> dict | Non
     return Cr.validate(c, feature_ids, [])
 
 
+ANSWER = _obj({"answer": _str(40), "explanation": _str(300)})
+WORDS = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+                                     "seventeen eighteen nineteen twenty".split())}
+
+
+def spoken_number(text: str) -> float | None:
+    """The first number in a transcript: digits ("3.5"), or words with "point" ("three point five", "twelve point two five")."""
+    m = NUM.search(text)
+    if m:
+        return float(m.group())
+    toks = re.findall(r"[a-z]+", text.lower())
+    for i, w in enumerate(toks):
+        if w in WORDS:
+            whole, frac, j = WORDS[w], "", i + 1
+            if j < len(toks) and toks[j] == "point":
+                while j + 1 < len(toks) and toks[j + 1] in WORDS and WORDS[toks[j + 1]] < 10:
+                    frac += str(WORDS[toks[j + 1]])
+                    j += 1
+            return float(f"{whole}.{frac}") if frac else float(whole)
+    return None
+
+
+def propose_answer(client, text: str, question: dict, check) -> dict:
+    """Spoken (or typed) words while a question is open -> a proposed answer for that question, for the user to confirm with
+    POST .../answers. check(value) returns None if the value fits the part, else the reason. Nothing is applied here."""
+    t = clean_user_text(text)
+    base = {"question_id": question["id"], "text": t, "confirm_with": "POST /v1/jobs/{job_id}/answers"}
+
+    def checked(v, source, why):
+        if v is None:
+            return {**base, "answer": None, "explanation": why, "source": source}
+        bad = check(v)
+        return {**base, "answer": None if bad else v, "explanation": f"{why} ({bad})" if bad else why, "source": source}
+
+    def rules(reason):
+        if question.get("choices"):
+            v = next((c for c in question["choices"] if c in t.lower()), None)
+            return checked(v, "fallback (keyword rules)", f"Heard: {t}" if v else "No choice was recognised in what you said.") | {"reason": reason}
+        v = spoken_number(t)
+        return checked(v, "fallback (keyword rules)", f"Heard {v} {question.get('unit') or ''}".strip() if v is not None
+                       else "No number was recognised in what you said.") | {"reason": reason}
+
+    def go():
+        if client is None:
+            raise M.MetaError("*", "no Meta client (mock mode or no key)")
+        q = {k: question.get(k) for k in ("title", "unit", "choices", "min", "max")}
+        out = _ask(client, "answer_from_speech", ANSWER,
+                   f"The user was asked this question: {json.dumps(q)}. From their words, give the answer as a plain number in the question's "
+                   "unit (digits, no unit), or exactly one of the choices, or 'none' if they did not answer it.\n<user_text>" + t + "</user_text>")
+        a = out["answer"].strip()
+        if a.lower() == "none":
+            return checked(None, M.SPARK, out["explanation"])
+        v = a if question.get("choices") else float(a)
+        if question.get("choices") and v not in question["choices"]:
+            raise ValueError("not one of the choices")
+        return checked(v, M.SPARK, out["explanation"])
+    return _try(go, rules)
+
+
 def propose(client, text: str, item: dict | None, feature_ids) -> dict:
     """A proposal for the user to confirm: {"correction" (or None), "explanation", "source", "text"}. Nothing is applied here."""
     t = clean_user_text(text)

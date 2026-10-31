@@ -44,6 +44,10 @@ def test_replay_serves_the_recorded_run(tmp_path, capsys):
     assert rep["mode"] == "replay" and rep["recorded"]["label"] == label and rep["warnings"][0].startswith(f"Recorded run ({label})")
     assert rep["held_out_iou"] == json.loads((BUNDLE / "report.json").read_text())["held_out_iou"]
     q = cl.get(f"/v1/jobs/{jid}/questions").json()
+    if replay.answers(s):                                                                           # the owner answered and confirmed all
+        assert q["open_questions"] == 0 and all(x["answered"] for x in q["questions"]), [x["id"] for x in q["questions"] if not x["answered"]]
+        plate = next((x for x in q["questions"] if x["id"] == "plate_thickness_mm"), None)
+        assert plate is None or plate["confirmed"] and plate["status"] == "user_supplied"
     assert q["recorded"]["label"] == label and all(x["friendly"] is None or x["friendly"]["recorded"] == label for x in q["questions"])
     assert cl.get(f"/v1/jobs/{jid}/summary").json()["recorded"]["label"] == label
     m = cl.get("/v1/meta/models").json()
@@ -123,3 +127,32 @@ def test_mock_build_keeps_the_before_model(tmp_path):
     cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {qid: "skip"}})
     assert cl.post(f"/v1/jobs/{jid}/rebuild").status_code == 200
     assert before and cl.get(f"/v1/jobs/{jid}/files/preview_before.glb").content == before
+
+
+def test_conflict_can_be_resolved_with_the_video_value(tmp_path):
+    s, cl, st, jid = built_replay(tmp_path)
+    plate = next((x for x in cl.get(f"/v1/jobs/{jid}/questions").json()["questions"] if x["id"] == "plate_thickness_mm"), None)
+    if plate is None or not replay.editable(s):
+        return
+    from app import results
+    sep = results._feature_value(results.base_report(st, jid), "plate.faces_separation")["value"]
+    assert cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"plate_thickness_mm": "use video"}}).status_code == 200
+    q = next(x for x in cl.get(f"/v1/jobs/{jid}/questions").json()["questions"] if x["id"] == "plate_thickness_mm")
+    assert q["answer"] == round(sep, 2) and q["answered"] and q["confirmed"]
+    assert cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"groove_depth_mm": "keep my answer"}}).status_code == 422
+
+
+def test_caliper_table_and_report_errors(tmp_path):
+    cal = json.loads((BUNDLE / "calipers.json").read_text())["calipers_mm"] if (BUNDLE / "calipers.json").is_file() else None
+    s = Settings(data_dir=tmp_path / "m", environment="test", mock=True)
+    r = TestClient(create_app(s)).get("/v1/recorded/calipers")
+    if cal is None:
+        assert r.status_code == 404
+        return
+    rep = json.loads((BUNDLE / "report.json").read_text())
+    rows = {x["dimension"]: x for x in r.json()["rows"]}
+    for k, c in cal.items():
+        assert rows[k]["caliper_mm"] == c and rows[k]["error_mm"] == round(rep["dims_mm"][k]["measured"] - c, 2)
+    s2, cl, st, jid = built_replay(tmp_path)
+    dims = cl.get(f"/v1/jobs/{jid}/report").json()["dims_mm"]
+    assert all(dims[k]["caliper"] == c and dims[k]["caliper_status"] == "user_supplied" for k, c in cal.items())

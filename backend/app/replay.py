@@ -57,7 +57,7 @@ def run_build(conn, storage, settings, job_id: str) -> tuple[str, str]:
     before = src / ("preview_before.glb" if (src / "preview_before.glb").is_file() else "preview.glb")
     if before.is_file():                                                # the recorded build's raw preview is the "before" model
         storage.put(job_id, "outputs/preview_before.glb", before.read_bytes())
-    rep = json.loads((src / "report.json").read_text())
+    rep = with_calipers(json.loads((src / "report.json").read_text()), settings)
     rep.update(mode="replay", recorded=rec)
     rep["warnings"].insert(0, f"Recorded run ({rec['label']}): {rec['note']}")
     storage.put(job_id, "outputs/report.json", json.dumps(rep, indent=1).encode())
@@ -66,8 +66,36 @@ def run_build(conn, storage, settings, job_id: str) -> tuple[str, str]:
     if ans:
         from . import results
         results.save_answers(conn, storage, job_id, ans["answers"])
+        if ans.get("confirm"):                                          # conflicts the owner resolved (e.g. plate: "keep my answer")
+            results.save_answers(conn, storage, job_id, ans["confirm"])
     events.emit(conn, job_id, "build_finished", {"outputs": keys, "questions": len(rep["questions"]), "mock": False, "recorded": rec["label"]})
     return ("needs_input", "recorded run: questions the camera could not answer") if rep["questions"] else ("reviewing", "recorded run")
+
+
+def calipers(s) -> dict | None:
+    """The owner's caliper readings saved with the recording (labelled user_supplied), or None."""
+    p = Path(s.replay_dir) / "calipers.json"
+    return json.loads(p.read_text()) if p.is_file() else None
+
+
+def with_calipers(rep: dict, s) -> dict:
+    """The report's dims with each caliper value and the error (measured - caliper), as report.build fills them when calipers are known."""
+    cal = (calipers(s) or {}).get("calipers_mm") or {}
+    for k, d in (rep.get("dims_mm") or {}).items():
+        if k in cal:
+            d.update(caliper=cal[k], error=round(d["measured"] - cal[k], 2), caliper_status="user_supplied")
+    return rep
+
+
+def caliper_table(s) -> dict | None:
+    """Measured vs caliper per size for the recorded part (Home and Result), with the held-out score; None without a bundle."""
+    c = calipers(s)
+    if c is None or not (Path(s.replay_dir) / "report.json").is_file():
+        return None
+    rep = with_calipers(json.loads((Path(s.replay_dir) / "report.json").read_text()), s)
+    rows = [{"dimension": k, "measured_mm": d["measured"], "caliper_mm": d.get("caliper"), "error_mm": d.get("error")} for k, d in rep["dims_mm"].items()]
+    return {"part": c["part"], "rows": rows, "calipers_status": c["status"], "calipers_source": c["source"], "held_out_iou": rep.get("held_out_iou"),
+            "recorded": recorded(str(s.replay_dir))}
 
 
 def answers(s) -> dict | None:

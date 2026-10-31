@@ -92,7 +92,8 @@ def questions_view(storage, jid, answers) -> list[dict]:
         qid, b = q["id"], Q.bounds(q["id"], part)
         sep = _feature_value(rep, "plate.faces_separation") if qid == "plate_thickness_mm" else None
         a = answers.get(qid)
-        conflict = L.plate_conflict(sep["value"] if sep else None, a if isinstance(a, (int, float)) else None)   # learnings rule 4
+        conflict = None if answers.get(qid + CONFIRMED) else \
+            L.plate_conflict(sep["value"] if sep else None, a if isinstance(a, (int, float)) else None)   # learnings rule 4, until confirmed
         card = f"outputs/cards/{qid}/"
         out.append({
             "id": qid, "feature": q["feature_id"], "label": LABEL.get(q["feature_id"], q["feature_id"]),
@@ -100,6 +101,7 @@ def questions_view(storage, jid, answers) -> list[dict]:
             "title": q["question"], "detail": _detail(q, rep), "hint": q["hint"], "unit": q["unit"], "default": q["default"],
             "min": b[0] if b else None, "max": b[1] if b else None, "choices": q.get("choices"),
             "candidates": conflict["candidates"] if conflict else None, "conflict_message": conflict["message"] if conflict else None,
+            "resolve_choices": list(RESOLVE) if conflict else None, "confirmed": bool(answers.get(qid + CONFIRMED)),
             "applies_to": (_feature_value(rep, "grooves.count") or {}).get("value") if q["feature_id"] == "grooves" else None,
             "impact": None,
             "answered": a is not None and not conflict, "answer": a,
@@ -110,8 +112,13 @@ def questions_view(storage, jid, answers) -> list[dict]:
     return out
 
 
+CONFIRMED = "__confirmed"                                               # stored beside a conflict answer the user kept
+RESOLVE = ("keep my answer", "use video")
+
+
 def save_answers(conn, storage, jid, given: dict) -> dict:
-    """Validate (bounds, units, choices; "skip" = I don't know -> labelled estimate) and store; returns {saved, open_questions}."""
+    """Validate (bounds, units, choices; "skip" = I don't know -> labelled estimate) and store; returns {saved, open_questions}.
+    A conflict question (plate thickness vs the video) also takes "keep my answer" (the stored value stands, confirmed) or "use video"."""
     rep = base_report(storage, jid)
     ids = {q["id"] for q in rep["questions"]}
     part = part_dims(rep)
@@ -119,6 +126,15 @@ def save_answers(conn, storage, jid, given: dict) -> dict:
     for qid, v in given.items():
         if qid not in ids:
             raise ApiError(422, "unknown_question", f"There is no question {qid!r} for this part.")
+        if v in RESOLVE:
+            sep = _feature_value(rep, "plate.faces_separation") if qid == "plate_thickness_mm" else None
+            old = stored_answers(conn, jid).get(qid)
+            if sep is None or not isinstance(old, (int, float)):
+                raise ApiError(422, "answer_out_of_range", f"There is no conflict to resolve for {qid!r}.")
+            if v == "use video":
+                clean[qid] = round(float(sep["value"]), 2)
+            clean[qid + CONFIRMED] = True
+            continue
         if v != "skip":
             why = Q.check_answer(qid, v, part)
             if why is None and Q.bounds(qid, part) and not (Q.bounds(qid, part)[0] <= float(v) < Q.bounds(qid, part)[1]):
@@ -132,7 +148,7 @@ def save_answers(conn, storage, jid, given: dict) -> dict:
             conn.execute("INSERT INTO answers (job_id, question_id, value, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(job_id, question_id) "
                          "DO UPDATE SET value = excluded.value, created_at = excluded.created_at", (jid, qid, json.dumps(v), db.now()))
     ans = stored_answers(conn, jid)
-    return {"saved": sorted(clean), "open_questions": sum(1 for q in ids if q not in ans), "rebuild_needed": True}
+    return {"saved": sorted(k for k in clean if not k.endswith(CONFIRMED)), "open_questions": sum(1 for q in ids if q not in ans), "rebuild_needed": True}
 
 
 # ---------------------------------------------------------------- corrections (undo stack)
