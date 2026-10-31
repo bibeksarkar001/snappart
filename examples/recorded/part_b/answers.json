@@ -8,5 +8,9 @@
   "bump_shape": "hill"
  },
  "status": "user_supplied",
- "source": "owner's calipers (backend/tests/fixtures/part_b.json) and confirmed ridge shape"
+ "source": "owner's calipers (backend/tests/fixtures/part_b.json) and confirmed ridge shape",
+ "confirm": {
+  "plate_thickness_mm": "keep my answer"
+ },
+ "confirm_note": "the video measured the plate's faces closer than the calipers; the owner keeps the caliper value (docs/accuracy.md)"
 }

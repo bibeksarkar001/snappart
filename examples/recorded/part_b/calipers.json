@@ -1,0 +1,10 @@
+{
+ "part": "part B (briefcase lock plate)",
+ "calipers_mm": {
+  "length": 51.6,
+  "width": 41.9,
+  "height": 11.8
+ },
+ "status": "user_supplied",
+ "source": "the owner's caliper readings (backend/tests/fixtures/part_b.json)"
+}

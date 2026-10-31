@@ -1,5 +1,7 @@
 {
- "job_id": "L0INUQdGrYBqh7PAVJZ8Xa9mdGcfeiS_",
- "summary": "The part measures 51.5 mm by 42.06 mm by 11.19 mm and has 4 rectangular slots measuring 7.28 mm by 2.62 mm, a lock ridge measuring 19.55 mm long standing 2.0 mm out with 2.0 mm height, and a plate measuring 1.5 mm thick. You told us the lock pin is part of the lock ridge. The groove depth of 5.475 mm, ridge base width of 2.0 mm and top radius of 0.5 mm with a hill shape are still estimates to confirm.",
- "source": "muse-spark-1.3"
+ "summary": "The part is about 51.5 by 42.06 by 11.19 mm, with four rectangular slots and a hill-shaped lock ridge on the side wall plus a flat plate. Measured from video were the overall size, the four slots at 7.28 by 2.62 mm, the ridge span of 19.55 mm sticking out by 2.0 mm, and the plate faces separation of 1.5 mm. You supplied with calipers the overall checks of 51.6, 41.9 and 11.8 mm, the slot depth of 3.7 mm, the ridge length of 19.7 mm with base width and height of 2.3 mm, and the plate thickness of 2.6 mm. The only estimate is the ridge top rounding of 0.5 mm.",
+ "source": "muse-spark-1.3",
+ "after_answers": true,
+ "generated_at": "2026-10-31T15:35:56+00:00",
+ "note": "regenerated with one Muse Spark call from the report after the owner's answers"
 }

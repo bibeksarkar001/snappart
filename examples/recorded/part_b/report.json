@@ -204,22 +204,6 @@
    ]
   },
   {
-   "id": "bump_top_shape",
-   "feature_id": "lock_bump",
-   "question": "What does the top of the lock ridge look like?",
-   "unit": "",
-   "default": "slightly rounded",
-   "default_source": "estimated",
-   "answered": false,
-   "answer": null,
-   "hint": "Look along the ridge from one end.",
-   "choices": [
-    "sharp",
-    "slightly rounded",
-    "quite rounded"
-   ]
-  },
-  {
    "id": "plate_thickness_mm",
    "feature_id": "plate",
    "question": "How thick is the flat plate, measured in its middle?",

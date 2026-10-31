@@ -171,43 +171,6 @@
    }
   },
   {
-   "id": "bump_top_shape",
-   "feature": "lock_bump",
-   "label": "Lock ridge",
-   "kind": "choice",
-   "default_source": "estimated",
-   "title": "What does the top of the lock ridge look like?",
-   "detail": "No frame shows the ridge end-on, so its top is an estimate until you say.",
-   "hint": "Look along the ridge from one end.",
-   "unit": "",
-   "default": "slightly rounded",
-   "min": null,
-   "max": null,
-   "choices": [
-    "sharp",
-    "slightly rounded",
-    "quite rounded"
-   ],
-   "candidates": null,
-   "conflict_message": null,
-   "applies_to": null,
-   "impact": null,
-   "answered": false,
-   "answer": null,
-   "status": null,
-   "card": {
-    "image": "/v1/jobs/L0INUQdGrYBqh7PAVJZ8Xa9mdGcfeiS_/files/cards/bump_top_shape/card.png",
-    "diagram": "/v1/jobs/L0INUQdGrYBqh7PAVJZ8Xa9mdGcfeiS_/files/cards/bump_top_shape/diagram.svg",
-    "meta": "/v1/jobs/L0INUQdGrYBqh7PAVJZ8Xa9mdGcfeiS_/files/cards/bump_top_shape/card.json"
-   },
-   "friendly": {
-    "detail": "We can't see it head-on yet, so this is just our best guess.",
-    "hint": "Try looking along the ridge from the end.",
-    "title": "What shape is the top of the lock ridge?",
-    "source": "muse-spark-1.3"
-   }
-  },
-  {
    "id": "plate_thickness_mm",
    "feature": "plate",
    "label": "Flat plate",
@@ -241,7 +204,7 @@
    }
   }
  ],
- "open_questions": 7,
+ "open_questions": 6,
  "review_items": [],
  "coverage_requests": []
 }

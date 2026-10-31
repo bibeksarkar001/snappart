@@ -78,8 +78,8 @@
  },
  "meta_calls": {
   "muse-spark-1.3": {
-   "calls": 10,
-   "ok": 10
+   "calls": 11,
+   "ok": 11
   },
   "sam-3.1": {
    "calls": 220,
@@ -92,5 +92,6 @@
  },
  "model_npz_mb": 34.3,
  "model_in_bundle": true,
- "voice": "sent"
+ "voice": "sent",
+ "meta_calls_note": "counted from meta_calls.jsonl, including single steps re-run on the recording (summary after answers; voice step)"
 }
