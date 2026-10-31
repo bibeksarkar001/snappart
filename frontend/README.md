@@ -1,32 +1,37 @@
-# React + TypeScript + Vite
+# SnapPart frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React, Vite, TypeScript, Tailwind and three.js. It implements the approved design in `docs/design/approved/` and uses the API in `docs/api.md`.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Start the API on :8000 first (see `docs/ops.md`; replay mode needs no key). Then, in `frontend/`:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The dev server runs on https://localhost:5173 with a self-signed certificate, which the microphone needs. It proxies `/v1`, `/readyz` and `/healthz` to the API. Set `SNAPPART_API` to proxy a different API URL. For a build served from another origin, set `VITE_API_BASE` and list that origin in the API's `SNAPPART_CORS_ORIGINS`.
+
+## Example model
+
+The Home hero loads `public/example/part_b.glb`. The file is not in the repository; put the recorded part B preview there to show it. Without it, the hero shows "3D preview unavailable".
+
+## Licences
+
+Runtime dependencies and their licences:
+
+| Package | Licence | Use |
+|---|---|---|
+| react, react-dom | MIT | UI |
+| three | MIT | 3D viewer |
+| qrcode 1.5.4 | MIT | QR code of the resume link, made in the browser (no online service) |
+
+## Test
+
+With the API and a worker running in replay mode (`SNAPPART_REPLAY=1`):
+
+```bash
+npx playwright test
+```
+
+The smoke test walks the main path: create a job, extract frames in the browser, upload, run the capture check, build, follow SSE progress, answer questions, record voice, open the result, download the STL and resume. It also saves a screenshot of every screen to `screenshots/`.
