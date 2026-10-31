@@ -5,6 +5,7 @@ SCAN_STRIDE = 2                 # marker detection on every 2nd frame
 MIN_MARKERS = 4                 # a pose needs >= 4 markers
 MAX_RMS_PX = 1.0                # reject frames with marker reprojection rms above this ...
 MAX_RMS_RELAXED_PX = 1.5        # ... relaxed in 0.25 px steps up to this only if fewer than MIN_ACCEPTED frames pass (video 3 needed 1.25)
+RMS_REF_LONG_SIDE_PX = 1920     # browser path: the pose limit above is in pixels of a 1920 px frame; larger frames scale it (pipeline.crops_from_frames)
 MIN_ACCEPTED = 160
 FRAMES_PER_VIDEO = 80           # selected views per video, spread over azimuth x elevation
 CALIB_FRAMES_PER_VIDEO = 120    # frames per video for the joint mat self-calibration
@@ -34,6 +35,7 @@ BOX_HI = (148.5 + 35, 105 + 35, 45.0)
 
 # ridge cross-section: a hill (straight sides, rounded peak). Its top radius is an ESTIMATE until a user answers: no frame shows it edge-on.
 BUMP_TOP_RADIUS_MM = 0.5
+BUMP_SHAPES = ("box", "rounded", "hill")                    # a ridge's profile (model.profile); "hill" = the shape confirmed on part B
 TOP_SHAPE_RADIUS_MM = {"sharp": 0.1, "slightly rounded": 0.5, "quite rounded": 1.0}   # answers of the "top shape" card (estimates)
 
 # "Review your model" anomaly finder (v4 stage 3), tuned on the owner's three marks on the v3 part B model (2304 threshold sets): recall 3/3,

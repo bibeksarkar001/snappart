@@ -197,7 +197,7 @@ def correct_features(field, g, feats, corrections):
             feats[c["feature_id"]] = dict(c["feature"])
         elif op == "set_feature_shape":
             b = feats[c["feature_id"]]
-            b.update(shape=c["shape"], **({"top_radius_mm": c["top_radius_mm"]} if c.get("top_radius_mm") is not None else {}))
+            b.update(shape=c["shape"], shape_corrected=True, **({"top_radius_mm": c["top_radius_mm"]} if c.get("top_radius_mm") is not None else {}))
         elif op == "move_feature_to_opposite_face":
             b = feats[c["feature_id"]]
             p, n, t = opposite_face(field, g, b["base_mid"], b["normal"])
@@ -223,7 +223,17 @@ def region_corrections(field, g, feats, corrections, answers):
     return f
 
 
+def ridge_placed(b, width):
+    """A pipeline ridge is anchored on the wall it stands on (wall_mid): its base midpoint is wall_mid + across * width / 2, so answering
+    the base width keeps the ridge's wall side where the video put it. Other features are returned unchanged."""
+    if b and b.get("kind") == "ridge" and "base_mid" not in b and "wall_mid" in b:
+        return {**b, "base_mid": (np.asarray(b["wall_mid"], float) + np.asarray(b["across"], float) * width / 2).tolist()}
+    return b
+
+
 def apply(field, g, feats, answers, corrections=None):
+    if feats.get("bump"):
+        feats = {**feats, "bump": ridge_placed(feats["bump"], answers.get("bump_width_mm", 0.0))}
     feats = correct_features(field, g, feats, corrections)
     f = field
     if feats.get("plate") and answers.get("plate_thickness_mm"):
@@ -235,6 +245,8 @@ def apply(field, g, feats, answers, corrections=None):
     if b and answers.get("bump_height_mm"):
         if b.get("kind") == "ridge":
             top_r = b["top_radius_mm"] if "top_radius_mm" in b else answers.get("bump_top_radius_mm", C.BUMP_TOP_RADIUS_MM)   # a correction wins
+            if not b.get("shape_corrected") and answers.get("bump_shape"):                                               # ... over the answer
+                b = {**b, "shape": answers["bump_shape"]}
             f = ridge_op(f, g, b, answers["bump_length_mm"], answers["bump_width_mm"], answers["bump_height_mm"], top_r)
         else:
             f = oriented_box(f, g, *bump_op(b, answers["bump_length_mm"], answers["bump_width_mm"], answers["bump_height_mm"]), add=True)

@@ -13,9 +13,9 @@ from .model import estimate_answers, rebuild  # noqa: F401  (rebuild is part of 
 from .question_cards import CHOICES, TEXT
 
 FEATURE_OF = {"groove_depth_mm": "grooves", "bump_height_mm": "lock_bump", "bump_width_mm": "lock_bump", "bump_length_mm": "lock_bump",
-              "bump_top_shape": "lock_bump", "plate_thickness_mm": "plate"}
+              "bump_shape": "lock_bump", "bump_top_shape": "lock_bump", "plate_thickness_mm": "plate"}
 QUESTIONS = {k: (FEATURE_OF[k], *TEXT[k]) for k in FEATURE_OF}
-RIDGE_ONLY = {"bump_top_shape"}
+RIDGE_ONLY = {"bump_top_shape", "bump_shape"}
 
 
 def questions(features, answers_given=None, height_mm=None):
@@ -23,8 +23,9 @@ def questions(features, answers_given=None, height_mm=None):
     the job's own estimate (model.estimate_answers), with "default_source" measured or estimated."""
     given = answers_given or {}
     est, src = estimate_answers(features, height_mm)
-    d = {**est, "bump_top_shape": next(k for k, r in C.TOP_SHAPE_RADIUS_MM.items() if r == C.BUMP_TOP_RADIUS_MM)}
-    src = {**src, "bump_top_shape": "estimated"}
+    d = {**est, "bump_top_shape": next(k for k, r in C.TOP_SHAPE_RADIUS_MM.items() if r == C.BUMP_TOP_RADIUS_MM),
+         "bump_shape": (features.get("bump") or {}).get("shape", "hill")}
+    src = {**src, "bump_top_shape": "estimated", "bump_shape": "estimated"}
     out = []
     for key, (fid, text, unit, hint) in QUESTIONS.items():
         if fid == "grooves" and not features.get("grooves") or fid in ("lock_bump",) and not features.get("bump") or fid == "plate" and not features.get("plate"):
@@ -134,7 +135,8 @@ def features_list(feats, answers, user_given, sources=None):
                 {"id": "lock_ridge.height", "status": st("bump_height_mm"), "value": answers["bump_height_mm"], "unit": "mm", "views": 0},
                 {"id": "lock_ridge.top_radius", "status": "user_supplied" if "bump_top_shape" in user_given else "estimated",
                  "value": answers.get("bump_top_radius_mm", C.BUMP_TOP_RADIUS_MM), "unit": "mm", "views": 0},
-                {"id": "lock_ridge.shape", "status": "user_supplied", "value": b.get("shape", "hill"), "unit": "", "views": 0},
+                {"id": "lock_ridge.shape", "status": "user_supplied" if "bump_shape" in user_given or b.get("shape_corrected") else "estimated",
+                 "value": answers.get("bump_shape", b.get("shape", "hill")) if not b.get("shape_corrected") else b.get("shape"), "unit": "", "views": 0},
                 {"id": "lock_pin", "status": "user_supplied", "value": "part of the lock ridge", "unit": "", "views": 0}]
     elif b:
         out += [{"id": "lock_bump.position", "status": "measured", "value": [round(x, 2) for x in b["edge_mid"]], "unit": "mm", "views": b["agreeing_views"]},

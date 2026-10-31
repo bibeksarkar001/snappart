@@ -337,12 +337,13 @@ def crops_from_frames(frames_by_video, scans, world, intr):
     for n, fr in frames_by_video.items():
         K, dist = intr[n]
         rows = []
+        limit = C.MAX_RMS_RELAXED_PX * max(1.0, max(scans[n]["size"]) / C.RMS_REF_LONG_SIDE_PX)   # the same error in more pixels at 4K
         for i, img in fr.items():
             ids, cs, _ = scans[n]["frames"][i]
             if len(ids) < C.MIN_MARKERS:
                 continue
             sol = mat.solve_pose(ids, cs, K, dist, world=world)
-            if sol is None or sol[2] > C.MAX_RMS_RELAXED_PX:
+            if sol is None or sol[2] > limit:
                 continue
             rv, tv = sol[0].ravel(), sol[1].ravel()
             box = M.crop_box(K, rv, tv, scans[n]["size"])
@@ -442,8 +443,11 @@ def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print,
             dl = float(np.mean([o["dist_from_face_mm"] for o in ops]))
             b = F.detect_bump(vv, imgs, face, dl)
             if b:
-                feats["bump"] = F.bump_feature(b, feats["grooves"])
+                rs = F.ridge_from_steps(b, face)                         # where the ridge stands, from head-on edge steps (v4)
+                feats["bump"] = F.ridge_feature(b, face, rs) if rs else F.bump_feature(b, feats["grooves"])
                 region = F.plate_region(field, g, b["ends"])
+                if rs:                                                   # the pocket reaches the wall the ridge stands on (v4)
+                    region = (region[0], float(np.mean(rs["wall_line"], 0)[0]), region[2], region[3])
                 pf = F.plate_faces(vv, imgs, region, {"lower": roles["flat"], "upper": roles["ref"]})
                 if "upper" in pf:
                     X = g.lo[0] + np.arange(field.shape[0]) * g.vs
@@ -460,5 +464,9 @@ def run_frames(frames_by_video, roles, work: Path, sam, answers=None, log=print,
         carve.write_stl(work / "part.stl", v1, f1)
         Mo.save(work / "model", field, g, feats)
     run_frames.views, run_frames.T, run_frames.mesh, run_frames.field = views, T, (v1, f1), (field, g)
+    run_frames.crops = {f"{n}_{i}": crop for n in msk for i, _, crop, _, _, _ in msk[n]}
+    run_frames.poses = {f"{n}_{i}": (box, rv, tv) for n, rows in crops.items() for i, box, _, rv, tv in rows}   # every frame with a pose
+    run_frames.masks = {f"{n}_{i}": fin for n in msk for i, _, _, fin, _, _ in msk[n]}                         # accepted outlines only
+    run_frames.intr = intr
     return {"seconds": dict(tm.rows), "total_s": sum(s for _, s in tm.rows), "sam_calls": calls, "calib_rms_px": rms, "views": {n: len(v) for n, v in views.items()},
             "features": feats, "answers": a, "T": T}

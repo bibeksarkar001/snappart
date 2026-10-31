@@ -381,6 +381,24 @@ def ridge_from_steps(bump, face, min_cos=0.9):
             "extent_range_mm": [float(min(st)), float(max(st))], "views": len(st), "normal": e2.tolist()}
 
 
+def ridge_feature(bump, face, rs):
+    """Model feature for a ridge found by ridge_from_steps (v4 construction, owner-confirmed on part B): standing on the wall beside the
+    detected span (anchored at the wall line's midpoint; the base width comes from the answer, model.ridge_placed), along the detected
+    ends, outward along the measured step direction, its base reaching into the part from the rim. Shape "hill" until answered."""
+    ends = np.asarray(bump["ends"], float)
+    axis = ends[1] - ends[0]
+    axis /= np.linalg.norm(axis)
+    nrm = np.asarray(rs["normal"], float)
+    nrm -= axis * (axis @ nrm)
+    nrm /= np.linalg.norm(nrm)
+    across = np.cross(nrm, axis)
+    across *= np.sign(across @ -np.asarray(face["n"], float))            # into the part from the rim
+    return {"kind": "ridge", "shape": "hill", "wall_mid": np.mean(rs["wall_line"], 0).tolist(), "axis": axis.tolist(), "across": across.tolist(),
+            "normal": nrm.tolist(), "detected_length_mm": bump["length_mm"], "ends": bump["ends"], "wall_line": rs["wall_line"],
+            "extent_mm": rs["extent_mm"], "extent_views": rs["views"], "source_video": bump["video"], "agreeing_views": bump["agree"],
+            "face": "the wall beside the detected span (from the video's edge steps)"}
+
+
 def bump_feature(bump, grooves):
     """Model feature for the bump: detected far-edge line (midpoint, axis), direction toward the openings, outward normal of the groove face."""
     e0, e1 = np.array(bump["ends"][0]), np.array(bump["ends"][1])

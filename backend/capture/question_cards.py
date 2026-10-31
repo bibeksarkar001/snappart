@@ -18,10 +18,11 @@ TEXT = {
     "bump_height_mm": ("How far does the lock ridge stand out from the wall it is on?", "mm", "Rest the depth rod on the wall beside the ridge; measure to its top."),
     "bump_width_mm": ("How wide is the lock ridge at its base?", "mm", "Close the outside jaws across the ridge where it meets the wall."),
     "bump_length_mm": ("How long is the lock ridge (end to end)?", "mm", "Close the outside jaws over its two ends."),
+    "bump_shape": ("What shape is the top of this bump?", "", "Look along it from one end: square (box), rounded, or a hill that narrows to the top."),
     "bump_top_shape": ("What does the top of the lock ridge look like?", "", "Look along the ridge from one end."),
     "plate_thickness_mm": ("How thick is the flat plate, measured in its middle?", "mm", "Use the outside jaws in the middle of the plate, not at its edge."),
 }
-CHOICES = {"bump_top_shape": list(C.TOP_SHAPE_RADIUS_MM)}
+CHOICES = {"bump_top_shape": list(C.TOP_SHAPE_RADIUS_MM), "bump_shape": list(C.BUMP_SHAPES)}
 
 
 # ---------- answer sanity checks ----------
@@ -79,20 +80,30 @@ def anchors(qid, feats, answers):
         return {"polys": polys, "dim": (p0, p0 - ax[2] * a["groove_depth_mm"], "depth ?"), "normal": ax[2], "pts": np.array(inset)}  # visible down the hole
     if qid.startswith("bump"):
         b = feats["bump"]
-        c, ax, w, n = (np.asarray(b[k], float) for k in ("base_mid", "axis", "across", "normal"))
         L, W, H = a["bump_length_mm"], a["bump_width_mm"], a["bump_height_mm"]
+        if b.get("kind") == "ridge":                   # v4 ridge (a pipeline ridge is anchored on its wall: base from the answered width)
+            c, ax, w, n = (np.asarray(b[k], float) for k in ("base_mid" if "base_mid" in b else "wall_mid", "axis", "across", "normal"))
+            if "base_mid" not in b:
+                c = c + w * W / 2
+        else:                                          # v3 bump (pipeline): the block model.bump_op builds, centred W/2 in from the far edge
+            ax, w, n = (np.asarray(b[k], float) for k in ("axis", "toward_openings", "normal"))
+            c = np.asarray(b["edge_mid"], float) + w * W / 2
         base = [c + s * ax * L / 2 + t * w * W / 2 for s, t in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
         peak = [c + n * H - ax * L / 2, c + n * H + ax * L / 2]
         e = c + ax * L / 4
         dim = {"bump_height_mm": (e, e + n * H, "height ?"), "bump_width_mm": (e - w * W / 2, e + w * W / 2, "base width ?"),
                "bump_length_mm": (c - ax * L / 2 + n * H, c + ax * L / 2 + n * H, "length ?"),
-               "bump_top_shape": (e + n * H, e + n * H, "top shape ?")}[qid]
+               "bump_top_shape": (e + n * H, e + n * H, "top shape ?"), "bump_shape": (e + n * H, e + n * H, "shape ?")}[qid]
         seen_from = n - w                              # the ridge stands in a pocket: look at it from where the pocket opens, not only along n
         return {"polys": [base, peak], "dim": dim, "normal": seen_from / np.linalg.norm(seen_from), "pts": np.array(base + peak)}
     if qid == "plate_thickness_mm":
         p = feats["plate"]
         n, d = np.asarray(p["normal"], float), float(p["d"])
-        poly = np.asarray(p["polygon_xy"], float)
+        if "polygon_xy" in p:
+            poly = np.asarray(p["polygon_xy"], float)
+        else:                                          # pipeline plate: the region_xy rectangle its mask covers
+            x0, x1, y0, y1 = p["region_xy"]
+            poly = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], float)
         on = lambda xy: np.r_[xy, -(d + xy @ n[:2]) / n[2]]
         outline = [on(q) - n * a["plate_thickness_mm"] for q in poly]
         mid = on(poly.mean(0))
@@ -229,11 +240,12 @@ def diagram(qid):
     if qid == "groove_depth_mm":
         return _svg(f'<path d="M40 40H280V170H40Z" {PART}/><path d="M130 40V115H190V40" fill="#fff" stroke="#555" stroke-width="2"/>'
                     + _dim(215, 40, 215, 115, "depth", 222, 82) + '<text x="40" y="190" fill="#666">section through one slot</text>')
-    if qid in ("bump_height_mm", "bump_width_mm", "bump_top_shape", "bump_length_mm"):
+    if qid in ("bump_height_mm", "bump_width_mm", "bump_top_shape", "bump_shape", "bump_length_mm"):
         hill = f'<path d="M60 170H260V150H190L172 72Q160 58 148 72L130 150H60Z" {PART}/>'
         d = {"bump_height_mm": _dim(215, 150, 215, 64, "height", 222, 110), "bump_width_mm": _dim(130, 185, 190, 185, "base width", 125, 200),
              "bump_length_mm": '<text x="60" y="30" fill="#222">length: end to end, along the ridge</text>',
-             "bump_top_shape": '<text x="196" y="66" fill="#222">top shape?</text>'}[qid]
+             "bump_top_shape": '<text x="196" y="66" fill="#222">top shape?</text>',
+             "bump_shape": '<text x="196" y="66" fill="#222">box, rounded or hill?</text>'}[qid]
         return _svg(hill + d + '<text x="60" y="194" fill="#666">ridge cross-section</text>' * (qid != "bump_width_mm"), h=210)
     if qid == "plate_thickness_mm":
         return _svg(f'<path d="M30 90H290V120H30Z" {PART}/>' + _dim(160, 90, 160, 120, "thickness (middle)", 168, 110)
