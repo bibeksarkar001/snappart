@@ -1,3 +1,5 @@
+# Create with: PIP_NO_DEPS=1 conda env create -f backend/environment.yml
+# (every pip package below is pinned; PIP_NO_DEPS stops pip from upgrading numpy to 2 for opencv-python-headless)
 name: snappart
 channels:
   - conda-forge
