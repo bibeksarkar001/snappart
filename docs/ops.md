@@ -18,7 +18,8 @@ SNAPPART_MOCK=1 python -m backend.app.worker
 - `SNAPPART_MOCK=1` serves canned results of a synthetic part, which is enough for frontend work. Every response then says `X-SnapPart-Mode: mock`.
 - The first mock build on a fresh data directory takes about 20 s, because it generates the canned bundle once.
 - Mock mode refuses to start with `SNAPPART_ENVIRONMENT=production` unless `SNAPPART_ALLOW_MOCK_IN_PRODUCTION=1` is also set.
-- Real builds are not wired into the worker yet (planned with the end-to-end run, stage 8), so real-mode jobs fail with `real_build_not_available`. The Meta model calls themselves work (stage 4).
+- **Replay mode** is the default when no `MODEL_API_KEY` is set (and mock is off): builds deliver the recorded part B run from `examples/recorded/part_b/`, labelled "recorded run" with its date on every response, and no Meta model is called. The API and the worker print this at startup. Force it with `SNAPPART_REPLAY=1`, or turn it off with `SNAPPART_REPLAY=0`.
+- Real builds run the capture pipeline in the worker (`app/realbuild.py`), with SAM 3.1 through the Meta client. They need a key and all three videos. One recorded run of part B took 184 s on a 10-core laptop (`examples/recorded/part_b/timings.json`).
 - **Meta API key:** read from `MODEL_API_KEY`, either in the environment or in the repo's `.env`, which settings load with pydantic-settings. It never appears in a response, a log, an error or `repr(settings)`.
 - **Model access:** `python scripts/meta_models_check.py` lists the model ids the key can use (it prints ids only).
 - **Live check:** `python scripts/meta_live_check.py OUT_DIR` makes real calls (about 40 SAM calls, 6 Spark calls and 1 transcription; small cost) and writes `OUT_DIR/live_check.json`.
@@ -155,7 +156,7 @@ are owner decisions.
   - Replace SQLite with Postgres. The SQL is plain; the queue claim needs `SELECT ... FOR UPDATE SKIP LOCKED`.
   - Replace `LocalStorage` with an S3-compatible store implementing the same six methods (`app/storage.py`).
   - Replace the file-lock SAM semaphore with a database or Redis semaphore.
-- **Build throughput:** see `docs/load-test.md`. Real builds are not wired into the worker yet, so real throughput per worker has not been measured through the API. One real build of part B took about 3 to 4 minutes in the v3/v4 runs.
+- **Build throughput:** see `docs/load-test.md` (mock builds only). One real build of part B through the API took 184 s on a 10-core laptop (one recorded run); real throughput under load has not been measured.
 
 ## Docker (one command)
 

@@ -33,9 +33,43 @@ Error codes used so far:
 | `upload_stalled` | 408 | The request body stopped arriving for `upload_stall_s` (20 s). |
 | `challenge_failed` | 403 | Only when Turnstile is configured: `POST /v1/jobs` without a valid `CF-Turnstile-Response` header. |
 | `rate_limited`, `too_many_builds`, `locked`, `too_many_streams` | 429 | Too many requests (every route except health checks is metered per client, per day and for the whole service), too many active builds, a resume lockout, or too many open event streams. `Retry-After` is always set. |
+| `replay_read_only` | 409 | Replay mode: answers, corrections, rebuilds, review choices, marks, more footage and proposals need a live build. |
 | `queue_full`, `storage_full`, `busy` | 503 | The build queue is full, the server's disk is below its free-space floor, or the server is overloaded right now (`busy`: retry after `Retry-After`). |
 | `job_storage_full` | 507 | A part's outputs reached `max_job_output_bytes`; delete it and start again. |
 | `internal` | 500 | Anything unexpected. |
+
+### `GET /v1/jobs/{job_id}/inside`
+
+How this part's build worked, for that part only. It is kept in the job's storage, follows the same retention, and is deleted with the job.
+
+```json
+{"job_id": "...", "available": true,
+ "frames": [{"video": 1, "index": 12, "pose": true, "outline_accepted": true, "file": "inside/1_0012.jpg", "url": "/v1/jobs/.../files/inside/1_0012.jpg"}],
+ "poses": {"frame": "mat (reference video's world, mm)", "poses": [{"video": 1, "index": 12, "rvec": [...], "tvec_mm": [...], "camera_centre_mm": [...]}], "intrinsics": {"1": [[...]]}},
+ "timings": {"per_stage_s": {"SAM": 49.1, "...": 0}, "total_s": 182.3},
+ "meta_calls": [{"timestamp": 1793000000.0, "model": "sam-3.1", "endpoint": "/responses", "status": 200, "ok": true, "latency_ms": 812.3}]}
+```
+
+- `frames`: every uploaded frame as a 320 px JPEG. SAM's accepted outline is drawn in green, and frames without an accepted outline are left plain.
+- `meta_calls`: this job's calls from `model_calls`, with no keys and no IPs.
+- Mock builds return `available: false` with a reason.
+- `image` repeats `url`, `cameras` lists each frame's camera position (mm), and `stages` repeats `timings.per_stage_s`, in the shape the web app's panel reads.
+- In replay mode, `meta_calls` is the recorded run's call log, with every row carrying `recorded: "recorded run, <date>"`. `live_meta_calls` is empty, because nothing is called now. The frames are part-only crops.
+
+### `GET /v1/jobs/{job_id}/recorded-answers` (replay only)
+
+The answers the owner gave in the recorded run: caliper values from `backend/tests/fixtures/part_b.json`, and the ridge shape. They are labelled `user_supplied`. The replay job starts with them applied. Each question in `GET .../questions` also carries `recorded_answer`, so the app can offer "Use this answer" after the user changes something. Outside replay mode this returns 404.
+
+```json
+{"job_id": "...", "answers": {"groove_depth_mm": {"value": 3.7, "status": "user_supplied"}, "bump_shape": {"value": "hill", "status": "user_supplied"}},
+ "source": "owner's calipers (backend/tests/fixtures/part_b.json) and confirmed ridge shape", "recorded": {"label": "recorded run, <date>", "...": "..."}}
+```
+
+`preview_before.glb` (all modes): the model as the build made it, before any answer or correction. Rebuilds never change it.
+
+## Replay mode
+
+With no `MODEL_API_KEY` (or `SNAPPART_REPLAY=1`), the API serves the recorded real run of part B in `examples/recorded/part_b/`. A build delivers that run instead of building, and no Meta model is called. Every response carries `X-SnapPart-Mode: replay` and `X-SnapPart-Recorded: recorded run, <date>`. Job, report, questions, summary and `/v1/meta/models` responses add a `recorded` block (`label`, `recorded_at`, `live_model_calls: false`, recorded call counts). Models never show `running` in replay. Edits answer `409 replay_read_only`.
 
 ## Job states
 

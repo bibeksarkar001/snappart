@@ -23,7 +23,7 @@ Label in the UI: "Simple designs only for now: sketches, logos, names."
 - Pipeline: Muse Spark checks the image is simple enough and says what to fix if not -> threshold and clean -> contours with holes (RETR_CCOMP style, letter counters kept) -> smooth -> CadQuery extrude -> STL. Reuses the flat-part extrude code.
 - Warn on features thinner than about 1 mm (may not print). Reject shaded photos, gradients and fine detail with a clear message. Never silently produce junk.
 - Stretch: Muse Image (muse-image-1.0) generates a simple black-on-white silhouette from a text prompt, then the same pipeline runs. Prompt it for flat, no shading, white background.
-- Build order: after the extrude and revolve paths, in Phase 3.
+- Build order: after the extrude and revolve paths.
 
 ## Capture screen (see docs/camera-spec.md)
 

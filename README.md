@@ -76,13 +76,13 @@ A Meta model is shown as *running* only when it runs in the build you are lookin
 
 All calls go through the Meta Model API with the standard (not "contributor") model IDs.
 
-| Model | Job | State in this repo |
-| --- | --- | --- |
-| `sam-3.1` | Outlines the part in every video frame | **Running** in the test runs (`backend/spikes/`); `backend/capture/masks.py` refines its outlines. Moves into the job API next. |
-| `muse-spark-1.3` | Checks videos, writes questions, turns spoken or typed corrections into changes, writes the report | Early spikes only (`backend/spikes/`). Not yet in the pipeline. |
-| `muse-voice-transcribe-1.0` | Turns spoken answers into text | Planned. Not yet integrated. |
+| Model | Job | Called from | State in this repo |
+| --- | --- | --- | --- |
+| `sam-3.1` | Outlines the part in every video frame | `backend/capture/sam.py` (`adapter`) through `backend/app/meta_client.py` (`MetaClient.segment`); `backend/capture/masks.py` refines the outlines | **Running** in the recorded part B run of 2026-10-31 (UTC): 220 calls, all OK, in [`examples/recorded/part_b/meta_calls.jsonl`](examples/recorded/part_b/meta_calls.jsonl). |
+| `muse-spark-1.3` | Second opinion on the footage, friendlier question wording, typed or spoken corrections turned into proposed changes, plain-language summary | `backend/app/spark.py` (`capture_opinion`, `word_question`, `propose`, `summarize`) through `MetaClient.chat_json` | **Running** in the same recorded run: 10 calls, all OK (footage second opinion, question wording, summary, and the proposal for one spoken correction). Typed corrections have no recorded call yet. Each job falls back to plain rules when the model is not available, and says so. |
+| `muse-voice-transcribe-1.0` | Turns spoken corrections into text | `backend/app/voice.py` (`to_wav`) and `MetaClient.transcribe`, from `POST /v1/jobs/{id}/voice` | **Running** in the same recorded run: 1 call, OK (one spoken correction; the audio is not stored). |
 
-This table is updated when each model is actually wired in, not before.
+A model is marked as running only where a recorded call exists. `GET /v1/meta/models` reports this from the calls the server actually made.
 
 ## Project status
 
@@ -91,9 +91,9 @@ This table is updated when each model is actually wired in, not before.
 | Capture pipeline (mat, calibration, outlines, carve, snap, features, review, corrections) | Working on one test part |
 | Printed-part check | Fits the real lock |
 | Design | Approved prototype in [`docs/design/approved/`](docs/design/approved) |
-| Backend job API (upload, progress, answers, resume) | In progress |
+| Backend job API (upload, checks, queue, progress, answers, corrections, review, resume, delete) | Built and tested with the mock pipeline and a fake Meta server ([`docs/api.md`](docs/api.md), [`docs/load-test.md`](docs/load-test.md)) |
 | Web app wired to the backend | In progress |
-| Muse Spark and Muse Voice in the app | Planned |
+| Muse Spark and Muse Voice in the API | Wired (see the table above) |
 | Second-part test | Planned |
 
 ## Run it
@@ -101,11 +101,27 @@ This table is updated when each model is actually wired in, not before.
 Backend (conda):
 
 ```bash
-conda env create -f backend/environment.yml
+PIP_NO_DEPS=1 conda env create -f backend/environment.yml
 conda activate snappart
-cp .env.example .env        # add your own MODEL_API_KEY. Never commit .env
+cp .env.example .env        # optional: add your own MODEL_API_KEY. Never commit .env
 pytest backend/tests
 ```
+
+`PIP_NO_DEPS=1` keeps pip to the exact versions pinned in `environment.yml`. Without it, pip's `opencv-python-headless` pulls in numpy 2, which breaks the conda-built scikit-image. The pipeline is tested on numpy 1.26.4.
+
+Start the API and one worker (from `backend/`):
+
+```bash
+uvicorn app.main:app --port 8000
+```
+
+```bash
+python -m app.worker
+```
+
+- **No key (default): replay mode.** The API serves the recorded real run of part B in [`examples/recorded/part_b/`](examples/recorded/part_b). [What is replayed and what runs live](examples/recorded/README.md). Every response is labelled "recorded run" with its date, and no Meta model is called. The API prints this when it starts.
+- **`SNAPPART_MOCK=1`: mock mode.** A canned synthetic part, labelled mock.
+- **Your own `MODEL_API_KEY` in `.env`: live mode.** Real builds call SAM 3.1 and Muse Spark with your key. Details are in [`docs/ops.md`](docs/ops.md) and [`docs/api.md`](docs/api.md).
 
 Frontend:
 
@@ -115,7 +131,7 @@ npm install
 npm run dev
 ```
 
-The golden test needs private test videos that are not in this repository. Setup for the full app will be added when the job API lands.
+The golden test needs private test files that are not in this repository; without them it is skipped.
 
 ## Built during the hackathon
 
@@ -131,10 +147,11 @@ Everything here was written during the hackathon window. The history starts on O
 | [FastAPI](https://fastapi.tiangolo.com), [Pydantic](https://docs.pydantic.dev) | MIT |
 | [Uvicorn](https://www.uvicorn.org), [httpx](https://www.python-httpx.org) | BSD-3-Clause |
 | [React](https://react.dev), [Vite](https://vite.dev), [Tailwind CSS](https://tailwindcss.com) | MIT |
-| [three.js](https://threejs.org) (3D viewer) | MIT |
-| [Geist](https://vercel.com/font) (typeface) | SIL OFL 1.1 |
+| [Geist](https://vercel.com/font) (typeface, used by the design prototype in `docs/design/approved/`) | SIL OFL 1.1 |
+| [meta-sam-parser](https://pypi.org/project/meta-sam-parser/) (reads SAM 3.1 results) | SAM License, **not an open-source licence**: [`third_party/meta-sam-parser/LICENSE`](third_party/meta-sam-parser/LICENSE) |
+| [FFmpeg](https://ffmpeg.org) | GPL-2.0-or-later. Installed by conda as a dependency of VTK, and used for voice conversion only if present. It is not redistributed by this repository. |
 
-Exact versions are pinned in `backend/environment.yml` and `frontend/package-lock.json`.
+Exact versions are pinned in `backend/environment.yml` and `frontend/package-lock.json`. Every Python and native package with its licence is listed in [`docs/licences.md`](docs/licences.md).
 
 ## Privacy
 
