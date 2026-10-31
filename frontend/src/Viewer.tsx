@@ -126,7 +126,9 @@ export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onP
         if (cameras?.length) {
           const cg = new THREE.Group(); cg.scale.setScalar(0.001); cg.rotation.x = -Math.PI / 2   // same frame as the GLB root node
           const m = new THREE.MeshBasicMaterial({ color: 0x3ddbc3 })
-          for (const p of cameras) { const s = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8), m); s.position.set(p[0], p[1], p[2]); cg.add(s) }
+          const span = new THREE.Box3().setFromPoints(cameras.map(p => new THREE.Vector3(p[0], p[1], p[2]))).getSize(new THREE.Vector3()).length()
+          const ball = new THREE.SphereGeometry(Math.max(2, span / 90), 12, 8)       // sized to the orbit, or the markers vanish at this scale
+          for (const p of cameras) { const s = new THREE.Mesh(ball, m); s.position.set(p[0], p[1], p[2]); cg.add(s) }
           content.add(cg)
         }
         fit(); setDraft(d); onDraft?.(d); setUnder(false); setState('ok')

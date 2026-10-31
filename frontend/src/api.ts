@@ -4,7 +4,8 @@
 export const BASE: string = import.meta.env.VITE_API_BASE ?? ''
 
 export type Mode = 'replay' | 'mock' | 'real'
-export type Recorded = { label: string; recorded_at: string; part?: string; note?: string; live_model_calls?: boolean }
+export type Recorded = { label: string; recorded_at: string; part?: string; note?: string; live_model_calls?: boolean
+  recorded_meta_calls?: Record<string, { calls: number; ok: number }>; pipeline_per_stage_s?: Record<string, number> | null }
 export type Limits = { videos_per_job: number; max_frames_per_video: number; max_frame_bytes: number; max_frame_long_edge_px: number }
 export type JobCreated = { job_id: string; resume_code: string; state: string; mode: Mode; limits: Limits }
 export type VideoCheck = { verdict: string; frames: number; usable_frames: number; tips: string[]; role?: string; azimuth_bins_covered?: number[] }

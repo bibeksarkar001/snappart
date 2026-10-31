@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { abs, api, ApiError, recordedAnswers, type Change, type Proposal, type Question, type Questions, type Rebuild, type ReviewItem, type Voice } from './api'
-import { errText, pendingQuestion, useApp } from './ctx'
+import { errText, pendingQuestion, plainName, useApp } from './ctx'
 import { NoPart, RecChip } from './Flow'
 import { record, type Recorder } from './media'
 import { Viewer, type Pick } from './Viewer'
@@ -11,7 +11,7 @@ const fmt = (v: unknown): string => (typeof v === 'number' ? `${+v.toFixed(3)}` 
 export function Diff({ r }: { r: Rebuild }) {
   return (
     <div className="understood" data-testid="diff"><b>Rebuilt in {r.seconds} s{r.watertight ? ', watertight' : ', NOT watertight'}{r.quality?.status === 'draft' ? ' · still a draft' : ''}</b>
-      {r.changes.length ? <div className="diff">{r.changes.map((c: Change) => <div key={c.id}><span>{c.id}</span><span className="from">{fmt(c.from)}</span>→<span className="to">{fmt(c.to)}</span>{c.status_to && <span className={'chip ' + (c.status_to === 'user_supplied' ? 'c-you' : c.status_to === 'measured' ? 'c-meas' : 'c-est')}>{c.status_to.replace('_', ' ')}</span>}</div>)}</div>
+      {r.changes.length ? <div className="diff">{r.changes.map((c: Change) => <div key={c.id}><span>{plainName(c.id)}</span><span className="from">{fmt(c.from)}</span>→<span className="to">{fmt(c.to)}</span>{c.status_to && <span className={'chip ' + (c.status_to === 'user_supplied' ? 'c-you' : c.status_to === 'measured' ? 'c-meas' : 'c-est')}>{c.status_to.replace('_', ' ')}</span>}</div>)}</div>
         : <span className="small dim">No size changed.</span>}
       {r.quality?.reasons?.map((x, k) => <span key={k} className="small" style={{ color: 'var(--ask)' }}>{x}</span>)}
     </div>
@@ -80,7 +80,7 @@ export function Review() {
           {picked && <><h3>What should happen to the spot you marked?</h3><div className="ans">{['Keep', 'Remove', 'Make flat'].map(c => <button key={c} className="choice" onClick={() => sendMark(c)} disabled={!!busy}>{c}</button>)}</div>
             <p className="tiny muted">A 3 mm circle around the point. Remove and Make flat need a spot that faces up or down.</p></>}
           <div className="err">{markErr}</div>{last?.id === 'mark' && <Diff r={last.r} />}</div>}
-        <p className="tiny muted" style={{ marginTop: 8 }}>The preview model. Highlighting the asked-about area on it needs region data the API does not send yet; each question's picture shows the spot.</p></div>
+        <p className="tiny muted" style={{ marginTop: 8 }}>Each question's picture shows where to look.</p></div>
       <div className="qs">
         <div><span className="label" style={{ color: 'var(--ask)' }}>Review · {q ? (open.length ? `${qs.length - open.length + 1} of ${qs.length}` : 'all answered') : '…'}</span> <RecChip />
           <h2 style={{ marginTop: 10 }}>A few questions before it prints.</h2>
@@ -111,7 +111,7 @@ function Picture({ x, jobId }: { x: Question; jobId: string }) {
   }, [card.meta])
   if (!src) return <p className="tiny muted">No picture was made for this question.</p>
   const diagram = src === abs(card.diagram)
-  return <div className="cardimg"><img src={src} alt={`Where: ${x.label}`} onError={() => setSrc(diagram ? null : abs(card.diagram))} /><span className="lbl">{diagram ? `diagram${lbl ? ` · photo (${lbl}) not available` : ''}` : lbl || 'frame with the area marked'}</span></div>
+  return <div className="cardimg"><img src={src} alt={`Where: ${x.label}`} onError={() => setSrc(diagram ? null : abs(card.diagram))} /><span className="lbl">{diagram ? 'diagram' : lbl || 'frame with the area marked'}</span></div>
 }
 
 function QCard({ x, jobId, rec, active, busy, err, diff, activate, answer }: { x: Question; jobId: string; rec?: { value: number | string; unit: string }; active: boolean; busy: boolean; err?: string; diff: Rebuild | null; activate: () => void; answer: (v: number | string) => void }) {
@@ -199,7 +199,7 @@ function Composer({ jobId, itemId, onApplied }: { jobId: string; itemId: string 
       {busy && <span className="small dim">{busy}</span>}
       <div className="err">{err}</div>
       {heard && <div className="note"><span className="chip c-meta">{heard.source}</span>Heard ({heard.audio_seconds} s, audio not kept): "{heard.transcript}"</div>}
-      {prop && <div className="understood" data-testid="proposal"><span className="tiny" style={{ color: 'var(--meta)' }}>{prop.source ?? 'proposal'}</span>
+      {prop && <div className="understood" data-testid="proposal"><span className="tiny" style={{ color: 'var(--meta)' }}>{!prop.source || /fallback|keyword|computer/.test(prop.source) ? 'Picked from your words' : prop.source}</span>
         <b>{prop.correction ? 'Understood: ' : ''}{prop.explanation}</b>
         {prop.correction && <span className="small dim mono">{String(prop.correction.op).replace(/_/g, ' ')}{prop.action !== 'none' ? ` · ${prop.action.replace(/_/g, ' ')}` : ''}</span>}
         <div style={{ display: 'flex', gap: 8 }}>{prop.correction && <button className="btn btn-primary btn-sm" onClick={confirm} disabled={!!busy}>Confirm</button>}<button className="btn btn-ghost btn-sm" onClick={() => { setProp(null); setHeard(null) }}>Cancel</button></div></div>}

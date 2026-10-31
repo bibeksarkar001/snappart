@@ -9,7 +9,7 @@ import { Inside } from './Result'
 const CANDIDATES = 60, KEEP = 40, LONG_EDGE = 1920        // API limits: 60 frames per video, 1920 px long edge
 
 export const RecChip = () => { const { mode, recorded } = useApp(); return mode === 'replay' ? <span className="rec">{recorded ?? 'recorded run'}</span> : null }
-const noVoiceHere = 'Voice works on the Review step for now: the server transcribes only for a built part. Type here instead.'
+const noVoiceHere = 'Voice works once your part is built, on the Review step. Type here for now.'
 
 export function Prepare() {
   const app = useApp()
@@ -150,7 +150,7 @@ export function Capture() {
       <div className="stack">
         <div className="slots">{SLOTS.map((x, k) => (
           <button key={k} className={'slot' + (slots[k].st === 'kept' ? ' kept' : '')} aria-current={k === slot ? 'step' : undefined} onClick={() => setSlot(k)}><span className="k">{x.k}</span><b>Required</b><span className="st">{slots[k].st === 'kept' ? '✓ Kept' : slots[k].st === 'error' ? 'Needs a retry' : k === slot ? 'Now' : 'Waiting'}</span></button>))}
-          <button className="slot" disabled title="The API takes three videos; a demo video with sound is not supported yet."><span className="k">4 · Demo</span><b>Optional</b><span className="st">Not available yet</span></button>
+          <button className="slot" disabled><span className="k">4 · Demo</span><b>Optional</b><span className="st">Not available yet</span></button>
         </div>
         <div className="guide" dangerouslySetInnerHTML={{ __html: guide(slot) }} />
         <input ref={file} type="file" accept="video/*" hidden data-testid="video-input" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void choose(f) }} />
@@ -194,7 +194,6 @@ export function Build() {
   const [warnings, setWarnings] = useState<string[]>([]), [state, setState] = useState(''), [error, setError] = useState<string | null>(null)
   const [questions, setQuestions] = useState<number | null>(null), [recordedRun, setRecordedRun] = useState(false)
   const [t0, setT0] = useState<number | null>(null), [t1, setT1] = useState<number | null>(null), [now, setNow] = useState(Date.now() / 1000)
-  const [conn, setConn] = useState('connecting')
   const jobId = draft?.jobId
 
   useEffect(() => {
@@ -217,10 +216,9 @@ export function Build() {
       if (e.type === 'build_finished') { setQuestions(d.questions); setT1(e.ts); setFrac(1); stop() }
     }
     // Once the build is over there is nothing more to follow: close, so the stream slot (8 per client) is free for others.
-    const stop = () => { closed = true; es?.close(); setConn('closed') }
+    const stop = () => { closed = true; es?.close() }
     // The documented fallback when a stream is refused (429 too_many_streams) or lost: long-poll the same events.
     const poll = async () => {
-      setConn('long-poll')
       while (!closed) {
         try {
           const r: { events: Ev[] } = await raw(`/v1/jobs/${encodeURIComponent(jobId)}/events?after=${last}&wait=20`).then(x => x.json())
@@ -234,13 +232,12 @@ export function Build() {
     const open = () => {
       // The browser's EventSource resends Last-Event-ID on its own reconnects; after a hard close we reopen with ?after=<last seq>.
       es = new EventSource(`${BASE}/v1/jobs/${encodeURIComponent(jobId)}/events?after=${last}`)
-      es.onopen = () => setConn('live')
       for (const t of ['state_changed', 'stage_started', 'stage_finished', 'progress', 'warning', 'queue', 'build_finished'])
         es.addEventListener(t, m => on(JSON.parse((m as MessageEvent).data)))
       es.addEventListener('deleted', () => { closed = true; es?.close(); setError('This part was deleted.') })
       es.onerror = () => {
         if (closed) return
-        setConn('reconnecting')                                   // the browser retries by itself while the state is CONNECTING
+        // the browser retries by itself while the state is CONNECTING
         if (es?.readyState === EventSource.CLOSED) void poll()
       }
     }
@@ -262,7 +259,7 @@ export function Build() {
       <div className="fleft"><span className="label" style={{ color: 'var(--accent)' }}>Build</span><h2>{finished ? 'Your model is built.' : failed ? 'The build stopped.' : 'Building your model.'}</h2><p className="lead">Close this tab if you like. Your code brings you back, and the build keeps going.</p>
         <div><div className="timer" data-testid="timer">{fmtTime(elapsed)}</div><p className="small muted" style={{ marginTop: 8 }}>{recordedRun ? 'recorded build time, sum of the measured stages' : 'elapsed'}{queue ? ` · ${queue} build${queue > 1 ? 's' : ''} ahead${job?.eta_s ? `, about ${fmtTime(job.eta_s)}` : ''}` : ''}</p></div>
         <div className="note">📏 Keep calipers or a ruler nearby. You may be asked for a number or two.</div>
-        <p className="tiny muted mono">State: {state.replace(/_/g, ' ') || '…'} · progress stream: {conn}</p></div>
+</div>
       <div className="stack">
         {recordedRun && <div className="note"><RecChip />Replay of a real part B build. The times are the measured ones; nothing was re-run now.</div>}
         {warnings.map((w, k) => <div className="note" key={k} style={{ borderColor: 'var(--ask)' }}><span className="chip c-ask">warning</span>{w}</div>)}
@@ -313,7 +310,7 @@ export function Resume() {
           <button className="btn btn-primary btn-sm" onClick={async () => { await app.open(found.d); app.go(FLOW.includes(found.d.step) ? found.d.step : stepFor(found.state)) }}>Continue →</button></div>}
         <div className="field" style={{ borderTop: '1px solid var(--line)', paddingTop: 20 }}><label htmlFor="where">Tell us where you were <span className="muted" style={{ fontWeight: 400 }}>optional</span></label><p className="small muted">This picks the step. It can't find a part on its own.</p>
           <div className="composer"><button className="ib voice" aria-label="Speak" onClick={() => app.toast(noVoiceHere)}>🎙</button><textarea id="where" rows={1} placeholder="e.g. I printed it and the hinge was too tight" value={where} onChange={e => { setWhere(e.target.value); setWhereErr('') }} /><button className="ib fill" aria-label="Find my step" onClick={pick}>↑</button></div><div className="err">{whereErr}</div>
-          {step !== undefined && (step ? <div className="understood"><span className="tiny" style={{ color: 'var(--meta)' }}>Keyword rules on this device</span><b>Understood: you were at {label(step)}.</b><span className="small dim">Enter your code above to open your part there.</span><div><button className="btn btn-primary btn-sm" onClick={() => app.go(step)}>Go to {label(step)}</button></div></div>
+          {step !== undefined && (step ? <div className="understood"><span className="tiny" style={{ color: 'var(--meta)' }}>Picked from your words</span><b>Understood: you were at {label(step)}.</b><span className="small dim">Enter your code above to open your part there.</span><div><button className="btn btn-primary btn-sm" onClick={() => app.go(step)}>Go to {label(step)}</button></div></div>
             : <div className="understood"><b>Not sure which step. Pick one:</b><div className="ans">{FLOW.map(f => <button key={f} className="choice" onClick={() => app.go(f)}>{label(f)}</button>)}</div></div>)}</div>
       </div></div></div>
   )

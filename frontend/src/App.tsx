@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, onMode, type Mode, type ModelState } from './api'
-import { Ctx, FLOW, ROUTES, type App as AppT } from './ctx'
+import { api, onMode, type Mode, type ModelState, type Recorded } from './api'
+import { Ctx, FLOW, mediaExists, ROUTES, type App as AppT } from './ctx'
 import * as idb from './idb'
 import { MOON, SUN } from './illus'
 import { Home } from './Home'
@@ -19,7 +19,8 @@ export default function App() {
   const [route, setRoute] = useState(hashRoute)
   const [draft, setDraft] = useState<idb.Draft | null>(null)
   const [mode, setMode] = useState<Mode | null>(null)
-  const [recorded, setRecorded] = useState<string | null>(null)
+  const [recorded, setRecorded] = useState<string | null>(null), [recording, setRecording] = useState<Recorded | null>(null)
+  const [demo, setDemo] = useState(false)
   const [models, setModels] = useState<ModelState[]>([])
   const [toastT, setToastT] = useState(''); const tt = useRef(0)
   const [online, setOnline] = useState(navigator.onLine)
@@ -55,7 +56,7 @@ export default function App() {
 
   const jobId = draft?.jobId
   const refreshModels = useCallback(() => {
-    api.models(jobId).then(m => { setModels(m.models); setMode(m.mode); if (m.recorded) setRecorded(m.recorded.label) })
+    api.models(jobId).then(m => { setModels(m.models); setMode(m.mode); setRecording(m.recorded ?? null); if (m.recorded) setRecorded(m.recorded.label) })
       .catch(() => api.models().then(m => { setModels(m.models); setMode(m.mode) }).catch(() => {}))
   }, [jobId])
 
@@ -70,6 +71,7 @@ export default function App() {
     return () => { window.removeEventListener('hashchange', h); window.removeEventListener('online', on); window.removeEventListener('offline', off); un(); mq.removeEventListener('change', th) }
   }, [])
   useEffect(refreshModels, [refreshModels])
+  useEffect(() => { void mediaExists('/media/demo.mp4', 'video/').then(setDemo) }, [])
   useEffect(() => { if (draft && FLOW.includes(route) && route !== 'prepare' && draft.step !== route) void save({ step: route }) }, [route, draft, save])
 
   const theme = () => {
@@ -79,8 +81,8 @@ export default function App() {
   }
 
   const f = FLOW.includes(route), i = FLOW.indexOf(route)
-  const app: AppT = useMemo(() => ({ route, go, draft, save, open, forget, mode, recorded, models, refreshModels, toast, online, pending, setPending }),
-    [route, go, draft, save, open, forget, mode, recorded, models, refreshModels, toast, online, pending])
+  const app: AppT = useMemo(() => ({ route, go, draft, save, open, forget, mode, recorded, recording, models, refreshModels, toast, online, pending, setPending }),
+    [route, go, draft, save, open, forget, mode, recorded, recording, models, refreshModels, toast, online, pending])
   const Page = PAGES[route]
   const nav = (
     <>
@@ -121,7 +123,7 @@ export default function App() {
       <footer className="foot"><div className="wrap"><div className="cols">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><b style={{ color: 'var(--ink)', fontSize: 16 }}>SnapPart</b><span>Film a part. Print a copy.</span><span>Made for the <a href="https://cerebralvalley.ai/e/meta-ai-developer-hackathon" target="_blank" rel="noopener" style={{ display: 'inline', textDecoration: 'underline' }}>Meta Global AI Developer Hackathon</a>. Not made or endorsed by Meta.</span></div>
         <div><a onClick={() => go('about')}>About</a><a onClick={() => go('next')}>What's next</a><a onClick={() => go('resume')}>Left somewhere?</a><a onClick={() => go('privacy')}>Privacy</a><a onClick={() => go('terms')}>Terms</a></div>
-        <div><a href="https://github.com/bibeksarkar001/snappart" target="_blank" rel="noopener">Repository</a><a href="https://github.com/bibeksarkar001/snappart#readme" target="_blank" rel="noopener">README</a><a href="https://github.com/bibeksarkar001" target="_blank" rel="noopener">Bibek Sarkar on GitHub</a><a>Demo video <span className="phl">soon</span></a></div>
+        <div><a href="https://github.com/bibeksarkar001/snappart" target="_blank" rel="noopener">Repository</a><a href="https://github.com/bibeksarkar001/snappart#readme" target="_blank" rel="noopener">README</a><a href="https://github.com/bibeksarkar001" target="_blank" rel="noopener">Bibek Sarkar on GitHub</a>{demo && <a href="/media/demo.mp4" target="_blank" rel="noopener">Demo video</a>}</div>
       </div></div></footer>
       <div className={'toast' + (toastT ? ' on' : '')} role="status" aria-live="polite">{toastT}</div>
     </Ctx.Provider>
