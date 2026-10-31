@@ -97,7 +97,7 @@ def test_meta_models_truthful(data_dir):
         c.execute("INSERT INTO model_calls (job_id, model, endpoint, ok, ts) VALUES (?, 'muse-spark-1.3', '/responses', 0, ?)", (jid, db.now()))
     m = {x["id"]: x for x in cl.get("/v1/meta/models").json()["models"]}
     assert not any(x["running"] for x in m.values()) and m["sam-3.1"]["calls_ok"] == 1          # mock: never "running"
-    real = Settings(data_dir=data_dir, environment="test")
+    real = Settings(data_dir=data_dir, environment="test", replay=False)
     rc = TestClient(create_app(real))
     m = {x["id"]: x for x in rc.get(f"/v1/meta/models?job_id={jid}").json()["models"]}
     assert m["sam-3.1"]["running"] and not m["muse-spark-1.3"]["running"] and not m["muse-voice-transcribe-1.0"]["running"]

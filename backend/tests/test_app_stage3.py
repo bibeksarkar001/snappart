@@ -40,7 +40,8 @@ def test_questions_answers_and_bounds(env):
     jid = built(env)
     r = cl.get(f"/v1/jobs/{jid}/questions").json()
     qs = {q["id"]: q for q in r["questions"]}
-    assert set(qs) == {"groove_depth_mm", "bump_height_mm", "bump_width_mm", "bump_length_mm", "bump_top_shape"} and r["open_questions"] == 5
+    assert set(qs) == {"groove_depth_mm", "bump_height_mm", "bump_width_mm", "bump_length_mm", "bump_shape", "bump_top_shape"} and r["open_questions"] == 6
+    assert qs["bump_shape"]["choices"] == ["box", "rounded", "hill"] and qs["bump_shape"]["default"] == "hill"
     d = qs["groove_depth_mm"]
     h = cl.get(f"/v1/jobs/{jid}/report").json()["dims_mm"]["height"]["measured"]                   # measured on the meshed synthetic part
     assert abs(h - 6.0) < 0.2 and d["max"] == round(h, 2)
@@ -57,7 +58,7 @@ def test_questions_answers_and_bounds(env):
         assert e.status_code == 422 and e.json()["error"]["code"] == code, body
     assert "deeper than the part is tall" in cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"groove_depth_mm": 6.6}}).json()["error"]["message"]
     ok = cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"groove_depth_mm": "2.5", "bump_top_shape": "skip"}}).json()
-    assert ok["saved"] == ["bump_top_shape", "groove_depth_mm"] and ok["open_questions"] == 3
+    assert ok["saved"] == ["bump_top_shape", "groove_depth_mm"] and ok["open_questions"] == 4
     q = {x["id"]: x for x in cl.get(f"/v1/jobs/{jid}/questions").json()["questions"]}
     assert q["groove_depth_mm"]["answer"] == 2.5 and q["groove_depth_mm"]["status"] == "user_supplied" and q["bump_top_shape"]["status"] == "estimated"
 
@@ -66,7 +67,7 @@ def test_rebuild_corrections_undo_review_and_accept(env):
     s, cl, st = env
     jid = built(env)
     r0 = cl.post(f"/v1/jobs/{jid}/rebuild").json()
-    assert r0["state"] == "needs_input" and r0["open_questions"] == 5 and r0["watertight"] and r0["seconds"] < 10
+    assert r0["state"] == "needs_input" and r0["open_questions"] == 6 and r0["watertight"] and r0["seconds"] < 10
     cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {"groove_depth_mm": 2.0}})
     r1 = cl.post(f"/v1/jobs/{jid}/rebuild").json()
     ch = {c["id"]: c for c in r1["changes"]}
@@ -98,7 +99,7 @@ def test_rebuild_corrections_undo_review_and_accept(env):
     assert cl.post(f"/v1/jobs/{jid}/marks", json={"point": [0, 0], "radius_mm": 2}).status_code == 422
     # accept: not while questions are open; a later change reopens review
     assert cl.post(f"/v1/jobs/{jid}/accept").json()["error"]["code"] == "questions_open"
-    cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {k: "skip" for k in ("bump_height_mm", "bump_width_mm", "bump_length_mm", "bump_top_shape")}})
+    cl.post(f"/v1/jobs/{jid}/answers", json={"answers": {k: "skip" for k in ("bump_height_mm", "bump_width_mm", "bump_length_mm", "bump_shape", "bump_top_shape")}})
     assert cl.post(f"/v1/jobs/{jid}/rebuild").json()["state"] == "reviewing"
     assert cl.post(f"/v1/jobs/{jid}/accept").json()["error"]["code"] == "footage_requested"            # a blocking coverage request is open
     assert cl.post(f"/v1/jobs/{jid}/more-footage", json={"request_id": "film_1", "action": "skip"}).json()["request"]["decision"] == "skipped"

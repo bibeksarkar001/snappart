@@ -211,15 +211,15 @@ def test_worker_mock_build_resume_and_watchdog(data_dir):
     with db.session(s.db_path) as c:
         row = jobs.get(c, jid3)
     assert row["state"] == "failed" and row["error_code"] == "build_timeout" and time.time() - t0 < 10
-    # real mode: the build is not wired to the Meta client yet, and says so
-    s3, _ = make(data_dir, mock=False)
+    # real mode with no frames: the real build stops with a plain reason before any Meta call (no key, or videos missing)
+    s3, _ = make(data_dir, mock=False, replay=False)
     with db.session(s.db_path) as c:
         jid4 = ready_job(c, s3, st)
         jobqueue.enqueue(c, jid4, s3, None)
     Worker(s3, "w-real").step()
     with db.session(s.db_path) as c:
         row = jobs.get(c, jid4)
-    assert row["state"] == "failed" and row["error_code"] == "real_build_not_available"
+    assert row["state"] == "failed" and row["error_code"] in ("no_model_key", "videos_missing")
 
 
 def test_sse_replay_longpoll_and_delete(data_dir):
@@ -313,3 +313,12 @@ def test_api_responsive_with_long_queue(data_dir):
     assert (time.perf_counter() - t0) < 2.0 and j["queue_position"] >= 3000
     with db.session(s.db_path) as c, db.tx(c):
         c.execute("UPDATE jobs SET state = 'cancelled' WHERE state = 'queued'")
+
+
+def test_worker_starts_on_a_fresh_data_folder(tmp_path):
+    """Regression: a worker started before any API on a new data folder ran the retention sweep before the tables existed and crashed."""
+    from app import retention
+    s = Settings(data_dir=tmp_path / "fresh", environment="test", mock=True)
+    w = Worker(s, "w-fresh")
+    with db.session(s.db_path) as c:
+        assert retention.sweep(c, w.storage, s)["jobs_deleted"] == 0

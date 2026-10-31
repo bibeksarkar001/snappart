@@ -252,6 +252,15 @@ def test_voice_conversion():
             voice.to_wav(bad, 10_000_000)
     with pytest.raises(voice.AudioError):
         voice.to_wav(wav_bytes(), 1000)
+    # WAVE_FORMAT_EXTENSIBLE (0xFFFE) with PCM samples, as many recorders write it: accepted, same samples as plain PCM
+    import struct
+    plain = wav_bytes(16000, 1)
+    pcm = plain[44:]
+    fmt = struct.pack("<HHIIHHHHIH14s", 0xFFFE, 1, 16000, 32000, 2, 16, 22, 16, 4, 1, b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xaa\x00\x38\x9b\x71")
+    ext = b"RIFF" + struct.pack("<I", 4 + 8 + len(fmt) + 8 + len(pcm)) + b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(pcm)) + pcm
+    a1, d1 = voice.to_wav(ext, 10_000_000)
+    a2, d2 = voice.to_wav(plain, 10_000_000)
+    assert a1 == a2 and d1 == d2
 
 
 def test_api_routes_mock_mode(tmp_path):
@@ -313,3 +322,18 @@ def test_many_concurrent_sam_calls_do_not_deadlock(tmp_path):
         return await asyncio.wait_for(asyncio.gather(*[cl.segment(b"\xff\xd8\xff", "part") for _ in range(40)]), timeout=60)
     assert len(M.run(all_calls())) == 40
     assert sum(r["ok"] for r in calls(s)) == 40
+
+
+def test_summary_never_carries_mat_coordinates(tmp_path):
+    s = settings(tmp_path)
+    rep = {"dims_mm": {"length": {"measured": 51.54}, "width": {"measured": 41.99}, "height": {"measured": 11.14}},
+           "features": [{"id": "lock_bump.position", "status": "measured", "value": [165.83, 101.98, 1.22]},
+                        {"id": "grooves.count", "status": "measured", "value": 4}], "questions": [], "warnings": []}
+    src = spark.summary_source(rep)
+    assert "165.83" not in json.dumps(src) and src["features"] == [rep["features"][1]]          # positions never reach the model
+    fake = Fake(chat_reply({"summary": "It measures 51.54 by 41.99 by 11.14 mm with 4 slots."}))
+    assert spark.summarize(client(s, fake), rep)["source"] == "muse-spark-1.3"
+    assert "165.83" not in fake.requests[-1].content.decode()
+    for bad in ("The ridge sits at 51.54, 41.99, 11.14 mm.", "The ridge is at x = 4 on the mat.", "Its coordinates are 4 and 4."):
+        out = spark.summarize(client(s, Fake(chat_reply({"summary": bad}))), rep)
+        assert out["source"] == "fallback (template)" and "51.54, 41.99" not in out["summary"], bad          # rejected: the template is used

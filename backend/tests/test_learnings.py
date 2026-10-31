@@ -65,3 +65,18 @@ def test_colour_model_is_learned_or_off():
     assert lo < np.median(h[25:55, 25:55]) < hi and not lo < 30 < hi            # green, not brown
     grey = np.full((80, 80, 3), 128, np.uint8)
     assert M.learn_colour([(grey, np.full((80, 80), 255, np.uint8))]) is None   # achromatic: no colour gating
+
+
+def test_pose_limit_scales_with_frame_size(monkeypatch):
+    """Regression (part B at full resolution): the pose rms limit is in pixels of a 1920 px frame; a 3840 px frame with the same angular
+    error has twice the pixels and must not be rejected (video 3 lost 35 of 60 frames before)."""
+    import numpy as np
+    from capture import config as C, mat, pipeline as P
+    monkeypatch.setattr(mat, "solve_pose", lambda *a, **k: (np.zeros(3), np.array([0, 0, 300.0]), 2.0))      # rms 2.0 px
+    monkeypatch.setattr(P.M, "crop_box", lambda *a: (0, 0, 8, 8))
+    img = np.zeros((16, 16, 3), np.uint8)
+    intr = {"v": (np.eye(3), np.zeros(5))}
+    ids = list(range(C.MIN_MARKERS))
+    for size, kept in (((1920, 1080), 0), ((3840, 2160), 1)):
+        scans = {"v": {"size": size, "frames": {0: (ids, [None] * len(ids), 1.0)}}}
+        assert len(P.crops_from_frames({"v": {0: img}}, scans, None, intr)["v"]) == kept, size
