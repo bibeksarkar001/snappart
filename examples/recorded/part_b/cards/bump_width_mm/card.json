@@ -1,0 +1,26 @@
+{
+ "question_id": "bump_width_mm",
+ "text": "How wide is the lock ridge at its base?",
+ "unit": "mm",
+ "hint": "Close the outside jaws across the ridge where it meets the wall.",
+ "default": 2.0,
+ "choices": null,
+ "image": "card.png",
+ "diagram": "diagram.svg",
+ "frame_id": "3_42",
+ "video": "3",
+ "score": 3.235,
+ "cos": 0.87,
+ "sharpness": 213.5,
+ "visible_share": 0.83,
+ "crop_px": [
+  301,
+  239,
+  818,
+  560
+ ],
+ "highlight": "yellow",
+ "highlight_contrast": 148.5,
+ "arrow_px": 21.6,
+ "fallback_frame": false
+}

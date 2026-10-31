@@ -1,0 +1,13 @@
+{
+ "transcript": "the slots there are three point five millimetres thick.",
+ "audio_seconds": 6.68,
+ "proposal": {
+  "correction": null,
+  "explanation": "No area selected so no action can be applied.",
+  "action": "none",
+  "text": "the slots there are three point five millimetres thick.",
+  "confirm_with": "POST /v1/jobs/{job_id}/corrections",
+  "source": "muse-spark-1.3"
+ },
+ "audio_kept": false
+}

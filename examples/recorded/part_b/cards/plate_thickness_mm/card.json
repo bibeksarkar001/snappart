@@ -1,0 +1,26 @@
+{
+ "question_id": "plate_thickness_mm",
+ "text": "How thick is the flat plate, measured in its middle?",
+ "unit": "mm",
+ "hint": "Use the outside jaws in the middle of the plate, not at its edge.",
+ "default": 1.5,
+ "choices": null,
+ "image": "card.png",
+ "diagram": "diagram.svg",
+ "frame_id": "2_37",
+ "video": "2",
+ "score": 2.303,
+ "cos": 0.79,
+ "sharpness": 346.9,
+ "visible_share": 0.5,
+ "crop_px": [
+  236,
+  105,
+  635,
+  597
+ ],
+ "highlight": "yellow",
+ "highlight_contrast": 197.5,
+ "arrow_px": 7.0,
+ "fallback_frame": true
+}

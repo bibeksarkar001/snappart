@@ -1,0 +1,26 @@
+{
+ "question_id": "bump_length_mm",
+ "text": "How long is the lock ridge (end to end)?",
+ "unit": "mm",
+ "hint": "Close the outside jaws over its two ends.",
+ "default": 19.55,
+ "choices": null,
+ "image": "card.png",
+ "diagram": "diagram.svg",
+ "frame_id": "3_37",
+ "video": "3",
+ "score": 4.434,
+ "cos": 0.95,
+ "sharpness": 2178.8,
+ "visible_share": 0.83,
+ "crop_px": [
+  289,
+  409,
+  762,
+  707
+ ],
+ "highlight": "yellow",
+ "highlight_contrast": 170.7,
+ "arrow_px": 193.3,
+ "fallback_frame": false
+}

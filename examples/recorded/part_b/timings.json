@@ -1,0 +1,96 @@
+{
+ "recorded_at": "2026-10-31T12:25:36+00:00",
+ "kind": "recorded run",
+ "part": "part B (briefcase lock plate)",
+ "input": {
+  "videos": "owner's private videos, not in this repository",
+  "frames": {
+   "1": {
+    "video_frames": 3425,
+    "uploaded": 60,
+    "selection": "sharpest of every 3rd frame in each of 60 equal windows",
+    "median_sharpness": 141.9,
+    "frame_size_px": [
+     2816,
+     1584
+    ],
+    "jpeg_quality": [
+     92
+    ],
+    "max_frame_bytes": 531954
+   },
+   "2": {
+    "video_frames": 2698,
+    "uploaded": 60,
+    "selection": "sharpest of every 3rd frame in each of 60 equal windows",
+    "median_sharpness": 147.2,
+    "frame_size_px": [
+     2816,
+     1584
+    ],
+    "jpeg_quality": [
+     92
+    ],
+    "max_frame_bytes": 549358
+   },
+   "3": {
+    "video_frames": 3093,
+    "uploaded": 60,
+    "selection": "sharpest of every 3rd frame in each of 60 equal windows",
+    "median_sharpness": 322.4,
+    "frame_size_px": [
+     2160,
+     3840
+    ],
+    "jpeg_quality": [
+     92
+    ],
+    "max_frame_bytes": 952913
+   }
+  },
+  "long_side_px": "full",
+  "part_name": "brown plastic buckle"
+ },
+ "api_wall_s": {
+  "select_and_upload_s": 93.4,
+  "capture_check_s": 8.3,
+  "build_s": 549.8,
+  "questions_with_spark_wording_s": 8.0,
+  "summary_s": 5.4,
+  "owner_answers_rebuild_s": 6.6,
+  "voice_s": 7.1,
+  "total_s": 678.7
+ },
+ "pipeline_per_stage_s": {
+  "per_stage_s": {
+   "marker detection": 7.5,
+   "mat self-calibration": 12.3,
+   "poses + undistorted crops": 12.2,
+   "SAM": 216.1,
+   "registration": 26.1,
+   "joint carve": 41.5,
+   "features (grooves, bump, plate)": 38.9,
+   "apply answers + mesh + STL": 6.2,
+   "held-out check": 51.4,
+   "report, review, cards": 115.1
+  },
+  "total_s": 547.2
+ },
+ "meta_calls": {
+  "muse-spark-1.3": {
+   "calls": 10,
+   "ok": 10
+  },
+  "sam-3.1": {
+   "calls": 220,
+   "ok": 220
+  },
+  "muse-voice-transcribe-1.0": {
+   "calls": 1,
+   "ok": 1
+  }
+ },
+ "model_npz_mb": 34.3,
+ "model_in_bundle": true,
+ "voice": "sent"
+}

@@ -1,0 +1,26 @@
+{
+ "question_id": "groove_depth_mm",
+ "text": "How deep are the rectangular slots? (one answer for all of them)",
+ "unit": "mm",
+ "hint": "Push the depth rod of your calipers into a slot until it touches the bottom.",
+ "default": 5.597,
+ "choices": null,
+ "image": "card.png",
+ "diagram": "diagram.svg",
+ "frame_id": "3_7",
+ "video": "3",
+ "score": 5.539,
+ "cos": 0.79,
+ "sharpness": 1104.3,
+ "visible_share": 1.0,
+ "crop_px": [
+  360,
+  831,
+  1187,
+  1315
+ ],
+ "highlight": "yellow",
+ "highlight_contrast": 218.7,
+ "arrow_px": 53.4,
+ "fallback_frame": false
+}

@@ -1,0 +1,12 @@
+{
+ "answers": {
+  "groove_depth_mm": 3.7,
+  "bump_length_mm": 19.7,
+  "bump_width_mm": 2.3,
+  "bump_height_mm": 2.3,
+  "plate_thickness_mm": 2.6,
+  "bump_shape": "hill"
+ },
+ "status": "user_supplied",
+ "source": "owner's calipers (backend/tests/fixtures/part_b.json) and confirmed ridge shape"
+}

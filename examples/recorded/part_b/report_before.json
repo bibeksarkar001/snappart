@@ -1,0 +1,1804 @@
+{
+ "held_out_iou": 0.9417,
+ "dims_mm": {
+  "length": {
+   "measured": 51.5,
+   "caliper": null,
+   "error": null
+  },
+  "width": {
+   "measured": 42.06,
+   "caliper": null,
+   "error": null
+  },
+  "height": {
+   "measured": 11.19,
+   "caliper": null,
+   "error": null
+  }
+ },
+ "features": [
+  {
+   "id": "grooves.count",
+   "status": "measured",
+   "value": 4,
+   "unit": "",
+   "views": 190
+  },
+  {
+   "id": "grooves.long",
+   "status": "measured",
+   "value": 7.28,
+   "unit": "mm",
+   "views": 38
+  },
+  {
+   "id": "grooves.short",
+   "status": "measured",
+   "value": 2.62,
+   "unit": "mm",
+   "views": 38
+  },
+  {
+   "id": "grooves.depth",
+   "status": "estimated",
+   "value": 5.475,
+   "unit": "mm",
+   "views": 0
+  },
+  {
+   "id": "lock_ridge.position",
+   "status": "measured",
+   "value": [
+    165.67,
+    101.94,
+    1.28
+   ],
+   "unit": "mm",
+   "views": 12
+  },
+  {
+   "id": "lock_ridge.face_and_direction",
+   "status": "measured",
+   "value": {
+    "face": "the wall beside the detected span (from the video's edge steps)",
+    "normal": [
+     -1.0,
+     -0.008,
+     -0.0
+    ]
+   },
+   "unit": "",
+   "views": 7
+  },
+  {
+   "id": "lock_ridge.length_detected",
+   "status": "measured",
+   "value": 19.55,
+   "unit": "mm",
+   "views": 12
+  },
+  {
+   "id": "lock_ridge.extent_out_of_wall",
+   "status": "measured",
+   "value": 2.0,
+   "unit": "mm",
+   "views": 7
+  },
+  {
+   "id": "lock_ridge.length",
+   "status": "measured",
+   "value": 19.55,
+   "unit": "mm",
+   "views": 0
+  },
+  {
+   "id": "lock_ridge.base_width",
+   "status": "estimated",
+   "value": 2.0,
+   "unit": "mm",
+   "views": 0
+  },
+  {
+   "id": "lock_ridge.height",
+   "status": "measured",
+   "value": 2.0,
+   "unit": "mm",
+   "views": 0
+  },
+  {
+   "id": "lock_ridge.top_radius",
+   "status": "estimated",
+   "value": 0.5,
+   "unit": "mm",
+   "views": 0
+  },
+  {
+   "id": "lock_ridge.shape",
+   "status": "estimated",
+   "value": "hill",
+   "unit": "",
+   "views": 0
+  },
+  {
+   "id": "lock_pin",
+   "status": "user_supplied",
+   "value": "part of the lock ridge",
+   "unit": "",
+   "views": 0
+  },
+  {
+   "id": "plate.faces_separation",
+   "status": "measured",
+   "value": 1.5,
+   "unit": "mm",
+   "views": 49
+  },
+  {
+   "id": "plate.thickness",
+   "status": "measured",
+   "value": 1.5,
+   "unit": "mm",
+   "views": 0
+  }
+ ],
+ "questions": [
+  {
+   "id": "groove_depth_mm",
+   "feature_id": "grooves",
+   "question": "How deep are the rectangular slots? (one answer for all of them)",
+   "unit": "mm",
+   "default": 5.597,
+   "default_source": "estimated",
+   "answered": false,
+   "answer": null,
+   "hint": "Push the depth rod of your calipers into a slot until it touches the bottom."
+  },
+  {
+   "id": "bump_height_mm",
+   "feature_id": "lock_bump",
+   "question": "How far does the lock ridge stand out from the wall it is on?",
+   "unit": "mm",
+   "default": 2.0,
+   "default_source": "measured",
+   "answered": false,
+   "answer": null,
+   "hint": "Rest the depth rod on the wall beside the ridge; measure to its top."
+  },
+  {
+   "id": "bump_width_mm",
+   "feature_id": "lock_bump",
+   "question": "How wide is the lock ridge at its base?",
+   "unit": "mm",
+   "default": 2.0,
+   "default_source": "estimated",
+   "answered": false,
+   "answer": null,
+   "hint": "Close the outside jaws across the ridge where it meets the wall."
+  },
+  {
+   "id": "bump_length_mm",
+   "feature_id": "lock_bump",
+   "question": "How long is the lock ridge (end to end)?",
+   "unit": "mm",
+   "default": 19.55,
+   "default_source": "measured",
+   "answered": false,
+   "answer": null,
+   "hint": "Close the outside jaws over its two ends."
+  },
+  {
+   "id": "bump_shape",
+   "feature_id": "lock_bump",
+   "question": "What shape is the top of this bump?",
+   "unit": "",
+   "default": "hill",
+   "default_source": "estimated",
+   "answered": false,
+   "answer": null,
+   "hint": "Look along it from one end: square (box), rounded, or a hill that narrows to the top.",
+   "choices": [
+    "box",
+    "rounded",
+    "hill"
+   ]
+  },
+  {
+   "id": "bump_top_shape",
+   "feature_id": "lock_bump",
+   "question": "What does the top of the lock ridge look like?",
+   "unit": "",
+   "default": "slightly rounded",
+   "default_source": "estimated",
+   "answered": false,
+   "answer": null,
+   "hint": "Look along the ridge from one end.",
+   "choices": [
+    "sharp",
+    "slightly rounded",
+    "quite rounded"
+   ]
+  },
+  {
+   "id": "plate_thickness_mm",
+   "feature_id": "plate",
+   "question": "How thick is the flat plate, measured in its middle?",
+   "unit": "mm",
+   "default": 1.5,
+   "default_source": "measured",
+   "answered": false,
+   "answer": null,
+   "hint": "Use the outside jaws in the middle of the plate, not at its edge."
+  }
+ ],
+ "low_confidence_regions": {
+  "area_share": 0.08261182874588138,
+  "min_views": 3,
+  "regions": [
+   {
+    "centre_mm": [
+     156.0,
+     108.0,
+     10.7
+    ],
+    "area_mm2": 64.2,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 35
+   },
+   {
+    "centre_mm": [
+     155.9,
+     100.0,
+     10.7
+    ],
+    "area_mm2": 63.2,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 36
+   },
+   {
+    "centre_mm": [
+     156.0,
+     115.7,
+     10.6
+    ],
+    "area_mm2": 58.1,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 35
+   },
+   {
+    "centre_mm": [
+     155.8,
+     92.2,
+     10.7
+    ],
+    "area_mm2": 51.8,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 38
+   },
+   {
+    "centre_mm": [
+     156.0,
+     85.4,
+     10.8
+    ],
+    "area_mm2": 35.0,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 40
+   },
+   {
+    "centre_mm": [
+     151.1,
+     115.9,
+     10.4
+    ],
+    "area_mm2": 14.2,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 37
+   },
+   {
+    "centre_mm": [
+     162.0,
+     90.4,
+     1.4
+    ],
+    "area_mm2": 14.1,
+    "normal": [
+     -0.464,
+     -0.033,
+     -0.885
+    ],
+    "cameras_facing": 55
+   },
+   {
+    "centre_mm": [
+     151.2,
+     107.8,
+     10.4
+    ],
+    "area_mm2": 12.8,
+    "normal": [
+     -0.052,
+     0.006,
+     0.999
+    ],
+    "cameras_facing": 36
+   }
+  ],
+  "coverage_map": {
+   "cell_mm": 8.0,
+   "cells": [
+    {
+     "centre_mm": [
+      124.3,
+      121.7,
+      3.7
+     ],
+     "area_mm2": 68.9,
+     "median_views": 42.333333333333336
+    },
+    {
+     "centre_mm": [
+      124.9,
+      119.0,
+      3.7
+     ],
+     "area_mm2": 51.8,
+     "median_views": 27.666666666666668
+    },
+    {
+     "centre_mm": [
+      124.7,
+      82.3,
+      3.6
+     ],
+     "area_mm2": 117.9,
+     "median_views": 32.666666666666664
+    },
+    {
+     "centre_mm": [
+      124.9,
+      121.2,
+      -0.0
+     ],
+     "area_mm2": 7.9,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      125.0,
+      119.5,
+      -0.0
+     ],
+     "area_mm2": 3.7,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      125.1,
+      82.5,
+      -0.0
+     ],
+     "area_mm2": 8.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      126.3,
+      82.6,
+      8.5
+     ],
+     "area_mm2": 11.2,
+     "median_views": 36.0
+    },
+    {
+     "centre_mm": [
+      126.6,
+      121.0,
+      8.3
+     ],
+     "area_mm2": 6.3,
+     "median_views": 37.666666666666664
+    },
+    {
+     "centre_mm": [
+      127.8,
+      120.0,
+      8.0
+     ],
+     "area_mm2": 0.1,
+     "median_views": 31.0
+    },
+    {
+     "centre_mm": [
+      132.3,
+      83.6,
+      3.7
+     ],
+     "area_mm2": 175.7,
+     "median_views": 21.0
+    },
+    {
+     "centre_mm": [
+      132.2,
+      82.5,
+      8.9
+     ],
+     "area_mm2": 38.4,
+     "median_views": 32.333333333333336
+    },
+    {
+     "centre_mm": [
+      131.8,
+      82.9,
+      -0.0
+     ],
+     "area_mm2": 9.8,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      132.5,
+      116.5,
+      3.9
+     ],
+     "area_mm2": 144.0,
+     "median_views": 20.333333333333332
+    },
+    {
+     "centre_mm": [
+      131.5,
+      119.6,
+      -0.0
+     ],
+     "area_mm2": 3.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      132.9,
+      119.5,
+      8.3
+     ],
+     "area_mm2": 8.3,
+     "median_views": 16.0
+    },
+    {
+     "centre_mm": [
+      131.9,
+      121.2,
+      -0.0
+     ],
+     "area_mm2": 10.2,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      132.2,
+      121.2,
+      8.7
+     ],
+     "area_mm2": 22.7,
+     "median_views": 37.0
+    },
+    {
+     "centre_mm": [
+      132.0,
+      122.2,
+      3.5
+     ],
+     "area_mm2": 72.5,
+     "median_views": 7.666666666666667
+    },
+    {
+     "centre_mm": [
+      133.2,
+      91.9,
+      3.7
+     ],
+     "area_mm2": 112.8,
+     "median_views": 28.0
+    },
+    {
+     "centre_mm": [
+      133.1,
+      100.0,
+      3.8
+     ],
+     "area_mm2": 105.9,
+     "median_views": 32.333333333333336
+    },
+    {
+     "centre_mm": [
+      133.1,
+      108.0,
+      3.8
+     ],
+     "area_mm2": 107.2,
+     "median_views": 28.666666666666668
+    },
+    {
+     "centre_mm": [
+      139.9,
+      82.7,
+      3.5
+     ],
+     "area_mm2": 144.5,
+     "median_views": 21.666666666666668
+    },
+    {
+     "centre_mm": [
+      139.9,
+      118.8,
+      3.8
+     ],
+     "area_mm2": 70.3,
+     "median_views": 16.333333333333332
+    },
+    {
+     "centre_mm": [
+      140.1,
+      82.5,
+      9.3
+     ],
+     "area_mm2": 49.7,
+     "median_views": 32.333333333333336
+    },
+    {
+     "centre_mm": [
+      138.9,
+      83.2,
+      -0.0
+     ],
+     "area_mm2": 4.2,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      140.3,
+      119.5,
+      8.7
+     ],
+     "area_mm2": 13.5,
+     "median_views": 26.666666666666668
+    },
+    {
+     "centre_mm": [
+      136.3,
+      119.9,
+      -0.0
+     ],
+     "area_mm2": 0.0,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      139.7,
+      121.3,
+      -0.0
+     ],
+     "area_mm2": 9.7,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      140.0,
+      121.4,
+      9.3
+     ],
+     "area_mm2": 28.8,
+     "median_views": 33.666666666666664
+    },
+    {
+     "centre_mm": [
+      140.1,
+      122.2,
+      3.5
+     ],
+     "area_mm2": 73.2,
+     "median_views": 7.0
+    },
+    {
+     "centre_mm": [
+      148.2,
+      83.0,
+      3.8
+     ],
+     "area_mm2": 149.3,
+     "median_views": 21.0
+    },
+    {
+     "centre_mm": [
+      148.3,
+      83.3,
+      9.7
+     ],
+     "area_mm2": 70.2,
+     "median_views": 28.0
+    },
+    {
+     "centre_mm": [
+      148.7,
+      117.8,
+      4.5
+     ],
+     "area_mm2": 81.9,
+     "median_views": 12.333333333333334
+    },
+    {
+     "centre_mm": [
+      149.0,
+      116.9,
+      9.6
+     ],
+     "area_mm2": 49.8,
+     "median_views": 28.0
+    },
+    {
+     "centre_mm": [
+      148.1,
+      122.1,
+      3.0
+     ],
+     "area_mm2": 81.1,
+     "median_views": 8.0
+    },
+    {
+     "centre_mm": [
+      148.1,
+      121.6,
+      9.6
+     ],
+     "area_mm2": 32.4,
+     "median_views": 23.0
+    },
+    {
+     "centre_mm": [
+      145.3,
+      121.4,
+      -0.0
+     ],
+     "area_mm2": 1.8,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      150.1,
+      92.1,
+      9.8
+     ],
+     "area_mm2": 39.3,
+     "median_views": 36.333333333333336
+    },
+    {
+     "centre_mm": [
+      150.1,
+      100.0,
+      9.7
+     ],
+     "area_mm2": 38.8,
+     "median_views": 45.666666666666664
+    },
+    {
+     "centre_mm": [
+      150.1,
+      108.0,
+      9.7
+     ],
+     "area_mm2": 39.0,
+     "median_views": 39.666666666666664
+    },
+    {
+     "centre_mm": [
+      150.8,
+      108.0,
+      7.0
+     ],
+     "area_mm2": 23.4,
+     "median_views": 17.333333333333332
+    },
+    {
+     "centre_mm": [
+      150.9,
+      92.0,
+      7.2
+     ],
+     "area_mm2": 21.1,
+     "median_views": 19.0
+    },
+    {
+     "centre_mm": [
+      150.8,
+      100.0,
+      7.1
+     ],
+     "area_mm2": 22.3,
+     "median_views": 18.0
+    },
+    {
+     "centre_mm": [
+      155.8,
+      83.4,
+      3.3
+     ],
+     "area_mm2": 135.4,
+     "median_views": 17.0
+    },
+    {
+     "centre_mm": [
+      156.0,
+      83.5,
+      10.3
+     ],
+     "area_mm2": 73.7,
+     "median_views": 3.6666666666666665
+    },
+    {
+     "centre_mm": [
+      156.1,
+      92.0,
+      4.4
+     ],
+     "area_mm2": 73.8,
+     "median_views": 4.666666666666667
+    },
+    {
+     "centre_mm": [
+      156.0,
+      92.0,
+      10.8
+     ],
+     "area_mm2": 63.9,
+     "median_views": 1.6666666666666667
+    },
+    {
+     "centre_mm": [
+      156.0,
+      100.0,
+      4.3
+     ],
+     "area_mm2": 74.0,
+     "median_views": 5.0
+    },
+    {
+     "centre_mm": [
+      156.0,
+      100.0,
+      10.7
+     ],
+     "area_mm2": 63.9,
+     "median_views": 0.0
+    },
+    {
+     "centre_mm": [
+      156.0,
+      108.0,
+      10.7
+     ],
+     "area_mm2": 64.2,
+     "median_views": 0.0
+    },
+    {
+     "centre_mm": [
+      156.1,
+      108.0,
+      4.2
+     ],
+     "area_mm2": 77.8,
+     "median_views": 6.333333333333333
+    },
+    {
+     "centre_mm": [
+      155.8,
+      116.3,
+      3.1
+     ],
+     "area_mm2": 88.2,
+     "median_views": 6.0
+    },
+    {
+     "centre_mm": [
+      156.0,
+      116.0,
+      10.6
+     ],
+     "area_mm2": 63.9,
+     "median_views": 1.0
+    },
+    {
+     "centre_mm": [
+      155.9,
+      122.2,
+      3.2
+     ],
+     "area_mm2": 77.0,
+     "median_views": 8.0
+    },
+    {
+     "centre_mm": [
+      156.1,
+      121.7,
+      9.9
+     ],
+     "area_mm2": 35.0,
+     "median_views": 22.0
+    },
+    {
+     "centre_mm": [
+      157.6,
+      119.6,
+      -0.0
+     ],
+     "area_mm2": 1.5,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      158.0,
+      120.6,
+      -0.0
+     ],
+     "area_mm2": 3.7,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      162.9,
+      91.9,
+      1.0
+     ],
+     "area_mm2": 55.7,
+     "median_views": 3.3333333333333335
+    },
+    {
+     "centre_mm": [
+      164.4,
+      92.0,
+      10.3
+     ],
+     "area_mm2": 68.4,
+     "median_views": 15.666666666666666
+    },
+    {
+     "centre_mm": [
+      162.6,
+      99.6,
+      0.9
+     ],
+     "area_mm2": 50.1,
+     "median_views": 4.0
+    },
+    {
+     "centre_mm": [
+      162.5,
+      108.3,
+      1.0
+     ],
+     "area_mm2": 52.5,
+     "median_views": 5.0
+    },
+    {
+     "centre_mm": [
+      163.4,
+      115.8,
+      0.9
+     ],
+     "area_mm2": 62.0,
+     "median_views": 5.0
+    },
+    {
+     "centre_mm": [
+      163.9,
+      121.6,
+      9.6
+     ],
+     "area_mm2": 33.1,
+     "median_views": 25.333333333333332
+    },
+    {
+     "centre_mm": [
+      163.8,
+      82.9,
+      2.4
+     ],
+     "area_mm2": 111.2,
+     "median_views": 22.333333333333332
+    },
+    {
+     "centre_mm": [
+      164.2,
+      83.9,
+      10.1
+     ],
+     "area_mm2": 73.4,
+     "median_views": 19.0
+    },
+    {
+     "centre_mm": [
+      164.4,
+      100.0,
+      10.2
+     ],
+     "area_mm2": 68.8,
+     "median_views": 16.333333333333332
+    },
+    {
+     "centre_mm": [
+      164.4,
+      108.0,
+      10.1
+     ],
+     "area_mm2": 69.4,
+     "median_views": 16.666666666666668
+    },
+    {
+     "centre_mm": [
+      164.4,
+      116.0,
+      10.1
+     ],
+     "area_mm2": 68.8,
+     "median_views": 17.0
+    },
+    {
+     "centre_mm": [
+      166.2,
+      117.0,
+      -0.0
+     ],
+     "area_mm2": 9.0,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      164.1,
+      121.0,
+      -0.0
+     ],
+     "area_mm2": 8.8,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      164.0,
+      122.4,
+      3.4
+     ],
+     "area_mm2": 74.9,
+     "median_views": 9.666666666666666
+    },
+    {
+     "centre_mm": [
+      166.4,
+      100.6,
+      -0.0
+     ],
+     "area_mm2": 20.1,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      166.3,
+      107.4,
+      -0.0
+     ],
+     "area_mm2": 21.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      166.9,
+      85.1,
+      -0.0
+     ],
+     "area_mm2": 4.4,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      166.6,
+      92.8,
+      -0.0
+     ],
+     "area_mm2": 13.4,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      171.0,
+      83.9,
+      3.6
+     ],
+     "area_mm2": 109.6,
+     "median_views": 34.333333333333336
+    },
+    {
+     "centre_mm": [
+      168.5,
+      85.1,
+      8.4
+     ],
+     "area_mm2": 7.8,
+     "median_views": 13.333333333333334
+    },
+    {
+     "centre_mm": [
+      169.1,
+      86.1,
+      -0.0
+     ],
+     "area_mm2": 4.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      171.4,
+      92.0,
+      3.6
+     ],
+     "area_mm2": 99.3,
+     "median_views": 30.0
+    },
+    {
+     "centre_mm": [
+      168.5,
+      91.9,
+      8.4
+     ],
+     "area_mm2": 10.1,
+     "median_views": 12.333333333333334
+    },
+    {
+     "centre_mm": [
+      169.0,
+      92.2,
+      -0.0
+     ],
+     "area_mm2": 10.1,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      168.9,
+      99.5,
+      -0.0
+     ],
+     "area_mm2": 9.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      168.4,
+      99.7,
+      8.3
+     ],
+     "area_mm2": 7.9,
+     "median_views": 11.0
+    },
+    {
+     "centre_mm": [
+      171.3,
+      100.1,
+      3.6
+     ],
+     "area_mm2": 100.6,
+     "median_views": 32.0
+    },
+    {
+     "centre_mm": [
+      168.8,
+      107.9,
+      -0.0
+     ],
+     "area_mm2": 9.3,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      168.3,
+      108.0,
+      8.2
+     ],
+     "area_mm2": 5.5,
+     "median_views": 11.0
+    },
+    {
+     "centre_mm": [
+      168.3,
+      115.8,
+      8.2
+     ],
+     "area_mm2": 6.0,
+     "median_views": 11.333333333333334
+    },
+    {
+     "centre_mm": [
+      169.0,
+      116.0,
+      -0.0
+     ],
+     "area_mm2": 8.2,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      171.2,
+      116.0,
+      3.7
+     ],
+     "area_mm2": 103.0,
+     "median_views": 23.0
+    },
+    {
+     "centre_mm": [
+      168.6,
+      120.4,
+      -0.0
+     ],
+     "area_mm2": 0.8,
+     "median_views": 98.0
+    },
+    {
+     "centre_mm": [
+      168.2,
+      120.4,
+      8.1
+     ],
+     "area_mm2": 0.3,
+     "median_views": 18.0
+    },
+    {
+     "centre_mm": [
+      170.5,
+      121.7,
+      3.3
+     ],
+     "area_mm2": 56.0,
+     "median_views": 25.333333333333332
+    },
+    {
+     "centre_mm": [
+      171.2,
+      108.0,
+      3.7
+     ],
+     "area_mm2": 102.0,
+     "median_views": 28.333333333333332
+    }
+   ]
+  }
+ },
+ "not_detected": [
+  {
+   "id": "unseen_1",
+   "status": "not_detected",
+   "centre_mm": [
+    156.0,
+    108.0,
+    10.7
+   ],
+   "area_mm2": 64.2,
+   "reason": "a recess or hidden face: cameras faced it but silhouettes cannot see into it; its shape is the carve's guess"
+  },
+  {
+   "id": "unseen_2",
+   "status": "not_detected",
+   "centre_mm": [
+    155.9,
+    100.0,
+    10.7
+   ],
+   "area_mm2": 63.2,
+   "reason": "a recess or hidden face: cameras faced it but silhouettes cannot see into it; its shape is the carve's guess"
+  },
+  {
+   "id": "unseen_3",
+   "status": "not_detected",
+   "centre_mm": [
+    156.0,
+    115.7,
+    10.6
+   ],
+   "area_mm2": 58.1,
+   "reason": "a recess or hidden face: cameras faced it but silhouettes cannot see into it; its shape is the carve's guess"
+  },
+  {
+   "id": "unseen_4",
+   "status": "not_detected",
+   "centre_mm": [
+    155.8,
+    92.2,
+    10.7
+   ],
+   "area_mm2": 51.8,
+   "reason": "a recess or hidden face: cameras faced it but silhouettes cannot see into it; its shape is the carve's guess"
+  },
+  {
+   "id": "unseen_5",
+   "status": "not_detected",
+   "centre_mm": [
+    156.0,
+    85.4,
+    10.8
+   ],
+   "area_mm2": 35.0,
+   "reason": "a recess or hidden face: cameras faced it but silhouettes cannot see into it; its shape is the carve's guess"
+  }
+ ],
+ "coverage_requests": [],
+ "checks": {},
+ "warnings": [
+  "underside and recesses: silhouettes cannot see into concave regions (pockets, the space under a plate between rails, a face a feature opens in), and each video never sees the face it rests on; those surfaces come from other videos or from answers."
+ ],
+ "timings": {
+  "per_stage_s": {
+   "marker detection": 7.5,
+   "mat self-calibration": 12.3,
+   "poses + undistorted crops": 12.2,
+   "SAM": 216.1,
+   "registration": 26.1,
+   "joint carve": 41.5,
+   "features (grooves, bump, plate)": 38.9,
+   "apply answers + mesh + STL": 6.2,
+   "held-out check": 51.4,
+   "report, review, cards": 115.1
+  },
+  "total_s": 547.2
+ },
+ "corrections": [],
+ "review_items": [],
+ "details": [
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 5.58
+   },
+   "centre": [
+    152.27,
+    110.63,
+    4.46
+   ],
+   "normal": [
+    0.001,
+    0.0,
+    -1.0
+   ],
+   "evidence": {
+    "points": 748
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 9.36
+   },
+   "centre": [
+    154.08,
+    99.7,
+    10.43
+   ],
+   "normal": [
+    0.0,
+    0.001,
+    1.0
+   ],
+   "evidence": {
+    "points": 431
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 36.88
+   },
+   "centre": [
+    152.53,
+    103.52,
+    4.63
+   ],
+   "normal": [
+    -0.01,
+    0.999,
+    0.04
+   ],
+   "evidence": {
+    "points": 1135
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 40.0
+   },
+   "centre": [
+    143.61,
+    103.33,
+    4.79
+   ],
+   "normal": [
+    -0.01,
+    0.999,
+    0.04
+   ],
+   "evidence": {
+    "points": 991
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 2.88
+   },
+   "centre": [
+    167.97,
+    102.31,
+    4.51
+   ],
+   "normal": [
+    -0.992,
+    0.026,
+    -0.122
+   ],
+   "evidence": {
+    "points": 665
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 7.57
+   },
+   "centre": [
+    169.8,
+    100.05,
+    3.78
+   ],
+   "normal": [
+    -0.992,
+    0.026,
+    -0.122
+   ],
+   "evidence": {
+    "points": 665
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 39.52
+   },
+   "centre": [
+    149.5,
+    99.66,
+    4.72
+   ],
+   "normal": [
+    0.009,
+    -1.0,
+    0.006
+   ],
+   "evidence": {
+    "points": 1363
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 3.12
+   },
+   "centre": [
+    149.16,
+    84.45,
+    4.75
+   ],
+   "normal": [
+    -0.003,
+    1.0,
+    -0.013
+   ],
+   "evidence": {
+    "points": 991
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "step",
+   "source": "mesh",
+   "size_mm": {
+    "height": 4.69
+   },
+   "centre": [
+    169.58,
+    100.67,
+    3.66
+   ],
+   "normal": [
+    -1.0,
+    0.0,
+    0.001
+   ],
+   "evidence": {
+    "points": 753
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "chamfer",
+   "source": "mesh",
+   "size_mm": {
+    "width": 5.49
+   },
+   "centre": [
+    168.94,
+    99.74,
+    7.78
+   ],
+   "normal": [
+    0.608,
+    0.017,
+    0.794
+   ],
+   "evidence": {
+    "points": 724
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "boss",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 10.29,
+    "length": 41.4
+   },
+   "centre": [
+    167.79,
+    101.37,
+    1.88
+   ],
+   "axis": [
+    0.001,
+    -1.0,
+    0.005
+   ],
+   "arc_deg": 213.0,
+   "evidence": {
+    "points": 1763,
+    "rms_mm": 0.075
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "boss",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 4.34,
+    "length": 37.59
+   },
+   "centre": [
+    132.96,
+    104.45,
+    3.76
+   ],
+   "axis": [
+    0.004,
+    1.0,
+    -0.016
+   ],
+   "arc_deg": 355.0,
+   "evidence": {
+    "points": 1888,
+    "rms_mm": 0.093
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "boss",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 7.67,
+    "length": 41.51
+   },
+   "centre": [
+    153.08,
+    101.42,
+    10.07
+   ],
+   "axis": [
+    -0.002,
+    1.0,
+    -0.015
+   ],
+   "arc_deg": 189.0,
+   "evidence": {
+    "points": 1264,
+    "rms_mm": 0.083
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "boss",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 20.51,
+    "length": 42.64
+   },
+   "centre": [
+    161.24,
+    106.75,
+    0.64
+   ],
+   "axis": [
+    -0.03,
+    -0.999,
+    0.022
+   ],
+   "arc_deg": 190.0,
+   "evidence": {
+    "points": 1430,
+    "rms_mm": 0.081
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "boss",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 24.29,
+    "length": 41.82
+   },
+   "centre": [
+    168.34,
+    102.37,
+    12.13
+   ],
+   "axis": [
+    -0.003,
+    1.0,
+    0.0
+   ],
+   "arc_deg": 105.0,
+   "evidence": {
+    "points": 912,
+    "rms_mm": 0.051
+   },
+   "status": "measured"
+  },
+  {
+   "kind": "hole",
+   "source": "mesh",
+   "size_mm": {
+    "diameter": 25.51,
+    "length": 41.09
+   },
+   "centre": [
+    165.44,
+    102.4,
+    6.97
+   ],
+   "axis": [
+    -0.001,
+    -1.0,
+    -0.006
+   ],
+   "arc_deg": 48.0,
+   "evidence": {
+    "points": 619,
+    "rms_mm": 0.03
+   },
+   "status": "measured"
+  }
+ ],
+ "quality": {
+  "status": "draft",
+  "gates": [
+   {
+    "gate": "watertight_manifold",
+    "ok": true,
+    "value": {
+     "boundary_edges": 0,
+     "non_manifold_edges": 0
+    },
+    "reason": "The model has holes or bad edges, so it may not print."
+   },
+   {
+    "gate": "single_body",
+    "ok": true,
+    "value": {
+     "bodies": 1
+    },
+    "reason": "The model has 1 separate pieces."
+   },
+   {
+    "gate": "no_zero_thickness",
+    "ok": false,
+    "value": {
+     "skins": [
+      {
+       "voxels": 297,
+       "area_mm2": 6.7,
+       "extent_mm": [
+        1.05,
+        20.4,
+        0.45
+       ],
+       "centre_mm": [
+        167.4,
+        94.3,
+        9.0
+       ]
+      },
+      {
+       "voxels": 51,
+       "area_mm2": 1.1,
+       "extent_mm": [
+        0.3,
+        5.85,
+        0.0
+       ],
+       "centre_mm": [
+        167.0,
+        115.9,
+        9.0
+       ]
+      },
+      {
+       "voxels": 54,
+       "area_mm2": 1.2,
+       "extent_mm": [
+        0.15,
+        6.45,
+        0.0
+       ],
+       "centre_mm": [
+        167.1,
+        108.7,
+        9.0
+       ]
+      },
+      {
+       "voxels": 50,
+       "area_mm2": 1.1,
+       "extent_mm": [
+        0.15,
+        6.45,
+        0.15
+       ],
+       "centre_mm": [
+        171.4,
+        107.5,
+        5.4
+       ]
+      },
+      {
+       "voxels": 52,
+       "area_mm2": 1.2,
+       "extent_mm": [
+        0.3,
+        6.0,
+        0.3
+       ],
+       "centre_mm": [
+        171.6,
+        87.7,
+        5.5
+       ]
+      }
+     ]
+    },
+    "reason": "Parts of the model are paper-thin (one voxel thick), which usually means a wrong surface."
+   },
+   {
+    "gate": "size_sane",
+    "ok": true,
+    "value": {
+     "dims_mm": [
+      51.5,
+      42.06,
+      11.19
+     ],
+     "volume_mm3": 5599.9
+    },
+    "reason": "The size does not fit a part filmed on the printed mat."
+   },
+   {
+    "gate": "held_out_iou",
+    "ok": true,
+    "value": {
+     "held_out_iou": 0.9416562296052147,
+     "min": 0.9
+    },
+    "reason": "The model does not match the photos it was not built from well enough."
+   }
+  ],
+  "reasons": [
+   "Parts of the model are paper-thin (one voxel thick), which usually means a wrong surface."
+  ],
+  "not_run": [],
+  "roughness": [
+   {
+    "normal": [
+     0.001,
+     0.0,
+     -1.0
+    ],
+    "samples": 3609,
+    "rms_mm": 0.009
+   },
+   {
+    "normal": [
+     0.0,
+     0.001,
+     1.0
+    ],
+    "samples": 3757,
+    "rms_mm": 0.037
+   },
+   {
+    "normal": [
+     0.01,
+     -0.999,
+     -0.04
+    ],
+    "samples": 3021,
+    "rms_mm": 0.005
+   }
+  ]
+ },
+ "cards_missing": [],
+ "mode": "real",
+ "synthetic": false,
+ "meta_models_ran": [
+  "muse-spark-1.3",
+  "sam-3.1"
+ ],
+ "sam_calls": 220,
+ "views": {
+  "1": 53,
+  "2": 55,
+  "3": 36
+ },
+ "calib_rms_px": 1.3600640567697861,
+ "held_out_iou_per_video": {
+  "1": 0.9297322266584792,
+  "2": 0.9466945465847102,
+  "3": 0.9554276015396946
+ }
+}

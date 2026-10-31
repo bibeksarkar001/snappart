@@ -1,0 +1,30 @@
+{
+ "question_id": "bump_shape",
+ "text": "What shape is the top of this bump?",
+ "unit": "",
+ "hint": "Look along it from one end: square (box), rounded, or a hill that narrows to the top.",
+ "default": "hill",
+ "choices": [
+  "box",
+  "rounded",
+  "hill"
+ ],
+ "image": "card.png",
+ "diagram": "diagram.svg",
+ "frame_id": "3_37",
+ "video": "3",
+ "score": 4.434,
+ "cos": 0.95,
+ "sharpness": 2178.8,
+ "visible_share": 0.83,
+ "crop_px": [
+  289,
+  409,
+  762,
+  707
+ ],
+ "highlight": "yellow",
+ "highlight_contrast": 170.7,
+ "arrow_px": 0.0,
+ "fallback_frame": false
+}
