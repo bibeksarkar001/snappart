@@ -10,6 +10,8 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER backend/app ./app
 COPY --chown=$MAMBA_USER:$MAMBA_USER backend/capture ./capture
 COPY --chown=$MAMBA_USER:$MAMBA_USER backend/cad ./cad
 COPY --chown=$MAMBA_USER:$MAMBA_USER backend/measure ./measure
+# The recorded part B run that replay mode (no key) serves; BACKEND.parent / examples / recorded / part_b is /srv/examples/...
+COPY --chown=$MAMBA_USER:$MAMBA_USER examples/recorded/part_b /srv/examples/recorded/part_b
 
 # Non-root (the base image's mambauser). Data lives on a volume; the root filesystem can be mounted read-only.
 USER $MAMBA_USER

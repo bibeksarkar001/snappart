@@ -5,6 +5,7 @@
 !backend/capture/
 !backend/cad/
 !backend/measure/
+!examples/recorded/part_b/
 **/__pycache__
 **/*.pyc
 .env
