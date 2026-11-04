@@ -17,7 +17,7 @@ export type CaptureCheck = {
 export type Job = {
   job_id: string; state: string; mode: Mode; warnings: string[]; error: { code: string; message: string } | null
   queue_position: number | null; eta_s: number | null; outputs: string[]; uploads: { frames: number; bytes: number }
-  capture_check: { verdict: string; videos: Record<string, VideoCheck> } | null; recorded?: Recorded; created_at: number
+  capture_check: { verdict: string; videos: Record<string, VideoCheck> } | null; recorded?: Recorded; created_at: number; updated_at: number; state_changed_at: number
 }
 export type Card = { image: string; diagram: string; meta: string } | null
 export type Question = {
@@ -63,21 +63,48 @@ export class ApiError extends Error {
 type ModeInfo = { mode: Mode; recorded: string | null }
 const listeners = new Set<(m: ModeInfo) => void>()
 export const onMode = (f: (m: ModeInfo) => void) => { listeners.add(f); return () => { listeners.delete(f) } }
+// Server clock minus this device's clock, in seconds (from the Date header, when the server exposes it): the build timer uses server times.
+export let clockSkew = 0
+// "Can't reach" is told apart from a server answer: a proxy 502/503/504 or a lost connection has no error envelope. Listeners (the health banner) hear every change.
+export const DOWN = "Can't reach the SnapPart server. Check that the backend is running, then retry."
+export const isDown = (e: unknown) => e instanceof ApiError && e.code === 'unreachable'
+const healthListeners = new Set<(up: boolean) => void>()
+export const onHealth = (f: (up: boolean) => void) => { healthListeners.add(f); return () => { healthListeners.delete(f) } }
+const health = (up: boolean) => healthListeners.forEach(f => f(up))
 function noteMode(r: Response) {
+  const d = Date.parse(r.headers.get('Date') ?? ''); if (!isNaN(d)) clockSkew = d / 1000 - Date.now() / 1000
   const mode = r.headers.get('X-SnapPart-Mode') as Mode | null
   if (mode) listeners.forEach(f => f({ mode, recorded: r.headers.get('X-SnapPart-Recorded') }))
 }
 
+// Every call has a timeout (a hung request becomes a visible error, never a blank wait) and safe GETs retry twice on a lost connection or a 5xx.
+const timeoutFor = (path: string, init: RequestInit) =>
+  /wait=\d+/.test(path) ? 45_000 : init.method === 'PUT' || /\/voice$|\/transcribe$|\/rebuild$|\/capture-check$/.test(path) ? 90_000 : 25_000
 export async function raw(path: string, init: RequestInit = {}): Promise<Response> {
-  let r: Response
-  try { r = await fetch(BASE + path, init) } catch { throw new ApiError(0, 'offline', 'Could not reach SnapPart. Check your connection and try again.') }
-  noteMode(r)
-  if (!r.ok) {
-    let e: { code?: string; message?: string; retry_after_s?: number | null; request_id?: string } = {}
-    try { e = (await r.json()).error ?? {} } catch { /* not the envelope */ }
-    throw new ApiError(r.status, e.code ?? 'internal', e.message ?? `Request failed (${r.status}).`, e.retry_after_s ?? null, e.request_id ?? null)
+  const safe = !init.method || init.method === 'GET', ms = timeoutFor(path, init)
+  for (let attempt = 0; ; attempt++) {
+    let r: Response
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms)
+    try { r = await fetch(BASE + path, { ...init, signal: ctl.signal }) } catch {
+      clearTimeout(timer)
+      const err = ctl.signal.aborted ? new ApiError(0, 'timeout', 'SnapPart took too long to answer. Try again.') : new ApiError(0, 'unreachable', DOWN)
+      if (safe && attempt < 2) { await new Promise(ok => setTimeout(ok, 600 * 2 ** attempt)); continue }
+      health(false)
+      throw err
+    }
+    clearTimeout(timer)
+    noteMode(r)
+    if (!r.ok) {
+      if (safe && r.status >= 502 && attempt < 2) { await new Promise(ok => setTimeout(ok, 600 * 2 ** attempt)); continue }
+      let e: { code?: string; message?: string; retry_after_s?: number | null; request_id?: string } = {}
+      try { e = (await r.json()).error ?? {} } catch { /* not the envelope */ }
+      if (!e.code && [502, 503, 504].includes(r.status)) { health(false); throw new ApiError(r.status, 'unreachable', DOWN) }
+      health(true)
+      throw new ApiError(r.status, e.code ?? 'internal', e.message ?? `Request failed (${r.status}).`, e.retry_after_s ?? null, e.request_id ?? null)
+    }
+    health(true)
+    return r
   }
-  return r
 }
 
 async function req<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -102,15 +129,21 @@ export const api = {
   questions: (id: string) => req<Questions>(`${J(id)}/questions`),
   answers: (id: string, answers: Record<string, number | string>) => req<{ saved: string[]; open_questions: number }>(`${J(id)}/answers`, 'POST', { answers }),
   correction: (id: string, correction: Record<string, unknown>) => req<{ correction_id: string }>(`${J(id)}/corrections`, 'POST', { correction }),
+  corrections: (id: string) => req<{ corrections: { id: string; correction: Record<string, any>; reverted: boolean }[] }>(`${J(id)}/corrections`),
+  undoCorrection: (id: string, cid: string) => req<unknown>(`${J(id)}/corrections/${cid}`, 'DELETE'),
   rebuild: (id: string) => req<Rebuild>(`${J(id)}/rebuild`, 'POST'),
-  mark: (id: string, point: number[], normal: number[], radius_mm = 3) => req<ReviewItem>(`${J(id)}/marks`, 'POST', { point, normal, radius_mm }),
+  mark: (id: string, point: number[], normal: number[], radius_mm = 3, depth_mm = 3) => req<ReviewItem>(`${J(id)}/marks`, 'POST', { point, normal, radius_mm, depth_mm }),
   review: (id: string, item: string, choice: string) => req<{ decision: string }>(`${J(id)}/review/${item}`, 'POST', { choice }),
   moreFootage: (id: string, request_id: string, action: 'film' | 'skip') =>
     req<{ state: string; next_frame_index: Record<string, number> }>(`${J(id)}/more-footage`, 'POST', { request_id, action }),
   accept: (id: string) => req<Job>(`${J(id)}/accept`, 'POST'),
   propose: (id: string, text: string, item_id?: string) => req<Proposal>(`${J(id)}/proposals`, 'POST', item_id ? { text, item_id } : { text }),
-  voice: (id: string, wav: Blob, item_id?: string) => {
-    const f = new FormData(); f.append('audio', wav, 'speech.wav'); if (item_id) f.append('item_id', item_id)
+  transcribe: (wav: Blob) => {
+    const f = new FormData(); f.append('audio', wav, 'speech.wav')
+    return raw('/v1/voice/transcribe', { method: 'POST', body: f }).then(r => r.json() as Promise<{ transcript: string; audio_seconds: number; source: string }>)
+  },
+  voice: (id: string, wav: Blob, item_id?: string, question_id?: string) => {
+    const f = new FormData(); f.append('audio', wav, 'speech.wav'); if (item_id) f.append('item_id', item_id); if (question_id) f.append('question_id', question_id)
     return raw(`${J(id)}/voice`, { method: 'POST', body: f }).then(r => r.json() as Promise<Voice>)
   },
   summary: (id: string) => req<{ summary: string; source: string; recorded?: Recorded }>(`${J(id)}/summary`),

@@ -33,7 +33,7 @@ export default defineConfig({
     launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
   },
   projects: [
-    { name: 'recording', testMatch: 'smoke.spec.ts', use: { baseURL: 'https://localhost:5180' } },
+    { name: 'recording', testMatch: /(smoke|guard).spec.ts/, use: { baseURL: 'https://localhost:5180' } },
     { name: 'camera-only', testMatch: 'camera-only.spec.ts', use: { baseURL: 'https://localhost:5181' } },
   ],
   webServer: [...servers('recording', 8100, 5180, false), ...servers('camera-only', 8101, 5181, true)],

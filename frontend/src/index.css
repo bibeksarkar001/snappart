@@ -2,27 +2,27 @@
 /* Layout: one dark "measuring studio". A cinematic 3D stage of the real part, millimetre grid and dimension lines as the visual language, Meta model blue for AI, teal for measured, amber for questions. */
 :root{
   --bg:#060809; --bg-2:#0A0E0F; --panel:#0E1315; --panel-2:#131A1C; --line:#1A2224; --line-2:#263133;
-  --ink:#EEF3F2; --ink-2:#A6B2B0; --ink-3:#6C7876;
-  --accent:#3DDBC3; --accent-hi:#6BE8D5; --accent-ink:#03201B; --accent-soft:rgba(61,219,195,.12);
+  --ink:#EEF3F2; --ink-2:#A6B2B0; --ink-3:#8C9997;
+  --accent:#45CDB8; --accent-hi:#6FDCCB; --accent-ink:#03201B; --accent-soft:rgba(61,219,195,.12);
   --meta:#6B95FF; --meta-soft:rgba(107,149,255,.13);
   --ask:#F6B44C; --ask-soft:rgba(246,180,76,.13); --ok:#5CDA92; --ok-soft:rgba(92,218,146,.12); --est:#A6B2B0; --est-soft:rgba(166,178,176,.12); --bad:#FF7A6E; --bad-soft:rgba(255,122,110,.12);
   --f:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --fm:"Geist Mono", ui-monospace, Menlo, Consolas, monospace;
-  --r:12px; --rl:20px;
+  --r:12px; --rl:16px;
   --stage:radial-gradient(70% 70% at 50% 60%,#0f1d1c 0%,#080b0c 60%,#060809 100%); --hud:rgba(14,19,21,.62); --vlab:rgba(6,8,9,.82); --hdr:rgba(6,8,9,.72); --ghost:rgba(255,255,255,.03);
   color-scheme:dark;
 }
 @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){
   --bg:#F4F7F6; --bg-2:#EDF2F0; --panel:#FFFFFF; --panel-2:#FFFFFF; --line:#E1E7E5; --line-2:#CBD5D2;
-  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#7A8684;
-  --accent:#0C9580; --accent-hi:#0A7F6D; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
+  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#5B6866;
+  --accent:#0A7F6D; --accent-hi:#086B5C; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
   --meta:#3A63E0; --meta-soft:rgba(58,99,224,.09); --ask:#A86400; --ask-soft:rgba(168,100,0,.1); --ok:#167A44; --ok-soft:rgba(22,122,68,.1); --est:#5E6A68; --est-soft:rgba(94,106,104,.1); --bad:#BF3328; --bad-soft:rgba(191,51,40,.08);
   --stage:radial-gradient(70% 70% at 50% 60%,#E3F1EE 0%,#F1F5F4 65%,#F4F7F6 100%); --hud:rgba(255,255,255,.75); --vlab:rgba(255,255,255,.92); --hdr:rgba(244,247,246,.78); --ghost:rgba(0,0,0,.02);
   color-scheme:light; } }
 :root[data-theme="light"]{
   --bg:#F4F7F6; --bg-2:#EDF2F0; --panel:#FFFFFF; --panel-2:#FFFFFF; --line:#E1E7E5; --line-2:#CBD5D2;
-  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#7A8684;
-  --accent:#0C9580; --accent-hi:#0A7F6D; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
+  --ink:#0B1112; --ink-2:#4A5654; --ink-3:#5B6866;
+  --accent:#0A7F6D; --accent-hi:#086B5C; --accent-ink:#FFFFFF; --accent-soft:rgba(12,149,128,.1);
   --meta:#3A63E0; --meta-soft:rgba(58,99,224,.09); --ask:#A86400; --ask-soft:rgba(168,100,0,.1); --ok:#167A44; --ok-soft:rgba(22,122,68,.1); --est:#5E6A68; --est-soft:rgba(94,106,104,.1); --bad:#BF3328; --bad-soft:rgba(191,51,40,.08);
   --stage:radial-gradient(70% 70% at 50% 60%,#E3F1EE 0%,#F1F5F4 65%,#F4F7F6 100%); --hud:rgba(255,255,255,.75); --vlab:rgba(255,255,255,.92); --hdr:rgba(244,247,246,.78); --ghost:rgba(0,0,0,.02);
   color-scheme:light; }
@@ -280,3 +280,46 @@ details.why p{margin-top:8px;font-size:14px;color:var(--ink-2)}
 .fgrid>*,.rev>*,.res>*,.qs>*{min-width:0}.seg{max-width:100%}
 .qr svg{display:block;width:100%;height:100%}
 .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}.photos figure{margin:0;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--bg-2)}.photos img{display:block;width:100%;height:auto}.photos figcaption{font-family:var(--fm);font-size:11px;color:var(--ink-3);padding:4px 6px}
+.path li.locked{cursor:default;opacity:.5}
+.skel{min-height:240px;border-radius:12px;background:linear-gradient(90deg,var(--panel) 25%,var(--line) 50%,var(--panel) 75%);background-size:200% 100%;animation:skel 1.4s ease infinite}
+@keyframes skel{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+
+/* ---- Premium pass (4 Nov): tokens first. One accent, no glow, no gradient text, readable greys, 13 px minimum captions, mono only for numbers. ---- */
+:root{
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--s8:64px;--s9:96px;
+  --t-caption:13px;--t-body:16px;--t-lead:clamp(17px,1.4vw,20px);--t-title:clamp(26px,3.2vw,36px);--t-display:clamp(40px,6.4vw,84px);
+  --sh-1:0 1px 2px rgba(0,0,0,.18),0 4px 14px -6px rgba(0,0,0,.28);--sh-2:0 2px 4px rgba(0,0,0,.2),0 24px 48px -24px rgba(0,0,0,.5);
+  --ease:cubic-bezier(.2,.7,.2,1);--dur:200ms;
+}
+:root[data-theme="light"],:root:not([data-theme="dark"]) .x{--sh-1:0 1px 2px rgba(11,17,18,.06),0 4px 14px -6px rgba(11,17,18,.12);--sh-2:0 2px 4px rgba(11,17,18,.06),0 24px 48px -24px rgba(11,17,18,.22)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--sh-1:0 1px 2px rgba(11,17,18,.06),0 4px 14px -6px rgba(11,17,18,.12);--sh-2:0 2px 4px rgba(11,17,18,.06),0 24px 48px -24px rgba(11,17,18,.22)}}
+h1{font-size:var(--t-display);line-height:1;letter-spacing:-.04em;font-weight:600}
+h2{font-size:var(--t-title);line-height:1.12;letter-spacing:-.025em}
+p{text-wrap:pretty}
+.wrap{max-width:1160px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+.lead{font-size:var(--t-lead);line-height:1.6}
+.small{font-size:15px}.tiny{font-size:var(--t-caption)}
+.label{font-family:var(--f);font-size:var(--t-caption);font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--ink-3)}
+.grad{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--accent)}
+/* mono stays for numbers and measurements; labels and captions are sans */
+.door .t,.step .n,.mcard .role,.prow .dt,.rep .row small,.tbl th,.calls th,.c-meta,.c-code,.c-ex,.rec,.phl,.path .tm,.hud .k,.slot .k,.cardimg .lbl,.closeup .lbl,.inside-frames figcaption,.diff{font-family:var(--f)}
+.mcard .role,.tbl th,.calls th{text-transform:none;letter-spacing:.01em;font-weight:600}
+.path .tm,.hud .k,.slot .k,.slot .st,.cardimg .lbl,.closeup .lbl,.inside-frames figcaption,.tbl th,.calls th,.phl,.rec,.prow .dt,.prow .ms,.rep .row small,.door .t,.step .n,.mcard .role,.codechip,.vlab,.io,.diff{font-size:var(--t-caption)}
+.mono,.bign,.timer,.stats b,.tbl .n,.hud .v,.codechip,.prow .ms,.vlab{font-variant-numeric:tabular-nums}
+/* no glow */
+.btn-primary:hover{box-shadow:var(--sh-1)}
+.path li.now .bar{height:3px;margin-top:-.5px;box-shadow:none}
+.dot.ok{box-shadow:none}.chg .d{box-shadow:none}
+.q.active{box-shadow:0 0 0 3px var(--ask-soft)}
+/* craft */
+.btn,.door,.choice,.seg button,.themebtn,.ib,.codechip,.slot,.q,.input,.composer,a{transition:background-color var(--dur) var(--ease),border-color var(--dur) var(--ease),color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),transform 120ms var(--ease),opacity var(--dur) var(--ease)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+.btn:hover{transform:translateY(-1px)}.btn:active{transform:translateY(0) scale(.98)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+@media (max-width:640px){.btn,.ib,.seg button,.choice,.codechip,.themebtn,.menu-btn,.back,.kit button,.link{min-height:44px;min-width:44px}.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}}
+
+/* Audit fixes: the header no longer overflows between 721 and 900 px, and small controls reach 44 px on touch and narrow screens. */
+@media (max-width:900px){.nav,.hdr .codechip{display:none}.menu-btn{display:grid}}
+@media (max-width:1000px),(pointer:coarse){.logo{min-height:44px}.foot a{padding:12px 0;min-height:44px;box-sizing:border-box}.drag .link,.link.tiny{min-height:44px;display:inline-flex;align-items:center;padding:0 8px}.themebtn,.hdr .btn{min-height:44px}}
+@media (max-width:1000px),(pointer:coarse){.themebtn,.menu-btn{min-width:44px;min-height:44px}.foot a{display:inline-flex;align-items:center;min-height:44px}.foot .cols a{display:flex}}

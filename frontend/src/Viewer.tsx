@@ -15,12 +15,12 @@ export type Pick = { point: number[]; normal: number[] }
 /** three.js view of the part's preview GLB (positions in mm, node scale 0.001, z-up rotated to y-up). Camera positions, if given, are
  * in the part frame in mm and get the same transform. With `pick`, a click on the model reports the point and normal in the part frame
  * (mm), and `mark` shows a marker there. `src` is an API path (/v1/...) or a static file of this site. */
-export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onPick, mark, dragExtra, fallback }: {
+export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onPick, mark, markNormal, markRadius, dragExtra, fallback }: {
   src: string | null; cameras?: number[][]; spin?: boolean; style?: CSSProperties; children?: ReactNode; onDraft?: (d: boolean) => void
-  pick?: boolean; onPick?: (p: Pick) => void; mark?: number[] | null; dragExtra?: ReactNode; fallback?: string
+  pick?: boolean; onPick?: (p: Pick) => void; mark?: number[] | null; markNormal?: number[]; markRadius?: number; dragExtra?: ReactNode; fallback?: string
 }) {
   const el = useRef<HTMLDivElement>(null)
-  const three = useRef<{ content: THREE.Group; fit: () => void; flip: (under: boolean) => void; marker: THREE.Mesh; part: () => THREE.Mesh | null; setPart: (m: THREE.Mesh | null) => void } | null>(null)
+  const three = useRef<{ content: THREE.Group; fit: () => void; flip: (under: boolean) => void; marker: THREE.Mesh; ring: THREE.Mesh; part: () => THREE.Mesh | null; setPart: (m: THREE.Mesh | null) => void } | null>(null)
   const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [draft, setDraft] = useState(false)
   const [err, setErr] = useState('')
@@ -76,6 +76,8 @@ export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onP
     let partMesh: THREE.Mesh | null = null
     const marker = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf6b44c, depthTest: false }))
     marker.renderOrder = 10; marker.visible = false
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 64), new THREE.MeshBasicMaterial({ color: 0xf6b44c, depthTest: false, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }))
+    ring.renderOrder = 10; ring.visible = false
     const ray = new THREE.Raycaster(), down = { x: 0, y: 0 }
     const pd = (e: PointerEvent) => { down.x = e.clientX; down.y = e.clientY }
     const pu = (e: PointerEvent) => {
@@ -89,7 +91,7 @@ export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onP
       cb({ point: [p.x, p.y, p.z].map(v => +v.toFixed(3)), normal: [n.x, n.y, n.z].map(v => +v.toFixed(3)) })
     }
     r.domElement.addEventListener('pointerdown', pd); r.domElement.addEventListener('pointerup', pu)
-    three.current = { content, fit, flip, marker, part: () => partMesh, setPart: m => { partMesh = m } }
+    three.current = { content, fit, flip, marker, ring, part: () => partMesh, setPart: m => { partMesh = m } }
     const rs = () => { r.setSize(host.clientWidth, host.clientHeight); cam.aspect = host.clientWidth / Math.max(1, host.clientHeight); cam.updateProjectionMatrix() }
     rs(); const ro = new ResizeObserver(rs); ro.observe(host)
     let raf = 0
@@ -143,8 +145,13 @@ export function Viewer({ src, cameras, spin, style, children, onDraft, pick, onP
   useEffect(() => {
     const t = three.current, m = t?.part()
     if (!t || !m) return
-    if (mark) { m.add(t.marker); t.marker.position.set(mark[0], mark[1], mark[2]); t.marker.visible = true } else t.marker.visible = false
-  }, [mark, state])
+    if (mark) {
+      m.add(t.marker); t.marker.position.set(mark[0], mark[1], mark[2]); t.marker.visible = true
+      const r = markRadius ?? 0, n = markNormal ?? [0, 0, 1]                      // the selected circle: radius in mm, lying on the surface (normal from the pick)
+      m.add(t.ring); t.ring.position.set(mark[0] + n[0] * 0.05, mark[1] + n[1] * 0.05, mark[2] + n[2] * 0.05)
+      t.ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(n[0], n[1], n[2]).normalize()); t.ring.scale.set(r, r, 1); t.ring.visible = r > 0
+    } else { t.marker.visible = false; t.ring.visible = false }
+  }, [mark, markNormal, markRadius, state])
 
   const turn = () => { three.current?.flip(!under); setUnder(!under) }
 

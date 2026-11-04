@@ -48,6 +48,7 @@ export type Recorder = { stop: () => Promise<Blob>; cancel: () => void }
 export async function record(): Promise<Recorder> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
   const ctx = new AudioContext()
+  await ctx.resume()                                         // a context made after the permission prompt can start suspended (no audio ever arrives)
   const src = ctx.createMediaStreamSource(stream)
   // ponytail: ScriptProcessorNode is deprecated but works in every browser; move to an AudioWorklet if it is ever removed.
   const proc = ctx.createScriptProcessor(4096, 1, 1), chunks: Float32Array[] = []

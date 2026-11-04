@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, BASE, raw, stepFor, type CaptureCheck, type Job } from './api'
+import { api, ApiError, BASE, clockSkew, DOWN, raw, stepFor, type CaptureCheck, type Job } from './api'
 import { errText, FLOW, fmtTime, useApp } from './ctx'
 import * as idb from './idb'
 import { guide, MAT, ring, SLOTS } from './illus'
-import { extractFrames } from './media'
+import { extractFrames, record, type Recorder } from './media'
 import { Inside } from './Result'
 
 const CANDIDATES = 60, KEEP = 40, LONG_EDGE = 1920        // API limits: 60 frames per video, 1920 px long edge
 
 export const RecChip = () => { const { mode, recorded } = useApp(); return mode === 'replay' ? <span className="rec">{recorded ?? 'recorded run'}</span> : null }
-const noVoiceHere = 'Voice works once your part is built, on the Review step. Type here for now.'
+const noVoiceHere = 'Voice starts after your part is built, on the Review step. Type here for now.'
 
 export function Prepare() {
   const app = useApp()
@@ -17,6 +17,22 @@ export function Prepare() {
   const [size, setSize] = useState('m'), [desc, setDesc] = useState(''), [scale, setScale] = useState('')
   const [kit, setKit] = useState([false, false, false]), [busy, setBusy] = useState(false), [err, setErr] = useState('')
   const v = parseFloat(scale)
+  const [rcd, setRcd] = useState(false), [vBusy, setVBusy] = useState(false), [vErr, setVErr] = useState(''), recorder = useRef<Recorder | null>(null)
+  useEffect(() => () => recorder.current?.cancel(), [])
+  const live = app.mode === 'real' && !app.down
+  // Speak the description: the server transcribes it (Muse Voice Transcribe) and the words are added to the box; the audio is not kept.
+  const speak = async () => {
+    if (rcd) {
+      setRcd(false); setVBusy(true); setVErr('')
+      try {
+        const wav = await recorder.current!.stop(); recorder.current = null
+        const t = (await api.transcribe(wav)).transcript.trim()
+        if (t) setDesc(d => (d.trim() ? d.trim() + ' ' : '') + t); else setVErr('Nothing was heard. Try again, closer to the microphone, or type.')
+      } catch (e) { setVErr(errText(e)) } finally { setVBusy(false) }
+      return
+    }
+    try { recorder.current = await record(); setRcd(true); setVErr('') } catch { setVErr('Microphone blocked. Allow it in the browser, or type instead.') }
+  }
   const next = async () => {
     if (!name.trim()) { setNameErr('Give your part a name, like "toolbox lock".'); document.getElementById('pname')?.focus(); return }
     setBusy(true); setErr('')
@@ -33,13 +49,13 @@ export function Prepare() {
         <div className="field"><label htmlFor="pname">Part name</label><input className="input" id="pname" placeholder="Toolbox lock" value={name} maxLength={80} onChange={e => { setName(e.target.value); setNameErr('') }} /><div className="err">{nameErr}</div></div>
         <div className="field"><label>Rough size</label><div className="seg" style={{ width: 'max-content' }}>{[['s', 'Under 20 mm'], ['m', '20 to 100 mm'], ['l', 'Over 100 mm']].map(([k, t]) => <button key={k} aria-pressed={size === k} onClick={() => setSize(k)}>{t}</button>)}</div>
           <p className="tiny muted">{{ s: 'Small parts come out rough on the A4 mat. A small-code mat is on the way.', m: 'Uses the A4 mat with 22 mm codes.', l: 'Over 100 mm may not fit A4. Print the same mat on A3.' }[size]}</p></div>
-        <div className="field"><label htmlFor="pdesc">Tell us about your part <span className="muted" style={{ fontWeight: 400 }}>optional</span></label><div className="composer"><button className="ib voice" aria-label="Speak instead of typing" onClick={() => app.toast(noVoiceHere)}>🎙</button><textarea id="pdesc" rows={2} placeholder="What is it, what does it do, what's hard about it?" value={desc} onChange={e => setDesc(e.target.value)} /></div><p className="tiny muted">Kept on this device. Spoken answers use Muse Voice Transcribe on the Review step; audio is deleted right after it becomes text.</p></div>
+        <div className="field"><label htmlFor="pdesc">Tell us about your part <span className="muted" style={{ fontWeight: 400 }}>optional</span></label><div className="composer"><button className={'ib voice' + (rcd ? ' mic-on' : '')} aria-label={rcd ? 'Stop recording' : 'Speak instead of typing'} aria-pressed={rcd} onClick={speak} disabled={!live || vBusy} title={live ? undefined : noVoiceHere}>{rcd ? '■' : '🎙'}</button><textarea id="pdesc" rows={2} placeholder="What is it, what does it do, what's hard about it?" value={desc} onChange={e => setDesc(e.target.value)} /></div><p className="tiny muted">{rcd ? 'Recording… tap ■ to stop. ' : vBusy ? 'Transcribing… ' : ''}{live ? 'Kept on this device. Speaking is transcribed by Muse Voice Transcribe; the audio is not kept.' : `Kept on this device. ${noVoiceHere}`}</p>{vErr && <div className="err">{vErr}</div>}</div>
         <div className="matbox"><div dangerouslySetInnerHTML={{ __html: MAT }} /><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}><span className="small muted">A4 landscape · 26 codes · 22 mm each</span><a className="btn btn-ghost btn-sm" href="/snappart_mat_A4.pdf" download>Download the mat (PDF)</a></div></div>
         <div className="field"><label htmlFor="scale">Check the print: measure one code</label><div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><input className="input mono" id="scale" inputMode="decimal" placeholder="22.0" style={{ maxWidth: 150 }} value={scale} onChange={e => setScale(e.target.value)} /><span className="muted">mm</span><span className="small">{isNaN(v) ? '' : v >= 21.8 && v <= 22.2 ? <span style={{ color: 'var(--ok)', fontWeight: 600 }}>✓ Right scale</span> : <span style={{ color: 'var(--bad)', fontWeight: 600 }}>Reprint at 100%: should be 22 mm</span>}</span></div><p className="tiny muted">Print at 100%, not "fit to page". 21.8 to 22.2 mm is fine.</p></div>
         <div className="field"><label>Kit check</label><div className="kit">{[['Mat printed and taped flat', 'All four corners, on a rigid table.'], ['Part clean, soft even light', 'No harsh shadows across the mat.'], ['Phone and about 10 minutes', 'Calipers help later, but are optional.']].map((k, i) => (
           <button key={i} aria-pressed={kit[i]} onClick={() => setKit(kit.map((x, j) => (j === i ? !x : x)))}><span className="box">✓</span><span><b>{k[0]}</b><br /><span className="small muted">{k[1]}</span></span></button>))}</div></div>
         <button className="btn btn-primary btn-block pcta" onClick={next} disabled={busy}>{busy ? 'Creating your part…' : 'Continue to capture →'}</button>
-        <div className="err">{err}</div>
+        <div className="err">{err}{err === DOWN && <> <button className="link tiny" onClick={next}>Retry</button></>}</div>
         <p className="tiny muted">Private by default. No login. Frames are deleted after 7 days. <button className="link tiny" onClick={() => app.go('privacy')}>Privacy policy</button></p>
       </div></div></div>
   )
@@ -195,56 +211,80 @@ export function Build() {
   const [questions, setQuestions] = useState<number | null>(null), [recordedRun, setRecordedRun] = useState(false)
   const [t0, setT0] = useState<number | null>(null), [t1, setT1] = useState<number | null>(null), [now, setNow] = useState(Date.now() / 1000)
   const jobId = draft?.jobId
+  const [attempt, setAttempt] = useState(0), [offline, setOffline] = useState(false)
 
   useEffect(() => {
     if (!jobId) return
-    api.job(jobId).then(j => { setJob(j); setState(j.state); setQueue(j.queue_position); if (j.error) setError(j.error.message); setWarnings(j.warnings) }).catch(e => setError(errText(e)))
-    let es: EventSource | null = null, last = 0, closed = false
+    setRows(KNOWN.map(name => ({ name, st: 'wait' }))); setWarnings([]); setOffline(false)
+    let es: EventSource | null = null, last = 0, closed = false, polling = false, lastEventAt = Date.now(), fails = 0
+    const over = ['failed', 'cancelled', 'expired']
     const stage = (name: string, p: Partial<Row>) => setRows(rs => {
       const k = rs.findIndex(r => name === r.name || name.startsWith(r.name + ' '))
       return k < 0 ? [...rs, { name, st: 'wait', ...p }] : rs.map((r, i) => (i === k ? { ...r, name, ...p } : r))
     })
     const on = (e: Ev) => {
-      last = Math.max(last, e.seq)
+      if (e.seq <= last) return                                  // the stream and the poll can both deliver an event: apply it once
+      last = e.seq; lastEventAt = Date.now()
       const d = e.data
-      if (e.type === 'state_changed') { setState(d.to); if (d.to === 'building') setT0(e.ts); if (d.error) setError(d.error.message ?? String(d.error)); if (['failed', 'cancelled', 'expired'].includes(d.to)) stop() }
+      if (e.type === 'state_changed') { setState(d.to); if (d.to !== 'queued') setQueue(null); if (d.to === 'building') setT0(e.ts); if (d.error) setError(d.error.message ?? String(d.error)); if (over.includes(d.to)) stop() }
       if (e.type === 'stage_started') stage(d.stage, { st: 'run' })
       if (e.type === 'stage_finished') { stage(d.stage, { st: 'done', seconds: d.seconds }); if (d.recorded) setRecordedRun(true) }
       if (e.type === 'progress') setFrac(d.fraction)
       if (e.type === 'queue') setQueue(d.position)
-      if (e.type === 'warning') setWarnings(w => [...w, d.message])
+      if (e.type === 'warning') setWarnings(w => (w.includes(d.message) ? w : [...w, d.message]))
       if (e.type === 'build_finished') { setQuestions(d.questions); setT1(e.ts); setFrac(1); stop() }
     }
     // Once the build is over there is nothing more to follow: close, so the stream slot (8 per client) is free for others.
     const stop = () => { closed = true; es?.close() }
     // The documented fallback when a stream is refused (429 too_many_streams) or lost: long-poll the same events.
     const poll = async () => {
+      if (polling) return
+      polling = true
+      let bad = 0
       while (!closed) {
         try {
           const r: { events: Ev[] } = await raw(`/v1/jobs/${encodeURIComponent(jobId)}/events?after=${last}&wait=20`).then(x => x.json())
-          r.events.forEach(on)
+          r.events.forEach(on); bad = 0
         } catch (e) {
           if (e instanceof ApiError && e.status === 404) { stop(); setError('This part was deleted.'); return }
-          await new Promise(ok => setTimeout(ok, ((e as ApiError).retryAfter ?? 3) * 1000))
+          if (++bad >= 4) { polling = false; setOffline(true); return }                // back off, then stop and say so (Retry restarts it)
+          await new Promise(ok => setTimeout(ok, Math.min(((e as ApiError).retryAfter ?? 3) * 1000 * 2 ** (bad - 1), 30000)))
         }
       }
     }
-    const open = () => {
-      // The browser's EventSource resends Last-Event-ID on its own reconnects; after a hard close we reopen with ?after=<last seq>.
-      es = new EventSource(`${BASE}/v1/jobs/${encodeURIComponent(jobId)}/events?after=${last}`)
-      for (const t of ['state_changed', 'stage_started', 'stage_finished', 'progress', 'warning', 'queue', 'build_finished'])
-        es.addEventListener(t, m => on(JSON.parse((m as MessageEvent).data)))
-      es.addEventListener('deleted', () => { closed = true; es?.close(); setError('This part was deleted.') })
-      es.onerror = () => {
-        if (closed) return
-        // the browser retries by itself while the state is CONNECTING
-        if (es?.readyState === EventSource.CLOSED) void poll()
+    // The job itself, every 5 s: state, queue, errors and the server's clock, so the page never depends on the stream.
+    const look = async () => {
+      try {
+        const j = await api.job(jobId); fails = 0; setOffline(false)
+        setJob(j); setState(j.state); setQueue(j.state === 'queued' ? j.queue_position : null); setWarnings(w => j.warnings.reduce((a, m) => (a.includes(m) ? a : [...a, m]), w))
+        if (j.error) setError(j.error.message)
+        if (j.state === 'building') setT0(t => t ?? j.state_changed_at)
+        if (['needs_input', 'reviewing', 'done'].includes(j.state)) {
+          setT1(t => t ?? j.state_changed_at)
+          setQuestions(q => q)                                    // the count comes from the event, or from /questions below
+          api.questions(jobId).then(q => setQuestions(c => c ?? q.open_questions)).catch(() => undefined)
+          stop()
+        }
+        if (over.includes(j.state)) stop()
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) { stop(); setError('This part is no longer available.'); return }
+        if (++fails >= 2) setOffline(true)
       }
     }
-    open()
+    // The browser's EventSource resends Last-Event-ID on its own reconnects; after a hard close we reopen with ?after=<last seq>.
+    es = new EventSource(`${BASE}/v1/jobs/${encodeURIComponent(jobId)}/events?after=${last}`)
+    for (const t of ['state_changed', 'stage_started', 'stage_finished', 'progress', 'warning', 'queue', 'build_finished'])
+      es.addEventListener(t, m => on(JSON.parse((m as MessageEvent).data)))
+    es.addEventListener('deleted', () => { closed = true; es?.close(); setError('This part is no longer available.') })
+    es.onerror = () => { if (!closed && es?.readyState === EventSource.CLOSED) void poll() }
+    void look()
+    // A stream that closes early is retried by the browser forever (readyState CONNECTING), so onerror never asks for the poll.
+    // So: no event for 10 s means start the long-poll, and keep the stream as an extra.
+    const watch = window.setInterval(() => { if (!closed && !polling && Date.now() - lastEventAt > 10000) void poll() }, 2000)
+    const again = window.setInterval(() => { if (!closed) void look() }, 5000)
     const tick = window.setInterval(() => setNow(Date.now() / 1000), 1000)
-    return () => { closed = true; es?.close(); clearInterval(tick) }
-  }, [jobId])
+    return () => { closed = true; es?.close(); clearInterval(tick); clearInterval(watch); clearInterval(again) }
+  }, [jobId, attempt])
 
   const { refreshModels } = app
   useEffect(() => { if (questions !== null || ['failed', 'cancelled', 'expired'].includes(state)) refreshModels() }, [questions, state, refreshModels])
@@ -253,11 +293,13 @@ export function Build() {
   const finished = questions !== null || ['needs_input', 'reviewing', 'done'].includes(state)
   const failed = ['failed', 'cancelled', 'expired'].includes(state)
   const recTotal = rows.reduce((a, r) => a + (r.seconds ?? 0), 0)
-  const elapsed = recordedRun ? recTotal : t0 ? (t1 ?? (finished ? t0 : now)) - t0 : 0
+  const elapsed = recordedRun ? recTotal : t0 ? Math.max(0, (t1 ?? (finished || failed ? t0 : now + clockSkew)) - t0) : 0
+  const doneN = rows.filter(r => r.st === 'done').length, runN = rows.findIndex(r => r.st === 'run')
+  const stageNo = Math.min(rows.length, runN >= 0 ? runN + 1 : doneN + 1)
   return (
     <div className="wrap flow"><div className="fgrid">
       <div className="fleft"><span className="label" style={{ color: 'var(--accent)' }}>Build</span><h2>{finished ? 'Your model is built.' : failed ? 'The build stopped.' : 'Building your model.'}</h2><p className="lead">Close this tab if you like. Your code brings you back, and the build keeps going.</p>
-        <div><div className="timer" data-testid="timer">{fmtTime(elapsed)}</div><p className="small muted" style={{ marginTop: 8 }}>{recordedRun ? 'recorded build time, sum of the measured stages' : 'elapsed'}{queue ? ` · ${queue} build${queue > 1 ? 's' : ''} ahead${job?.eta_s ? `, about ${fmtTime(job.eta_s)}` : ''}` : ''}</p></div>
+        <div><div className="timer" data-testid="timer">{fmtTime(elapsed)}</div><p className="small muted" style={{ marginTop: 8 }}>{recordedRun ? 'recorded build time, sum of the measured stages' : finished || failed ? 'total build time' : state === 'building' ? `Stage ${stageNo} of ${rows.length} · ${fmtTime(elapsed)} elapsed · usually 15 to 30 minutes in total` : state === 'queued' ? 'waiting for a build slot' : 'elapsed'}{queue ? ` · ${queue} build${queue > 1 ? 's' : ''} ahead${job?.eta_s ? `, about ${fmtTime(job.eta_s)}` : ''}` : ''}</p></div>
         <div className="note">📏 Keep calipers or a ruler nearby. You may be asked for a number or two.</div>
 </div>
       <div className="stack">
@@ -268,6 +310,7 @@ export function Build() {
           <div key={r.name} className={`prow ${meta ? 'meta' : ''} ${r.st === 'run' ? 'run' : r.st === 'done' ? 'done' : ''}`}><span className={'dot' + (r.st === 'done' ? ' ok' : r.st === 'run' ? ' run' : '')} />
             <div><div className="nm">{r.name} <span className={'chip ' + (meta ? 'c-meta' : 'c-code')}>{t}</span></div><div className="dt">{r.st === 'done' ? 'done' : r.st === 'run' ? 'running…' : finished ? 'not reported' : 'waiting'}</div></div>
             <span className="ms">{r.seconds != null ? `${r.seconds} s` : ''}</span></div>) })}</div>
+        {offline && !finished && !failed && <div className="note" role="alert" style={{ borderColor: 'var(--ask)' }}><span style={{ fontWeight: 600 }}>{DOWN} Your build keeps going on the server.</span><button className="btn btn-ghost btn-sm" onClick={() => setAttempt(a => a + 1)}>Retry</button></div>}
         {error && <div className="note" style={{ borderColor: 'var(--bad)' }}><span style={{ color: 'var(--bad)', fontWeight: 600 }}>{error}</span><button className="btn btn-ghost btn-sm" onClick={async () => { await app.forget(); app.go('prepare') }}>Start again</button></div>}
         <button className="btn btn-primary btn-block pcta" disabled={!finished} onClick={() => app.go(questions === 0 || state === 'done' ? 'result' : 'review')}>
           {!finished ? 'Questions appear when the build finishes' : questions ? `Answer ${questions} question${questions > 1 ? 's' : ''} →` : 'See my part →'}</button>
@@ -309,7 +352,7 @@ export function Resume() {
         {found && <div className="welcome" style={{ margin: 0 }}><div className="ic">✓</div><div className="tx"><b>{found.d.partName}</b><div className="muted">{found.state.replace(/_/g, ' ')}{found.q ? ` · ${found.q} question${found.q > 1 ? 's' : ''} waiting` : ''} · opens at {label(FLOW.includes(found.d.step) ? found.d.step : stepFor(found.state))}</div></div>
           <button className="btn btn-primary btn-sm" onClick={async () => { await app.open(found.d); app.go(FLOW.includes(found.d.step) ? found.d.step : stepFor(found.state)) }}>Continue →</button></div>}
         <div className="field" style={{ borderTop: '1px solid var(--line)', paddingTop: 20 }}><label htmlFor="where">Tell us where you were <span className="muted" style={{ fontWeight: 400 }}>optional</span></label><p className="small muted">This picks the step. It can't find a part on its own.</p>
-          <div className="composer"><button className="ib voice" aria-label="Speak" onClick={() => app.toast(noVoiceHere)}>🎙</button><textarea id="where" rows={1} placeholder="e.g. I printed it and the hinge was too tight" value={where} onChange={e => { setWhere(e.target.value); setWhereErr('') }} /><button className="ib fill" aria-label="Find my step" onClick={pick}>↑</button></div><div className="err">{whereErr}</div>
+          <div className="composer"><button className="ib voice" aria-label="Speak" disabled title={noVoiceHere}>🎙</button><textarea id="where" rows={1} placeholder="e.g. I printed it and the hinge was too tight" value={where} onChange={e => { setWhere(e.target.value); setWhereErr('') }} /><button className="ib fill" aria-label="Find my step" onClick={pick}>↑</button></div><div className="err">{whereErr}</div>
           {step !== undefined && (step ? <div className="understood"><span className="tiny" style={{ color: 'var(--meta)' }}>Picked from your words</span><b>Understood: you were at {label(step)}.</b><span className="small dim">Enter your code above to open your part there.</span><div><button className="btn btn-primary btn-sm" onClick={() => app.go(step)}>Go to {label(step)}</button></div></div>
             : <div className="understood"><b>Not sure which step. Pick one:</b><div className="ans">{FLOW.map(f => <button key={f} className="choice" onClick={() => app.go(f)}>{label(f)}</button>)}</div></div>)}</div>
       </div></div></div>

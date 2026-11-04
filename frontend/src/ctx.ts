@@ -8,6 +8,7 @@ export const FLOW = ['prepare', 'capture', 'build', 'review', 'result']
 export type App = {
   route: string
   go: (r: string, anchor?: string) => void
+  film: () => void                                          // "Film a part": a new part, so a trusted open draft is closed first (its resume code still works)
   draft: Draft | null
   save: (d: Partial<Draft> & { jobId?: string }) => Promise<void>
   open: (d: Draft) => Promise<void>
@@ -20,6 +21,7 @@ export type App = {
   toast: (t: string) => void
   online: boolean
   pending: number
+  down: boolean                            // the server did not answer (banner), as opposed to this device being offline
   setPending: (n: number) => void
 }
 

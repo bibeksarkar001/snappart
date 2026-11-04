@@ -39,7 +39,7 @@ export async function watchRecorded(app: App) {
 }
 
 export function Home() {
-  const app = useApp(), { draft, go, models, mode, recording } = app
+  const app = useApp(), { draft, go, film, models, mode, recording } = app
   const [state, setState] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -78,7 +78,7 @@ export function Home() {
     ...(sam ? [[`${sam.ok} / ${sam.calls}`, `SAM 3.1 calls that succeeded · ${lbl}`] as [string, string]] : []),
   ]
   const welcome = !draft || !state ? null
-    : state === 'expired' ? [`${draft.partName} has expired`, 'Frames and model were deleted after 7 days, or the part was deleted.', 'Start again', 'prepare']
+    : state === 'expired' ? ['This part is no longer available', `${draft.partName} was deleted, or its 7 days ran out. Start a new one when you are ready.`, 'Start a new part', 'prepare']
       : state === 'needs_input' && draft.step === 'build' ? ['Your model finished while you were away', `${draft.partName} · ${waiting || 'some'} question${waiting === 1 ? ' is' : 's are'} waiting.`, 'Answer', 'review']
         : [`Welcome back · ${draft.partName}`, `${stepFor(state).replace(/^./, c => c.toUpperCase())}. Your progress is saved on this device.`, 'Continue', stepFor(state)]
 
@@ -90,7 +90,7 @@ export function Home() {
           <button className="btn btn-primary btn-sm" onClick={async () => { if (state === 'expired') await app.forget(); go(welcome[3]) }}>{welcome[2]} →</button></div>}
         <h1>Film a part.<br /><span className="grad">Print a copy.</span></h1>
         <p className="lead">Put a broken or missing piece on a printed mat and film three short videos. SnapPart measures it in millimetres, asks you what a camera can't see, and hands you a file that prints and fits.</p>
-        <div className="hero-cta"><button className="btn btn-primary" onClick={() => go('prepare')}>Film a part →</button><button className="btn btn-ghost" onClick={watch} disabled={busy}>{busy ? 'Starting…' : 'Watch a real build'}</button>
+        <div className="hero-cta"><button className="btn btn-primary" onClick={film}>Film a part →</button><button className="btn btn-ghost" onClick={watch} disabled={busy}>{busy ? 'Starting…' : 'Watch a real build'}</button>
           {mode === 'replay' && <button className="btn btn-ghost" onClick={watch} disabled={busy} data-testid="open-example">Open the recorded example</button>}</div>
         <Viewer src={EXAMPLE} spin fallback="3D preview unavailable" style={{ marginTop: 'clamp(36px,5vw,64px)', height: 'clamp(380px,52vw,640px)', borderRadius: 28 }}>
           <div className="hud" style={{ left: 18, top: 18 }} data-testid="hero-label"><span className="k">PART B · EXAMPLE RUN</span><span className="v">Example: part B, recorded run{date ? ` ${date}` : ''}</span></div>
@@ -101,7 +101,7 @@ export function Home() {
         <div className="doors">
           <button className="door" onClick={() => (hasModel ? go('result') : watch())}><span className="t">1 minute</span><b>Explore a real result</b><span className="small muted">Turn the model and see every measured size.</span><span className="go">Open result →</span></button>
           <button className="door" onClick={watch}><span className="t">2 minutes</span><b>Watch a real build</b><span className="small muted">A measured run of part B, then answer its questions yourself.</span><span className="go">Start replay →</span></button>
-          <button className="door" onClick={() => go('prepare')}><span className="t">About 10 minutes</span><b>Film your own part</b><span className="small muted">Print the mat, film three videos, get your file.</span><span className="go">Get started →</span></button>
+          <button className="door" onClick={film}><span className="t">About 10 minutes</span><b>Film your own part</b><span className="small muted">Print the mat, film three videos, get your file.</span><span className="go">Get started →</span></button>
         </div>
       </div></div>
 
@@ -155,7 +155,7 @@ export function Home() {
         </div>
       </div></section>}
 
-      <section style={{ paddingTop: 0 }}><div className="wrap"><div className="cta-band"><h2>The part you can't buy,<br />you can now print.</h2><p className="lead" style={{ margin: '18px auto 0' }}>Film three short videos, then let it build.{buildS != null ? ` The recorded run built in ${fmtTime(buildS)} (${lbl}).` : ''} No account.</p><div className="hero-cta"><button className="btn btn-primary" onClick={() => go('prepare')}>Film a part →</button><button className="btn btn-ghost" onClick={() => go('resume')}>Left somewhere?</button></div></div></div></section>
+      <section style={{ paddingTop: 0 }}><div className="wrap"><div className="cta-band"><h2>The part you can't buy,<br />you can now print.</h2><p className="lead" style={{ margin: '18px auto 0' }}>Film three short videos, then let it build.{buildS != null ? ` The recorded run built in ${fmtTime(buildS)} (${lbl}).` : ''} No account.</p><div className="hero-cta"><button className="btn btn-primary" onClick={film}>Film a part →</button><button className="btn btn-ghost" onClick={() => go('resume')}>Left somewhere?</button></div></div></div></section>
     </>
   )
 }

@@ -18,12 +18,17 @@ export function Diff({ r }: { r: Rebuild }) {
   )
 }
 
+const changeText = (c: Record<string, any>) => c.op === 'remove_feature' ? `Removed the ${({ grooves: 'slots', bump: 'ridge', plate: 'plate' } as Record<string, string>)[c.feature_id] ?? c.feature_id}`
+  : c.op === 'remove_disc' ? `${c.from_mm < 0 ? `Cut ${-c.from_mm} mm deep` : 'Made flat'}, circle of radius ${c.radius_mm} mm`
+  : c.op === 'remove_region' ? `Cut or flattened a marked area${c.review_item ? ` (${c.review_item})` : ''}` : c.op === 'set_feature_shape' ? `Ridge shape: ${c.shape}`
+  : c.op === 'move_feature_to_opposite_face' ? 'Moved a feature to the other side' : String(c.op).replace(/_/g, ' ')
+
 export function Review() {
   const app = useApp(), { draft } = app
   const [q, setQ] = useState<Questions | null>(null), [loadErr, setLoadErr] = useState('')
   const [report, setReport] = useState<Record<string, any> | null>(null)
   const [active, setActive] = useState<string | null>(() => { const id = pendingQuestion.id; pendingQuestion.id = null; return id })
-  const [marking, setMarking] = useState(false), [picked, setPicked] = useState<Pick | null>(null), [markErr, setMarkErr] = useState('')
+  const [marking, setMarking] = useState(false), [picked, setPicked] = useState<Pick | null>(null), [markErr, setMarkErr] = useState(''), [rad, setRad] = useState(3), [dep, setDep] = useState(3), [changes, setChanges] = useState<{ id: string; correction: Record<string, any> }[]>([])
   const [errs, setErrs] = useState<Record<string, string>>({}), [busy, setBusy] = useState<string | null>(null)
   const [last, setLast] = useState<{ id: string; r: Rebuild } | null>(null)
   const [ver, setVer] = useState(0), [focusItem, setFocusItem] = useState<string | null>(null)
@@ -33,6 +38,7 @@ export function Review() {
     if (!jobId) return
     api.questions(jobId).then(setQ).catch(e => setLoadErr(errText(e)))
     api.report(jobId).then(setReport).catch(() => {})
+    api.corrections(jobId).then(r => setChanges(r.corrections.filter(c => !c.reverted))).catch(() => {})
   }, [jobId])
   useEffect(load, [load])
 
@@ -52,13 +58,21 @@ export function Review() {
     if (!picked) return
     setBusy('mark'); setMarkErr('')
     try {
-      const it = await api.mark(jid, picked.point, picked.normal)
+      const it = await api.mark(jid, picked.point, picked.normal, rad, dep)
       await api.review(jid, it.id, choice)
       const r = await api.rebuild(jid)
       setLast({ id: 'mark', r }); setVer(v => v + 1); app.toast(`Model rebuilt in ${r.seconds} s.`); load()
     } catch (e) { setMarkErr(editErr(e)) } finally { setBusy(null) }
   }
-  const qs = q?.questions ?? []
+  const removed = new Set(changes.filter(c => c.correction.op === 'remove_feature').map(c => String(c.correction.feature_id)))
+  const rf: { id: string; status: string; value: any }[] = report?.features ?? []
+  const fv = (id: string) => rf.find(f => f.id === id)?.value
+  const featureBtns = ([
+    ...(rf.some(f => f.id === 'grooves.count' && f.value) ? [{ id: 'grooves', label: `Remove the ${fv('grooves.count')} slot${fv('grooves.count') === 1 ? '' : 's'} (${fv('grooves.long')} × ${fv('grooves.short')} mm)` }] : []),
+    ...(rf.some(f => f.id === 'lock_bump' && f.status !== 'not_detected') ? [{ id: 'bump', label: 'Remove the ridge' }] : []),
+    ...(rf.some(f => f.id === 'plate' && f.status !== 'not_detected') ? [{ id: 'plate', label: 'Remove the plate' }] : []),
+  ] as { id: string; label: string }[]).filter(b => !removed.has(b.id))
+  const qs = (q?.questions ?? []).filter(x => !removed.has(x.feature === 'lock_bump' ? 'bump' : x.feature))      // a removed feature asks no questions
   const recAns = recordedAnswers(q)
   const open = qs.filter(x => !x.answered)
   const cur = active ?? open[0]?.id ?? null
@@ -73,19 +87,22 @@ export function Review() {
 
   return (
     <div className="wrap flow"><div className="rev">
-      <div className="revstage"><Viewer src={`/v1/jobs/${jid}/files/preview.glb?v=${ver}`} style={{ minHeight: 520 }} pick={marking} onPick={p => { setPicked(p); setMarkErr(''); setLast(l => (l?.id === 'mark' ? null : l)) }} mark={marking ? picked?.point : null}
+      <div className="revstage"><Viewer src={`/v1/jobs/${jid}/files/preview.glb?v=${ver}`} style={{ minHeight: 520 }} pick={marking} onPick={p => { setPicked(p); setMarkErr(''); setLast(l => (l?.id === 'mark' ? null : l)) }} mark={marking ? picked?.point : null} markNormal={picked?.normal} markRadius={marking && picked ? rad : 0}
         dragExtra={<> · <button className="link tiny" style={{ pointerEvents: 'auto' }} onClick={() => { setMarking(!marking); setPicked(null); setMarkErr('') }}>{marking ? 'Stop marking' : 'Mark something'}</button></>}>
         <div className="hud" style={{ left: 16, top: 16 }}><span className="k">AMBER</span><span className="v" style={{ color: 'var(--ask)' }}>{curQ ? curQ.label.toLowerCase() : 'all answered'}</span></div></Viewer>
         {marking && <div className="q active" data-testid="mark" style={{ marginTop: 12 }}><div className="who"><span className="chip c-ask">Your mark</span>{picked ? 'spot marked on the model' : 'click a point on the model'}</div>
           {picked && <><h3>What should happen to the spot you marked?</h3><div className="ans">{['Keep', 'Remove', 'Make flat'].map(c => <button key={c} className="choice" onClick={() => sendMark(c)} disabled={!!busy}>{c}</button>)}</div>
-            <p className="tiny muted">A 3 mm circle around the point. Remove and Make flat need a spot that faces up or down.</p></>}
+            <div className="grid2" style={{ display: 'grid', gap: 10, margin: '8px 0' }}>
+              <label className="small">Circle radius: <b>{rad} mm</b><input type="range" min={1} max={20} step={0.5} value={rad} onChange={e => setRad(+e.target.value)} aria-label="Circle radius in millimetres" style={{ width: '100%' }} /></label>
+              <label className="small">Remove cuts <b>{dep} mm</b> deep<input type="range" min={0.5} max={15} step={0.5} value={dep} onChange={e => setDep(+e.target.value)} aria-label="Cut depth in millimetres" style={{ width: '100%' }} /></label></div>
+            <p className="tiny muted">The amber ring on the model is exactly what will change: a {rad} mm radius circle on the surface you clicked. Remove cuts it {dep} mm into the part; Make flat shaves what stands above the surface there.</p></>}
           <div className="err">{markErr}</div>{last?.id === 'mark' && <Diff r={last.r} />}</div>}
         <p className="tiny muted" style={{ marginTop: 8 }}>Each question's picture shows where to look.</p></div>
       <div className="qs">
         <div><span className="label" style={{ color: 'var(--ask)' }}>Review · {q ? (open.length ? `${qs.length - open.length + 1} of ${qs.length}` : 'all answered') : '…'}</span> <RecChip />
           <h2 style={{ marginTop: 10 }}>A few questions before it prints.</h2>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}><span className="chip c-meas">{measured} measured</span><span className="chip c-you">{you} you answered</span><span className="chip c-est">{est} estimated</span><span className="chip c-ask">{q?.open_questions ?? '…'} waiting</span></div></div>
-        {loadErr && <div className="err">{loadErr}</div>}
+        {loadErr && <div className="err" role="alert">{loadErr} <button className="link tiny" onClick={() => { setLoadErr(''); load() }}>Retry</button></div>}
         <div className="qs" data-testid="questions">{qs.map(x => <QCard key={x.id} x={x} jobId={jid} rec={app.mode === 'replay' ? recAns[x.id] : undefined} active={x.id === cur} busy={busy === x.id} err={errs[x.id]} diff={last?.id === x.id ? last.r : null}
           activate={() => setActive(x.id)} answer={v => apply(x.id, () => api.answers(jid, { [x.id]: v }))} />)}</div>
         {(q?.review_items ?? []).map(it => <ItemCard key={it.id} it={it} focused={focusItem === it.id} busy={busy === it.id} err={errs[it.id]} diff={last?.id === it.id ? last.r : null}
@@ -93,6 +110,13 @@ export function Review() {
         {(q?.coverage_requests ?? []).filter(c => !c.decision).map(c => <div className="q" key={c.id}><div className="who"><span className="chip c-ask">Barely seen</span>{c.blocking ? 'needed before finishing' : 'optional'}</div><p className="small">{c.message}</p>
           <div className="ans"><button className="choice" disabled={!!busy} onClick={async () => { try { const r = await api.moreFootage(jid, c.id, 'film'); await app.save({ frames: {}, frameOffset: r.next_frame_index }); app.go('capture') } catch (e) { setErrs(x => ({ ...x, [c.id]: errText(e) })) } }}>Film more</button>
             <button className="choice" disabled={!!busy} onClick={() => api.moreFootage(jid, c.id, 'skip').then(load).catch(e => setErrs(x => ({ ...x, [c.id]: errText(e) })))}>Skip this area</button></div><div className="err">{errs[c.id]}</div></div>)}
+        {featureBtns.length > 0 && <div className="q" data-testid="features"><div className="who"><b style={{ color: 'var(--ink)' }}>Found on the model</b><span>· not on your real part? Remove it</span></div>
+          <div className="ans">{featureBtns.map(b => <button key={b.id} className="choice" disabled={!!busy} onClick={() => apply('feat:' + b.id, () => api.correction(jid, { op: 'remove_feature', feature_id: b.id, reason: 'user: not on the real part', source: 'user button' }))}>{busy === 'feat:' + b.id ? 'Removing…' : b.label}</button>)}</div>
+          <div className="err">{errs['feat:grooves'] || errs['feat:bump'] || errs['feat:plate']}</div>{last && last.id.startsWith('feat:') && <Diff r={last.r} />}</div>}
+        {changes.length > 0 && <div className="q" data-testid="changes"><div className="who"><b style={{ color: 'var(--ink)' }}>Your changes</b><span>· undo any of them</span></div>
+          {changes.map(c => <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}><span className="small">{changeText(c.correction)}</span>
+            <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => apply('undo:' + c.id, () => api.undoCorrection(jid, c.id))}>{busy === 'undo:' + c.id ? 'Undoing…' : 'Undo'}</button></div>)}
+          <div className="err">{Object.entries(errs).find(([k, v]) => k.startsWith('undo:') && v)?.[1]}</div></div>}
         <Composer jobId={jid} itemId={focusItem} onApplied={(r) => { setLast({ id: 'free', r }); setVer(v => v + 1); load() }} />
         {last?.id === 'free' && <Diff r={last.r} />}
         <button className="btn btn-primary btn-block pcta" onClick={toResult}>{q && !open.length ? 'See my part →' : 'Skip the rest and see my part →'}</button>
@@ -115,7 +139,27 @@ function Picture({ x, jobId }: { x: Question; jobId: string }) {
 }
 
 function QCard({ x, jobId, rec, active, busy, err, diff, activate, answer }: { x: Question; jobId: string; rec?: { value: number | string; unit: string }; active: boolean; busy: boolean; err?: string; diff: Rebuild | null; activate: () => void; answer: (v: number | string) => void }) {
+  const app = useApp()
   const [val, setVal] = useState(''), [localErr, setLocalErr] = useState('')
+  const [rcd, setRcd] = useState(false), [vBusy, setVBusy] = useState(false), [hear, setHear] = useState(''), [heardAns, setHeardAns] = useState<number | string | null>(null), recorder = useRef<Recorder | null>(null)
+  useEffect(() => () => recorder.current?.cancel(), [])
+  // Say the answer: the server transcribes it (Muse Voice Transcribe) and reads it as an answer to this question (Muse Spark). A number fills the box; nothing is applied until the user confirms.
+  const say = async () => {
+    if (rcd) {
+      setRcd(false); setVBusy(true); setLocalErr('')
+      try {
+        const wav = await recorder.current!.stop(); recorder.current = null
+        const v = await api.voice(jobId, wav, undefined, x.id)
+        const a = (v.proposal as { answer?: number | string | null }).answer ?? null
+        setHear(`Heard: "${v.transcript}"`); setHeardAns(null)
+        if (a == null) setLocalErr(v.proposal.explanation || 'No answer found in that. Try again, or type it.')
+        else if (typeof a === 'number' && x.kind !== 'choice') setVal(String(a))
+        else setHeardAns(a)
+      } catch (e) { setLocalErr(editErr(e)) } finally { setVBusy(false) }
+      return
+    }
+    try { recorder.current = await record(); setRcd(true); setLocalErr('') } catch { setLocalErr('Microphone blocked. Allow it in the browser, or type instead.') }
+  }
   const w = x.friendly && x.friendly.source !== 'fallback' ? x.friendly : x
   const head = <div className="who">{x.friendly && x.friendly.source !== 'fallback' && <span className="chip c-meta">{x.friendly.source}{x.friendly.recorded ? ` · ${x.friendly.recorded}` : ''}</span>}<span className="chip c-ask">{x.label}</span>{x.impact ? `impact ${x.impact}` : null}{x.applies_to && x.applies_to > 1 ? ` · one answer for ${x.applies_to}` : ''}</div>
   if (x.answered && !active) return (
@@ -133,6 +177,10 @@ function QCard({ x, jobId, rec, active, busy, err, diff, activate, answer }: { x
       <Picture x={x} jobId={jobId} />
       <p className="small dim">{x.kind === 'conflict' && x.conflict_message ? x.conflict_message : w.detail}</p>
       <p className="small" style={{ display: 'flex', gap: 8 }}><span aria-hidden="true">📏</span>{w.hint}</p>
+      {app.mode === 'real' && <div className="ans"><button className={'ib voice' + (rcd ? ' mic-on' : '')} aria-label={rcd ? 'Stop recording' : 'Say your answer'} aria-pressed={rcd} onClick={say} disabled={busy || vBusy}>{rcd ? '■' : '🎙'}</button>
+        <span className="small dim">{rcd ? 'Recording… tap ■ to stop.' : vBusy ? 'Transcribing…' : 'Say your answer'}</span></div>}
+      {hear && <p className="small dim">{hear}</p>}
+      {heardAns != null && <button className="btn btn-ghost btn-sm" onClick={() => answer(heardAns)} disabled={busy}>Use "{String(heardAns)}"</button>}
       {rec && <div className="understood" data-testid="recorded-answer"><span>Answer recorded from the owner's calipers: <b className="mono">{fmt(rec.value)}{rec.unit ? ` ${rec.unit}` : ''}</b></span>
         <div><button className="btn btn-ghost btn-sm" onClick={() => answer(rec.value)} disabled={busy}>Use this answer</button></div></div>}
       {x.kind === 'number' && <><div className="ans">{numInput}<button className="btn btn-primary btn-sm" onClick={num} disabled={busy}>{busy ? 'Rebuilding…' : 'Update model'}</button><button className="choice" onClick={() => answer('skip')} disabled={busy}>I don't know</button></div>
@@ -163,6 +211,8 @@ function Composer({ jobId, itemId, onApplied }: { jobId: string; itemId: string 
   const [text, setText] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState('')
   const [prop, setProp] = useState<Proposal | null>(null), [heard, setHeard] = useState<Voice | null>(null)
   const [rec, setRec] = useState(false), recorder = useRef<Recorder | null>(null)
+  // Voice needs a live server and a live model: replay and mock never call Muse Voice, so a line says so up front. The mic stays usable (e2e checks the WAV it sends).
+  const voiceOff = app.mode === 'replay' ? 'Voice is off in replay mode: a recording is not transcribed. Type your answer.' : app.mode === 'mock' ? 'Voice is off in mock mode: a recording is not transcribed. Type your answer.' : app.down ? 'Voice needs the server, which is not answering.' : ''
   useEffect(() => () => recorder.current?.cancel(), [])
   const send = async () => {
     if (!text.trim()) { setErr('Type or say what is wrong first.'); return }
@@ -174,12 +224,18 @@ function Composer({ jobId, itemId, onApplied }: { jobId: string; itemId: string 
       setRec(false); setBusy('Transcribing…'); setErr('')
       try {
         const wav = await recorder.current!.stop(); recorder.current = null
-        const v = await api.voice(jobId, wav, itemId ?? undefined)
-        setHeard(v); setText(v.transcript); setProp(v.proposal)
+        if (app.mode === 'real') {                                // show the words as soon as they exist; the Spark proposal (slower) follows
+          const t = await api.transcribe(wav)
+          setHeard({ ...t, audio_kept: false, proposal: null as unknown as Proposal }); setText(t.transcript); setBusy('Working out the change…')
+          setProp(await api.propose(jobId, t.transcript, itemId ?? undefined))
+        } else {
+          const v = await api.voice(jobId, wav, itemId ?? undefined)
+          setHeard(v); setText(v.transcript); setProp(v.proposal)
+        }
       } catch (e) { setErr(editErr(e)); setProp(null) } finally { setBusy('') }
       return
     }
-    try { recorder.current = await record(); setRec(true); setErr('') } catch { setErr('The microphone is not available. Allow it in the browser, or type instead.') }
+    try { recorder.current = await record(); setRec(true); setErr('') } catch { setErr('Microphone blocked. Allow it in the browser, or type instead.') }
   }
   const confirm = async () => {
     if (!prop?.correction) return
@@ -195,12 +251,13 @@ function Composer({ jobId, itemId, onApplied }: { jobId: string; itemId: string 
       <div className="composer"><button className={'ib voice' + (rec ? ' mic-on' : '')} aria-label={rec ? 'Stop recording' : 'Speak'} aria-pressed={rec} onClick={mic} disabled={!!busy}>{rec ? '■' : '🎙'}</button>
         <textarea rows={1} placeholder="e.g. this strip is flat like the bottom" value={text} onChange={e => { setText(e.target.value); setErr('') }} aria-label="Tell SnapPart something" />
         <button className="ib fill" aria-label="Send" onClick={send} disabled={!!busy || rec}>↑</button></div>
-      <p className="tiny muted">{rec ? 'Recording… tap ■ to stop. ' : ''}Spoken with Muse Voice Transcribe. The audio is deleted right after it becomes text; nothing changes until you confirm.</p>
+      <p className="tiny muted">{rec ? 'Recording… tap ■ to stop. ' : ''}{voiceOff || 'Spoken with Muse Voice Transcribe. The audio is deleted right after it becomes text; nothing changes until you confirm.'}{voiceOff ? ' Nothing changes until you confirm.' : ''}</p>
       {busy && <span className="small dim">{busy}</span>}
       <div className="err">{err}</div>
       {heard && <div className="note"><span className="chip c-meta">{heard.source}</span>Heard ({heard.audio_seconds} s, audio not kept): "{heard.transcript}"</div>}
       {prop && <div className="understood" data-testid="proposal"><span className="tiny" style={{ color: 'var(--meta)' }}>{!prop.source || /fallback|keyword|computer/.test(prop.source) ? 'Picked from your words' : prop.source}</span>
         <b>{prop.correction ? 'Understood: ' : ''}{prop.explanation}</b>
+        {!prop.correction && !itemId && <span className="small dim">Edits change one area. Tap Mark something on the model (or pick an area card), then say it again. SnapPart cannot make a new part from words alone.</span>}
         {prop.correction && <span className="small dim mono">{String(prop.correction.op).replace(/_/g, ' ')}{prop.action !== 'none' ? ` · ${prop.action.replace(/_/g, ' ')}` : ''}</span>}
         <div style={{ display: 'flex', gap: 8 }}>{prop.correction && <button className="btn btn-primary btn-sm" onClick={confirm} disabled={!!busy}>Confirm</button>}<button className="btn btn-ghost btn-sm" onClick={() => { setProp(null); setHeard(null) }}>Cancel</button></div></div>}
     </div>

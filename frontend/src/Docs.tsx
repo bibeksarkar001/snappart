@@ -34,19 +34,19 @@ export function Next() {
 
 export function Privacy() {
   return (
-    <div className="wrap flow"><div className="doc"><span className="label">Privacy policy</span><h2 style={{ marginTop: 12 }}>Your part, your files.</h2><p className="small muted">Last updated <span className="phl">[date]</span></p>
+    <div className="wrap flow"><div className="doc"><span className="label">Privacy policy</span><h2 style={{ marginTop: 12 }}>Your part, your files.</h2><p className="small muted">Last updated 4 November 2026</p>
       <h3>What we collect</h3><ul><li>Frames your browser pulls from your videos (not the full videos).</li><li>Voice recordings, only if you speak, only to make text.</li><li>What you type: part name, description, answers, corrections.</li><li>What we make: model, report, question cards, review images.</li><li>IP address and request times, only to prevent abuse.</li></ul><p>No name, email or account.</p>
-      <h3>How it's processed</h3><p>Frames, text and voice go to Meta's Model API (SAM 3.1, Muse Spark 1.3, Muse Voice Transcribe) on the standard endpoints, not the "contributor" ones under which content may be used for training. Site on Vercel, build server on <span className="phl">[backend host]</span>. We never sell data or use it for ads.</p>
+      <h3>How it's processed</h3><p>Frames, text and voice go to Meta's Model API (SAM 3.1, Muse Spark 1.3, Muse Voice Transcribe) on the standard endpoints, not the "contributor" ones under which content may be used for training. The site and build server run on hosting chosen by the project owner. The page loads its typeface (Geist) from Google Fonts, so Google sees your IP address when it loads. We never sell data or use it for ads.</p>
       <h3>How long we keep it</h3><p>Voice: deleted right after transcription. Frames, model, report and answers: 7 days, then deleted. Delete your part anytime from its Result page.</p>
-      <h3>Who can see your part</h3><p>Anyone with your private link or code. We don't list or publish parts. Contact <span className="phl">[contact email]</span>.</p></div></div>
+      <h3>Who can see your part</h3><p>Anyone with your private link or code. We don't list or publish parts. Questions or deletion requests: open an issue at github.com/bibeksarkar001/snappart.</p></div></div>
   )
 }
 
 export function Terms() {
   return (
-    <div className="wrap flow"><div className="doc"><span className="label">Terms of use</span><h2 style={{ marginTop: 12 }}>Before you print.</h2><p className="small muted">Last updated <span className="phl">[date]</span></p>
+    <div className="wrap flow"><div className="doc"><span className="label">Terms of use</span><h2 style={{ marginTop: 12 }}>Before you print.</h2><p className="small muted">Last updated 4 November 2026</p>
       <h3>Measurements can be wrong</h3><p>Check the sizes that matter before printing. Don't use SnapPart parts where failure could hurt someone (safety, vehicle, medical, electrical, load-bearing, child-safety, pressure or food-contact) unless a qualified person has checked them.</p>
       <h3>What you may make</h3><p>Parts you own or may copy, for repair and personal use. You're responsible for patents, design rights, copyrights and trademarks. <b style={{ color: 'var(--ink)' }}>No weapons or weapon parts, including any firearm component, and nothing illegal to make or own.</b></p>
-      <h3>No warranty</h3><p>Provided "as is". To the fullest extent the law allows, we aren't liable for loss or damage from using SnapPart or what you print. SnapPart is not made or endorsed by Meta. Governed by the laws of <span className="phl">[governing law]</span>.</p></div></div>
+      <h3>No warranty</h3><p>Provided "as is". To the fullest extent the law allows, we aren't liable for loss or damage from using SnapPart or what you print. SnapPart is not made or endorsed by Meta.</p></div></div>
   )
 }

@@ -26,16 +26,18 @@ export function useBeforeAfter(jobId: string | null, fallbackSrc: string | null 
     if (jobId) raw(`/v1/jobs/${jobId}/files/preview_before.glb`).then(() => setHas(true), () => setHas(false))
   }, [jobId])
   const src = jobId ? `/v1/jobs/${jobId}/files/${before ? 'preview_before' : 'preview'}.glb` : fallbackSrc
-  const seg: ReactNode = <div data-testid="before-after"><div className="seg" style={{ width: 'max-content' }}>
-    <button aria-pressed={before} disabled={!has} title={has === false ? 'Not available for this run' : undefined} onClick={() => setBefore(true)}>Before your answers</button>
-    <button aria-pressed={!before} onClick={() => setBefore(false)}>After your answers</button></div>
-    {has === false && <p className="tiny muted" style={{ marginTop: 6 }}>Before: Not available for this run.</p>}</div>
+  const seg: ReactNode = has === false
+    ? <p className="tiny muted" data-testid="before-after">Before is not available for this run.</p>
+    : <div data-testid="before-after"><div className="seg" style={{ width: 'max-content' }}>
+      <button aria-pressed={before} disabled={!has} title={has === null ? 'Checking' : undefined} onClick={() => setBefore(true)}>Before your answers</button>
+      <button aria-pressed={!before} onClick={() => setBefore(false)}>After your answers</button></div></div>
   return { src, before, seg }
 }
 
 const chip = (s: string) => ({ measured: 'c-meas', user_supplied: 'c-you', estimated: 'c-est', not_detected: 'c-unseen' }[s] ?? 'c-est')
 const word = (s: string) => ({ measured: 'Measured', user_supplied: 'You answered', estimated: 'Estimated', not_detected: "Can't be seen" }[s] ?? s)
-const val = (v: unknown, u: string) => (typeof v === 'number' ? `${+v.toFixed(2)}${u ? ' ' + u : ''}` : String(v))
+const val = (v: unknown, u: string): string =>
+  typeof v === 'number' ? `${+v.toFixed(2)}${u ? ' ' + u : ''}` : v == null ? 'not found' : typeof v === 'object' ? Object.values(v).map(x => val(x, '')).join(', ') : String(v)
 
 export function Result() {
   const app = useApp(), { draft } = app
@@ -92,7 +94,7 @@ export function Result() {
           {status === 'open' && <p className="small" style={{ marginTop: 6 }}>{openLink}</p>}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button className="btn btn-ghost btn-sm" onClick={() => app.go('review')}>Back to questions</button><a className="btn btn-primary btn-sm" href={fileUrl(draft.jobId, 'model.stl')} download data-testid="stl">Download STL{status === 'open' || isDraft ? ' (draft)' : ''}</a></div>
       </div>
-      {err && <div className="err">{err}</div>}
+      {err && <div className="err" role="alert">{err} <button className="link tiny" onClick={() => { setErr(''); api.report(jobId!).then(setRep).catch(e => setErr(errText(e))) }}>Retry</button></div>}
       <Tour />
       {afterOwner && <div className="note" data-testid="after-answers" style={{ marginBottom: 20 }}><RecChip />Showing the model after the owner's recorded caliper answers. Before shows the camera-only draft.</div>}
       <div className="res">

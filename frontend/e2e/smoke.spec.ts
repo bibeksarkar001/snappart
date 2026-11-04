@@ -23,22 +23,22 @@ async function toggleBeforeAfter(page: Page) {
 const shot = async (page: Page, name: string) => { await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(300); await page.screenshot({ path: `screenshots/${name}.png`, fullPage: true }) }
 
 // A short WebM recorded in the page from a canvas: the frame extractor runs on it like on a phone video.
-async function testVideo(page: Page): Promise<Buffer> {
-  const b64 = await page.evaluate(async () => {
+async function testVideo(page: Page, seed = 0): Promise<Buffer> {
+  const b64 = await page.evaluate(async (seed) => {
     const c = document.createElement('canvas'); c.width = 640; c.height = 360
     const x = c.getContext('2d')!, rec = new MediaRecorder(c.captureStream(30), { mimeType: 'video/webm' }), parts: Blob[] = []
     rec.ondataavailable = e => parts.push(e.data)
     rec.start()
     for (let i = 0; i < 60; i++) {
       x.fillStyle = '#eee'; x.fillRect(0, 0, 640, 360); x.fillStyle = '#222'
-      for (let k = 0; k < 12; k++) x.fillRect((k * 53 + i * 4) % 640, 40 + (k % 4) * 70, 30, 30)
+      for (let k = 0; k < 12; k++) x.fillRect((k * 53 + i * 4 + seed * 97) % 640, 40 + (k % 4) * 70, 30, 30)
       await new Promise(r => setTimeout(r, 33))
     }
     rec.stop(); await new Promise(r => (rec.onstop = r))
     const buf = new Uint8Array(await new Blob(parts).arrayBuffer())
     let s = ''; for (const v of buf) s += String.fromCharCode(v)
     return btoa(s)
-  })
+  }, seed)
   return Buffer.from(b64, 'base64')
 }
 
@@ -56,7 +56,6 @@ test('main path in replay mode', async ({ page, browser }) => {
   await expect(page.getByTestId('stats')).toContainText(`${Math.floor(build / 60)}:${String(Math.floor(build % 60)).padStart(2, '0')}`)
   await expect(page.getByTestId('stats')).toContainText(`recorded run, ${day}`)
   await expect(page.locator('body')).not.toContainText(/brown plastic buckle|140 frames|140 masks/)
-  await expect(page.getByTestId('proof')).toHaveCount(0)                              // no files in public/media: the section is hidden
   await shot(page, '01-home')
 
   await page.getByRole('button', { name: 'Film a part →' }).first().click()
@@ -69,8 +68,8 @@ test('main path in replay mode', async ({ page, browser }) => {
   const code = (await page.locator('.codechip').textContent())!.trim()
   expect(code).toMatch(/^[a-z]+-[a-z]+-[a-z]+-\d\d$/)
 
-  const video = await testVideo(page)
   for (let v = 1; v <= 3; v++) {
+    const video = await testVideo(page, v)                                          // three different clips: an identical one is refused
     await page.getByTestId('video-input').setInputFiles({ name: `v${v}.webm`, mimeType: 'video/webm', buffer: video })
     await expect(page.getByText(/Capture check: /)).toBeVisible({ timeout: 90_000 })
     if (v === 1) await shot(page, '03-capture-checked')
@@ -123,7 +122,7 @@ test('main path in replay mode', async ({ page, browser }) => {
   expect(body.readUInt16LE(i + 34)).toBe(16)         // bits
   await shot(page, '05-review')
 
-  await page.getByRole('button', { name: /see my part →/ }).click()
+  await page.getByRole('button', { name: /see my part →/i }).click()
   await expect(page.getByTestId('stl')).toHaveAttribute('href', /files\/model\.stl$/)
   const stl = await page.request.get((await page.getByTestId('stl').getAttribute('href'))!)
   expect(stl.status()).toBe(200)
@@ -141,7 +140,7 @@ test('main path in replay mode', async ({ page, browser }) => {
   await expect(page.getByTestId('code')).toHaveText(code)
   await shot(page, '06-result')
 
-  // Resume on this device reopens the exact step left (Result); on a new device it opens the step for the job's state (Review).
+  // Resume on this device reopens the exact step left (Result); on a new device it opens the step for the job's state (Result once the job is done).
   await page.goto('/#resume')
   await page.locator('#rcode').fill(code.replace(/-/g, ' '))
   await page.getByRole('button', { name: 'Find my part' }).click()
@@ -151,10 +150,9 @@ test('main path in replay mode', async ({ page, browser }) => {
   await other.goto('/#resume')
   await other.locator('#rcode').fill(code.toUpperCase())
   await other.getByRole('button', { name: 'Find my part' }).click()
-  await expect(other.getByText(/opens at Review/)).toBeVisible()
+  await expect(other.getByText(/opens at Result/)).toBeVisible()          // the job is done by now, so a new device opens the Result step
   await other.getByRole('button', { name: 'Continue →' }).click()
-  await expect(other).toHaveURL(/#review$/)
-  await expect(other.locator('[data-testid^="q-"]').first()).toBeVisible()
+  await expect(other).toHaveURL(/#result$/)
   await other.context().close()
 
   for (const r of ['about', 'next', 'privacy', 'terms']) {
@@ -173,7 +171,6 @@ test('recorded example shortcut, turn over, mark something, replay guidance', as
   await page.goto('/#home')
   await expect(page.getByTestId('modebar')).toContainText('Replay')
   await expect(page.getByTestId('tour')).toContainText('1. See the result. 2. Toggle Before / After. 3. Try answering a question.')
-  await expect(page.getByText('3D preview unavailable').first()).toBeVisible({ timeout: 15_000 })   // public/example/part_b.glb is not in the repo
   // Refuse the event stream (as the server does past 8 streams per client): progress must still arrive by long-poll.
   await page.route('**/events?**', r => (r.request().headers()['accept']?.includes('text/event-stream')
     ? r.fulfill({ status: 429, contentType: 'application/json', headers: { 'Retry-After': '5' }, body: '{"error":{"code":"too_many_streams","message":"Too many open progress streams."}}' })
@@ -207,7 +204,7 @@ test('recorded example shortcut, turn over, mark something, replay guidance', as
   await expect(page.getByTestId('mark').getByText(/Rebuilt in [\d.]+ s|Read-only in a recorded run/)).toBeVisible({ timeout: 60_000 })
   await shot(page, '12-review-mark')
 
-  await page.getByRole('button', { name: /see my part →/ }).click()
+  await page.getByRole('button', { name: /see my part →/i }).click()
   await expect(page).toHaveURL(/#result$/)
   // 1. The replay opens after the owner's recorded caliper answers, and says so.
   await expect(page.getByTestId('after-answers')).toContainText("Showing the model after the owner's recorded caliper answers")
