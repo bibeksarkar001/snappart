@@ -182,7 +182,7 @@ The golden test needs private test files that are not in this repository; withou
 
 ## Built during the hackathon
 
-Everything here was written during the hackathon window. The history starts on Oct 26, 2026 (IST) with the initial commit and no code from before kickoff is included. The Meta Global AI Developer Hackathon ran Oct 26 to Nov 4, 2026.
+Everything here was written during the hackathon window. The history starts on Oct 26, 2026 (20:22 UTC), with the initial commit and no code from before kickoff is included. The Meta Global AI Developer Hackathon ran Oct 26 to Nov 4, 2026.
 
 ## Built with open source
 
