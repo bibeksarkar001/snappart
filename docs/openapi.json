@@ -1022,7 +1022,7 @@
   "/v1/jobs/{job_id}/voice": {
    "post": {
     "summary": "Post Voice",
-    "description": "Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> correction proposal. The audio is\nheld in memory only and dropped as soon as it is transcribed. If transcription is not possible the error says to type instead.",
+    "description": "Audio (WAV; other formats only if ffmpeg is installed) -> transcript (Muse Voice Transcribe) -> a proposal: with question_id (a\nquestion that is open), a proposed answer to it; otherwise a correction proposal. The audio is held in memory only and dropped as\nsoon as it is transcribed. Nothing is applied: the user confirms. If transcription is not possible the error says to type instead.",
     "operationId": "post_voice_v1_jobs__job_id__voice_post",
     "parameters": [
      {
@@ -1044,6 +1044,43 @@
        }
       }
      }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/voice/transcribe": {
+   "post": {
+    "summary": "Post Transcribe",
+    "description": "Prepare step, before any job exists: audio (WAV) -> transcript only (Muse Voice Transcribe), to fill the part description.\nHeld in memory and dropped as soon as it is transcribed; same limits and rate limit as the job voice endpoint.",
+    "operationId": "post_transcribe_v1_voice_transcribe_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_post_transcribe_v1_voice_transcribe_post"
+       }
+      }
+     },
+     "required": true
     },
     "responses": {
      "200": {
@@ -1151,6 +1188,99 @@
     }
    }
   },
+  "/v1/recorded/calipers": {
+   "get": {
+    "summary": "Recorded Calipers",
+    "description": "The recorded part B run's sizes against the owner's calipers (any mode: the bundle is part of the repository).",
+    "operationId": "recorded_calipers_v1_recorded_calipers_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/recorded-answers": {
+   "get": {
+    "summary": "Recorded Answers",
+    "description": "Replay only: the owner's answers saved with the recording, labelled user_supplied, so the app can offer \"Use this answer\".",
+    "operationId": "recorded_answers_v1_jobs__job_id__recorded_answers_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/jobs/{job_id}/inside": {
+   "get": {
+    "summary": "Get Inside",
+    "description": "How this build worked: every uploaded frame as a small JPEG with SAM's accepted outline, the camera pose per frame, per-stage\ntimings and this job's Meta call log. Kept with the job (same retention and delete); empty for mock builds.",
+    "operationId": "get_inside_v1_jobs__job_id__inside_get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/meta/models": {
    "get": {
     "summary": "Meta Models",
@@ -1228,6 +1358,20 @@
     ],
     "title": "AnswersRequest"
    },
+   "Body_post_transcribe_v1_voice_transcribe_post": {
+    "properties": {
+     "audio": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio"
+     }
+    },
+    "type": "object",
+    "required": [
+     "audio"
+    ],
+    "title": "Body_post_transcribe_v1_voice_transcribe_post"
+   },
    "Body_post_voice_v1_jobs__job_id__voice_post": {
     "properties": {
      "audio": {
@@ -1246,6 +1390,18 @@
        }
       ],
       "title": "Item Id"
+     },
+     "question_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[a-z0-9_]{1,40}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Question Id"
      }
     },
     "type": "object",
@@ -1377,6 +1533,18 @@
        }
       ],
       "title": "Capture Check"
+     },
+     "recorded": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recorded"
      }
     },
     "type": "object",
@@ -1498,6 +1666,13 @@
       "title": "Radius Mm",
       "default": 3.0
      },
+     "depth_mm": {
+      "type": "number",
+      "maximum": 20.0,
+      "minimum": 0.2,
+      "title": "Depth Mm",
+      "default": 3.0
+     },
      "normal": {
       "anyOf": [
        {
@@ -1557,6 +1732,18 @@
       },
       "type": "array",
       "title": "Models"
+     },
+     "recorded": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recorded"
      }
     },
     "type": "object",

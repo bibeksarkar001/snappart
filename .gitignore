@@ -238,3 +238,15 @@ CLAUDE.md
 
 # TLS keys for the reverse proxy
 deploy/tls/
+
+# Local recordings, downloaded models and test output: never commit
+*.mov
+*.MOV
+/snappart-*-model.stl
+snappart-*-model.stl
+**/test-results/
+**/playwright-report/
+*.pem
+*.key
+*.p12
+scratch/

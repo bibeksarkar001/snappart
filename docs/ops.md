@@ -90,7 +90,7 @@ Host, domain, contact email and governing law are not backend settings. They are
 | `SNAPPART_SPARK_MAX_TOKENS` | 4000 | Reasoning plus answer |
 | `SNAPPART_SPARK_TEMPERATURE` | 0.1 | |
 | `SNAPPART_SPARK_SECOND_OPINION` | on | Capture-check second opinion (real mode) |
-| `SNAPPART_DAILY_BUDGET_CALLS` | 20000 | All Meta calls per UTC day; then "today's free capacity is used up" |
+| `SNAPPART_DAILY_BUDGET_CALLS` | 2000 | All Meta calls per UTC day (one build is about 224 SAM calls, so about 9 builds);  then "today's free capacity is used up" |
 | `SNAPPART_RATE_VOICE_PER_HOUR` | 30 | Per client |
 | `SNAPPART_RATE_PROPOSALS_PER_HOUR` | 120 | Per client |
 

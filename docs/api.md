@@ -144,7 +144,7 @@ Deterministic and fast: 0.7 s for 120 frames at 1920 px, measured on synthetic f
 
 ### `POST /v1/jobs/{job_id}/start`
 
-Body (optional): `{"build_anyway": true}`. This starts a build despite an `unusable` check, and the job keeps a warning saying so.
+Body (optional): `{"build_anyway": true}`. This starts a build despite an `unusable` check, and the job keeps a warning saying so. It does not override `409 capture_blocked`: a clip that repeats another video, or two clips that never go round the part, cannot be built (retake them).
 
 - **Admission control:**
   - The queue is bounded (`max_queue_len`): when it is full, the response is `503 queue_full` with `Retry-After` and how many builds are ahead.
@@ -273,7 +273,7 @@ Body: `{"answers": {"groove_depth_mm": 2.0, "bump_top_shape": "skip"}}`.
 
 ### `POST /v1/jobs/{job_id}/corrections`, `GET .../corrections`, `DELETE .../corrections/{id}`
 
-- **POST** body: `{"correction": {...}}`. It must be exactly one of the corrections engine's five ops, with typed parameters (schema in `backend/capture/corrections.py`): `flatten_region`, `remove_region`, `move_feature_to_opposite_face`, `set_feature_shape`, `add_feature`. Feature and plane names must exist in the model; anything else returns `422 invalid_correction`. The response is `{"correction_id": "c_111755f0efcf", "rebuild_needed": true}`.
+- **POST** body: `{"correction": {...}}`. It must be exactly one of the corrections engine's seven ops, with typed parameters (schema in `backend/capture/corrections.py`): `flatten_region`, `remove_region`, `remove_feature` (a whole detected feature: `grooves`, `bump` or `plate`), `remove_disc` (a round cut along a surface normal: `centre`, `normal`, `radius_mm`, `from_mm`, where 0 is the surface and negative is into the part; works on any face direction), `move_feature_to_opposite_face`, `set_feature_shape`, `add_feature`. NaN, infinity and a zero `normal` are refused (`422`). An op on a feature that was removed is skipped. Feature and plane names must exist in the model; anything else returns `422 invalid_correction`. The response is `{"correction_id": "c_111755f0efcf", "rebuild_needed": true}`.
 - **GET** lists all corrections in order, including undone ones (`"reverted": true`).
 - **DELETE** undoes one correction: `{"undone": "c_...", "rebuild_needed": true}`.
 
@@ -318,11 +318,11 @@ Each review item has an image, a region (`centre`, `normal`, `polygon_xy`, `z_mm
 | Opposite side | moves the feature through the part |
 | Remove (single-video feature) | removes the feature |
 
-- These areas must face up or down; sideways areas return `422 choice_not_available` for Remove and Make flat.
+- Marks you place yourself work on any face: up- or down-facing spots use a cut band, sideways spots a round `remove_disc` cut. Other review items must face up or down; sideways ones return `422 choice_not_available` for Remove and Make flat.
 - Changing your mind undoes the earlier choice's edit.
 - The response is `{"item": "M01", "decision": "Make flat", "correction_id": "c_...", "rebuild_needed": true}`.
 
-`POST .../marks` adds your own spot (at most 20 per part): `{"point": [x, y, z], "radius_mm": 3, "normal": [0, 0, 1], "note": "scratch"}`. The point is in the part frame in mm, as the 3D viewer reports it. The spot becomes item `U01`, `U02`, ..., with the same three choices.
+`POST .../marks` adds your own spot (at most 20 per part): `{"point": [x, y, z], "radius_mm": 3, "depth_mm": 3, "normal": [0, 0, 1], "note": "scratch"}`. `radius_mm` is 0.5 to 20 and `depth_mm` (how far Remove cuts into the part) 0.2 to 20; a zero normal or a non-finite number is `422`. The point is in the part frame in mm, as the 3D viewer reports it. The spot becomes item `U01`, `U02`, ..., with the same three choices.
 
 ### `POST /v1/jobs/{job_id}/accept`
 
@@ -428,6 +428,10 @@ If the action needs an area and none is selected, the response is `correction: n
 | `voice_unavailable` | 503 | Mock mode, or no key |
 | `transcription_failed` | 502 | The transcription call failed |
 | `daily_capacity_used` | 503 | The daily budget is used up |
+
+### `POST /v1/voice/transcribe` (no job needed)
+
+Same recording rules as the job voice route (WAV, 32 MB, rate limited as voice). It returns `{"transcript", "audio_seconds", "source", "audio_kept": false}` and proposes nothing, so the first screen can speak a part description before a job exists. `503 voice_unavailable` in mock or replay mode.
 
 ### `GET /v1/jobs/{job_id}/summary`
 
