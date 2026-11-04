@@ -6,6 +6,8 @@
 
 **Film a part on a printed mat. Get a measured, printable STL and an honest report.**
 
+**[▶ Watch the demo video (YouTube)](https://youtu.be/nq1fXeKzg7A)**
+
 <br>
 
 ![Status](https://img.shields.io/badge/status-hackathon%20build-5ab4ff?style=flat-square)
@@ -13,6 +15,7 @@
 ![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
 ![Python](https://img.shields.io/badge/python-3.11-3776ab?style=flat-square)
 
+[Demo video](https://youtu.be/nq1fXeKzg7A) ·
 [How it works](#how-it-works) ·
 [Real results](#real-results) ·
 [Honest labels](#honest-labels) ·
