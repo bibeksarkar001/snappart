@@ -23,20 +23,38 @@ SCHEMA = {"oneOf": [
     {"type": "object", "required": ["op", "feature_id"], "properties": {**COMMON, "op": {"const": "move_feature_to_opposite_face"}, "feature_id": {"type": "string"}}},
     {"type": "object", "required": ["op", "feature_id", "shape"], "properties": {**COMMON, "op": {"const": "set_feature_shape"}, "feature_id": {"type": "string"},
                                                                               "shape": {"enum": SHAPES}, "top_radius_mm": {"type": ["number", "null"], "exclusiveMinimum": 0}}},
+    {"type": "object", "required": ["op", "feature_id"], "properties": {**COMMON, "op": {"const": "remove_feature"}, "feature_id": {"type": "string"}}},
+    {"type": "object", "required": ["op", "centre", "normal", "radius_mm", "from_mm"], "properties": {**COMMON, "op": {"const": "remove_disc"},
+        "centre": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}, "normal": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "radius_mm": {"type": "number", "exclusiveMinimum": 0, "maximum": 30}, "from_mm": {"type": "number", "minimum": -30, "maximum": 30}}},
     {"type": "object", "required": ["op", "feature_id", "feature"], "properties": {**COMMON, "op": {"const": "add_feature"}, "feature_id": {"type": "string"},
                                                                                 "feature": {"type": "object"}}},
 ]}
-OPS = ("flatten_region", "remove_region", "move_feature_to_opposite_face", "set_feature_shape", "add_feature")
+OPS = ("flatten_region", "remove_region", "remove_feature", "remove_disc", "move_feature_to_opposite_face", "set_feature_shape", "add_feature")
+
+
+def _finite(v):
+    """No NaN or infinity anywhere in a correction (JSON from Python clients may carry them; they turn a model into garbage)."""
+    import math
+    if isinstance(v, dict):
+        return all(_finite(x) for x in v.values())
+    if isinstance(v, (list, tuple)):
+        return all(_finite(x) for x in v)
+    return not isinstance(v, float) or math.isfinite(v)
 
 
 def validate(c, feature_ids=(), plane_names=()):
     """Raise ValueError unless c is one well-formed correction that names existing features / planes."""
     import jsonschema
+    if not _finite(c):
+        raise ValueError("invalid correction: numbers must be finite")
     try:
         jsonschema.validate(c, SCHEMA)
     except jsonschema.ValidationError as e:
         raise ValueError(f"invalid correction: {e.message}") from None
-    if c["op"] in ("move_feature_to_opposite_face", "set_feature_shape") and c["feature_id"] not in feature_ids:
+    if c["op"] == "remove_disc" and sum(x * x for x in c["normal"]) < 1e-9:
+        raise ValueError("invalid correction: normal must not be the zero vector")
+    if c["op"] in ("move_feature_to_opposite_face", "set_feature_shape", "remove_feature") and c["feature_id"] not in feature_ids:
         raise ValueError(f"unknown feature {c['feature_id']!r}")
     if c["op"] == "flatten_region" and isinstance(c["to_plane"], str) and c["to_plane"] not in plane_names:
         raise ValueError(f"unknown plane {c['to_plane']!r}")

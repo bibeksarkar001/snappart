@@ -393,7 +393,7 @@ def masks_from_crops(crops, intr, sam, concepts=None):
             cand.append((i, box, crop, fin, rv, tv, cis, pick[0], (col > 0).sum(), (pick[1] > 0).sum(), (pick[1] > 0).sum() / (K[0, 0] / dist) ** 2))
         med = float(np.median([c[10] for c in cand])) if cand else 0
         out[n] = [(i, box, crop, fin, rv, tv) for i, box, crop, fin, rv, tv, cis, conf, ca, sa, amm in cand
-                  if conf >= C.MIN_SAM_CONF and (cis >= C.MIN_COLOUR_IN_SAM or (ca > 1.5 * sa and 0.5 * med < amm < 1.5 * med))]
+                  if conf >= C.MIN_SAM_CONF and (cis >= C.MIN_COLOUR_IN_SAM or ((ca > 1.5 * sa or not part_hue) and 0.5 * med < amm < 1.5 * med))]   # achromatic part: area consistency only
     return out, calls
 
 

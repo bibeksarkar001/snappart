@@ -47,6 +47,9 @@ def adapter(segment, jpeg_quality: int = 92, log=lambda m: None):
     pipeline tries its fallback concept for it."""
     def sam(jobs):
         async def one(key, crop, concept):
+            if crop is None or not crop.size:                         # an empty crop would crash imencode: skip it, report it
+                log(f"SAM skipped for {key}: empty crop")
+                return key, None
             ok, enc = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
             try:
                 res = await segment(enc.tobytes(), concept)

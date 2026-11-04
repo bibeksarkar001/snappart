@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     spark_reasoning_effort: str = Field("low", pattern="^(minimal|low|medium|high|xhigh|max)$")
     spark_max_tokens: int = 4000                         # reasoning + answer (reasoning counts against max_tokens)
     spark_second_opinion: bool = True                    # capture check: ask Muse Spark about a few frames (real mode only)
-    daily_budget_calls: int = 20000                      # all Meta calls per UTC day; then a friendly hard stop
+    daily_budget_calls: int = 2000                       # all Meta calls per UTC day (about 9 builds); then a friendly hard stop. Raise it only for a key you can afford
 
     # upload limits
     videos_per_job: int = 3
@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     # capture check (deterministic)
     min_usable_frames: int = 12                          # per video
     blur_min_laplacian_var: float = 60.0                 # Laplacian variance at 1280 px; sharp real frames of part B: 200-730
+    min_orbit_bins: int = 3                              # fewer sectors than this is not an orbit at all: the carve smears along the one viewing line
     min_coverage_bins: int = 9                           # of 12 azimuth sectors of 30 deg
     orbit_deg_per_s: float = 12.0                        # assumed orbit speed for "film N more seconds" tips (a 30 s orbit)
 

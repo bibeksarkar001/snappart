@@ -194,6 +194,7 @@ def build(unfeatured_mesh, feats, answers, user_given=(), caliper=None, held_out
             "questions": questions(feats, {k: answers[k] for k in user_given if k in answers}, meas["height"]),
             "low_confidence_regions": low, "not_detected": recesses, "coverage_requests": requests, "checks": checks, "warnings": w, "timings": timings,
             "corrections": list(corrections or []), "review_items": list(review_items or []), "details": list(details or []),
+            "detected_not_cut_into_model": [{**d, "note": "detected, not cut into the model"} for d in details or []],
             "quality": quality}
 
 

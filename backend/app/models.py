@@ -1,7 +1,7 @@
 """Request and response schemas. Requests forbid unknown fields; responses are what docs/api.md documents."""
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 class Strict(BaseModel):
@@ -29,11 +29,27 @@ class ReviewChoice(Strict):
     choice: str = Field(..., max_length=40)
 
 
+def _finite(v):
+    import math
+    if isinstance(v, (list, tuple)):
+        return all(_finite(x) for x in v)
+    return not isinstance(v, float) or math.isfinite(v)
+
+
 class MarkRequest(Strict):
     point: list[float] = Field(..., min_length=3, max_length=3)     # part frame, mm (from the 3D viewer)
     radius_mm: float = Field(3.0, ge=0.5, le=20.0)
+    depth_mm: float = Field(3.0, ge=0.2, le=20.0)                   # how far Remove cuts into the part (sideways spots)
     normal: list[float] | None = Field(None, min_length=3, max_length=3)
     note: str | None = Field(None, max_length=200)
+
+    @model_validator(mode="after")
+    def _sane(self):
+        if not (_finite(self.point) and _finite(self.radius_mm) and _finite(self.depth_mm) and _finite(self.normal or [])):
+            raise ValueError("point, normal, radius and depth must be finite numbers")
+        if self.normal is not None and sum(x * x for x in self.normal) < 1e-9:
+            raise ValueError("normal must not be the zero vector")
+        return self
 
 
 class ErrorBody(BaseModel):

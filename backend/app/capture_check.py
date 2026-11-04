@@ -3,6 +3,7 @@ per video, usable frames and angular coverage, with concrete tips; a combined az
 
 The pose uses an approximate camera (focal = 0.75 x the long edge, centred principal point): good enough for where the camera stood, not
 for measuring. Videos: 1 = high orbit, 2 = low orbit, 3 = part flipped."""
+import hashlib
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -84,7 +85,7 @@ def check(frames_by_video: dict, settings) -> dict:
     for (v, i, _), st in zip(jobs, stats):
         per[v].append({"index": i, **st})
     cover = np.zeros((len(EL_EDGES) - 1, AZ_BINS), int)
-    videos, usable_all = {}, True
+    videos, usable_all, blocked, flat = {}, True, False, []
     for v in (1, 2, 3):
         fr = sorted(per[v], key=lambda f: f["index"])
         good = [f for f in fr if f.get("usable")]
@@ -122,14 +123,25 @@ def check(frames_by_video: dict, settings) -> dict:
                 tips.append(f"Video 1 should look down from higher up (median elevation {np.median(els):.0f} deg; aim for 50-70).")
             if els and v == 2 and float(np.median(els)) > 45:
                 tips.append(f"Video 2 should be filmed lower, near table height (median elevation {np.median(els):.0f} deg; aim for 20-40).")
-            verdict = "unusable" if len(good) < settings.min_usable_frames else "weak" if len(bins) < settings.min_coverage_bins else "ok"
-            if verdict == "unusable":
+            verdict = "unusable" if len(good) < settings.min_usable_frames or len(bins) < settings.min_orbit_bins else "weak" if len(bins) < settings.min_coverage_bins else "ok"
+            if len(good) < settings.min_usable_frames:
                 tips.insert(0, f"Video {v} ({ROLE[v]}) has only {len(good)} usable frames of {n} (needs {settings.min_usable_frames}).")
+            elif len(bins) < settings.min_orbit_bins:
+                flat.append(v)
+                tips.insert(0, f"Video {v} ({ROLE[v]}) does not go around the part: the camera covers only {len(bins) * 30} of 360 deg. Walk slowly all the way round it, keeping the part in the middle.")
         usable_all &= verdict in ("ok", "weak")
         videos[v] = {"role": ROLE[v], "verdict": verdict, "frames": len(fr), "usable_frames": len(good), "azimuth_bins_covered": bins,
                      "median_elevation_deg": round(float(np.median([f["el"] for f in good])), 1) if good else None, "tips": tips,
                      "frame_stats": fr}
-    return {"usable": usable_all, "verdict": "usable" if usable_all else "unusable", "videos": videos,
+    seen = {}
+    for v in (1, 2, 3):                                                                  # the same clip uploaded twice gives no new view
+        h = tuple(hashlib.sha1(b).digest() for _, b in sorted(frames_by_video.get(v, {}).items()))
+        if h and h in seen:
+            videos[v]["verdict"] = "unusable"; usable_all, blocked = False, True
+            videos[v]["tips"].insert(0, f"Video {v} ({ROLE[v]}) is the same clip as video {seen[h]}. Film it separately: {'high, looking down' if v == 1 else 'low, near table height' if v == 2 else 'with the part turned over'}.")
+        seen.setdefault(h, v)
+    blocked = blocked or len(flat) >= 2                                                   # two clips that never go round the part: the carve smears into a slab
+    return {"usable": usable_all, "blocked": blocked, "verdict": "usable" if usable_all else "unusable", "videos": videos,
             "coverage_map": {"azimuth_bin_deg": 30, "elevation_edges_deg": list(EL_EDGES), "counts": cover.tolist()},
             "method": "deterministic: ArUco markers, Laplacian sharpness, exposure, approximate pose (focal 0.75 x long edge)",
             "second_opinion": None}

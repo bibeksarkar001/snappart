@@ -70,3 +70,36 @@ def test_schema_and_sentence_hook():
     assert Cr.from_sentence("looks fine", item, ["bump"], ["bottom"], lambda p: '{"op": "none"}') is None
     with pytest.raises(ValueError):
         Cr.from_sentence("make it a star", item, ["bump"], ["bottom"], lambda p: '{"op": "set_feature_shape", "feature_id": "bump", "shape": "star"}')
+
+
+def test_remove_feature_and_disc():
+    m = slab_model()
+    base = Mo.rebuild(m, ANS)
+    gone = Mo.rebuild(m, ANS, [{"op": "remove_feature", "feature_id": "bump"}])
+    assert vol(base) - vol(gone) > 8 * 2.3 * 1.0 and gone[0][:, 2].min() > -0.1            # the ridge on the bottom face is not built
+    Cr.validate({"op": "remove_feature", "feature_id": "bump"}, ["bump"])
+    with pytest.raises(ValueError):
+        Cr.validate({"op": "remove_feature", "feature_id": "nope"}, ["bump"])
+    # a round cut into the slab's +x side wall (sideways), 3 mm radius, 2 mm deep: a 2 mm deep dent, about pi*9*2 mm3 of material
+    disc = {"op": "remove_disc", "centre": [10.0, 0.0, 3.0], "normal": [1.0, 0, 0], "radius_mm": 3.0, "from_mm": -2.0}
+    cut = Mo.rebuild(m, ANS, [disc])
+    assert carve.edge_census(*cut)["watertight"] and abs((vol(base) - vol(cut)) - np.pi * 9 * 2) < 12.0
+    assert cut[0][(np.abs(cut[0][:, 1]) < 1) & (np.abs(cut[0][:, 2] - 3) < 1), 0].max() < 8.3      # the wall at y 0, z 3 now stops near x 8
+    flat = Mo.rebuild(m, ANS, [{**disc, "from_mm": 0.0}])
+    assert abs(vol(base) - vol(flat)) < 1.0                                               # flat at the surface: nothing stands above it
+    from app import spark
+    assert spark.rule_action("there is no hole, it is a screw")["action"] == "remove_feature"
+    c = spark.build_correction({"action": "remove_feature", "feature": "grooves"}, None, ["grooves", "bump"])
+    assert c["op"] == "remove_feature" and c["feature_id"] == "grooves"
+
+
+def test_editing_a_removed_feature_is_skipped_not_fatal():
+    m = slab_model()
+    gone = Mo.rebuild(m, ANS, [{"op": "remove_feature", "feature_id": "bump"}])
+    again = Mo.rebuild(m, ANS, [{"op": "remove_feature", "feature_id": "bump"}, {"op": "set_feature_shape", "feature_id": "bump", "shape": "box"},
+                                {"op": "move_feature_to_opposite_face", "feature_id": "bump"}])
+    assert np.array_equal(gone[0], again[0])
+    with pytest.raises(ValueError):
+        Cr.validate({"op": "remove_disc", "centre": [0, 0, 0], "normal": [0, 0, 0], "radius_mm": 3, "from_mm": -1}, [], [])
+    with pytest.raises(ValueError):
+        Cr.validate({"op": "remove_disc", "centre": [float("nan"), 0, 0], "normal": [1, 0, 0], "radius_mm": 3, "from_mm": -1}, [], [])

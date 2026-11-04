@@ -121,3 +121,27 @@ def test_mock_report_has_details_and_quality(env):
     assert rep["quality"]["status"] == "ready" and rep["quality"]["not_run"] == ["held_out_iou"]
     q = {x["id"]: x for x in cl.get(f"/v1/jobs/{jid}/questions").json()["questions"]}
     assert q["groove_depth_mm"]["default_source"] == "estimated" and q["bump_height_mm"]["default_source"] == "measured"
+
+
+def test_duplicate_video_cannot_be_built_anyway(env):
+    s, cl, st = env
+    jid = cl.post("/v1/jobs").json()["job_id"]
+    for v, azs in ((1, [0, 90, 180, 270]), (2, [0, 90, 180, 270]), (3, [10, 100, 190, 280])):    # video 2 repeats video 1 byte for byte
+        put_frames(cl, jid, v, 0, azs, 50)
+    cc = cl.post(f"/v1/jobs/{jid}/capture-check").json()
+    assert any("same clip as video 1" in t for t in cc["videos"]["2"]["tips"])
+    e = cl.post(f"/v1/jobs/{jid}/start", json={"build_anyway": True}).json()
+    assert e["error"]["code"] == "capture_blocked" and "same clip" in e["error"]["message"]
+
+
+def test_bad_marks_and_corrections_are_refused(env):
+    s, cl, st = env
+    jid = built(env)
+    for body in ({"point": [1, 1, 1], "normal": [0, 0, 0]}, {"point": [1, 1, 1], "radius_mm": 99}):
+        assert cl.post(f"/v1/jobs/{jid}/marks", json=body).status_code == 422
+    assert cl.post(f"/v1/jobs/{jid}/marks", content='{"point":[NaN,1,1],"normal":[0,0,1]}', headers={"content-type": "application/json"}).status_code == 422
+    assert cl.get(f"/v1/jobs/{jid}/questions").status_code == 200                       # the job is not poisoned
+    bad = {"op": "remove_disc", "centre": [0, 0, 0], "normal": [0, 0, 0], "radius_mm": 3, "from_mm": -1}
+    assert cl.post(f"/v1/jobs/{jid}/corrections", json={"correction": bad}).status_code == 422
+    nan = '{"correction": {"op": "remove_disc", "centre": [NaN, 0, 0], "normal": [1, 0, 0], "radius_mm": 3, "from_mm": -1}}'
+    assert cl.post(f"/v1/jobs/{jid}/corrections", content=nan, headers={"content-type": "application/json"}).status_code == 422

@@ -7,7 +7,7 @@ import json
 import re
 
 FRAME = re.compile(r"^/v1/jobs/[^/]+/videos/[^/]+/frames/[^/]+$")
-VOICE = re.compile(r"^/v1/jobs/[^/]+/voice$")
+VOICE = re.compile(r"^/v1/(jobs/[^/]+/voice|voice/transcribe)$")
 
 
 class Stop(Exception):

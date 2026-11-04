@@ -329,6 +329,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if not st.exists(job_id, "capture_check.json"):
                     raise ApiError(409, "check_needed", "Run the capture check before starting the build.")
                 cc = json.loads(st.get(job_id, "capture_check.json"))
+                if cc.get("blocked"):                                   # a clip that does not orbit or repeats another: building anyway gives a wrong model
+                    raise ApiError(409, "capture_blocked", "These videos cannot make a model: " + " ".join(
+                        t for v in cc["videos"].values() for t in v["tips"][:1]) + " Retake those videos (Retake button), each one a separate walk round the part.")
                 if not cc["usable"]:
                     reasons = " ".join(t for v in cc["videos"].values() for t in v["tips"][:1])
                     if not anyway:
@@ -604,7 +607,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             editable(c, job_id)
             if len(results.user_marks(st, job_id)) >= 20:
                 raise ApiError(422, "too_many_marks", "At most 20 marked spots per part.")
-            return results.add_mark(st, job_id, body.point, body.radius_mm, body.normal, body.note)
+            return results.add_mark(st, job_id, body.point, body.radius_mm, body.normal, body.note, body.depth_mm)
 
     @app.post("/v1/jobs/{job_id}/accept", response_model=models.Job)
     def accept(job_id: str):
@@ -719,6 +722,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else:
                     prop = proposal_for(c, job_id, tr["transcript"], item_id)
             return {"transcript": tr["transcript"], "audio_seconds": round(dur, 2), "source": meta_client.VOICE, "audio_kept": False, "proposal": prop}
+        return await run_in_threadpool(work)
+
+    @app.post("/v1/voice/transcribe")
+    async def post_transcribe(request: Request, audio: UploadFile = File(...)):
+        """Prepare step, before any job exists: audio (WAV) -> transcript only (Muse Voice Transcribe), to fill the part description.
+        Held in memory and dropped as soon as it is transcribed; same limits and rate limit as the job voice endpoint."""
+        if int(request.headers.get("content-length") or 0) > s.max_audio_bytes + 64 * 1024:
+            raise ApiError(413, "payload_too_large", f"The recording is larger than {s.max_audio_bytes // 2**20} MB.")
+        data = await audio.read(s.max_audio_bytes + 1)
+        await audio.close()
+
+        def work():
+            nonlocal data
+            with conn() as c:
+                ratelimit.limit(c, f"voice:{who(request)}", s.rate_voice_per_hour, what="voice messages")
+            cl_ = meta(None)
+            if cl_ is None:
+                raise ApiError(503, "voice_unavailable", f"Voice is not available here ({unavailable_reason()}). Please type instead.")
+            try:
+                wav, dur = voice.to_wav(data, s.max_audio_bytes)
+            except voice.AudioError as e:
+                raise ApiError(422, "bad_audio", f"{e} You can also type instead.") from None
+            finally:
+                data = None
+            try:
+                tr = meta_client.run(cl_.transcribe(wav, voice.KEYWORDS))
+            except meta_client.BudgetExceeded as e:
+                raise ApiError(503, "daily_capacity_used", e.message, retry_after_s=e.retry_after_s) from None
+            except meta_client.MetaError:
+                raise ApiError(502, "transcription_failed", "The recording could not be transcribed. Please type instead.") from None
+            finally:
+                del wav
+            return {"transcript": tr["transcript"], "audio_seconds": round(dur, 2), "source": meta_client.VOICE, "audio_kept": False}
         return await run_in_threadpool(work)
 
     @app.get("/v1/jobs/{job_id}/summary")

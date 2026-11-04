@@ -93,7 +93,7 @@ def write_inside(st, job_id, fr, poses, masks, intr, part_only=False):
             if part_only:
                 po = part_only_crop(und[poses[key][0][1]:poses[key][0][3], poses[key][0][0]:poses[key][0][2]].copy(), masks[key]) \
                     if key in masks else None
-                if po is not None:
+                if po is not None and po.size:
                     st.put(job_id, "outputs/" + name, cv2.imencode(".jpg", po, [cv2.IMWRITE_JPEG_QUALITY, 85])[1].tobytes())
             if key in masks and not part_only:
                 box = poses[key][0]
@@ -104,7 +104,8 @@ def write_inside(st, job_id, fr, poses, masks, intr, part_only=False):
             if not part_only:
                 s = THUMB_PX / max(und.shape[:2])
                 th = cv2.resize(und, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
-                st.put(job_id, "outputs/" + name, cv2.imencode(".jpg", th, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes())
+                if th.size:
+                    st.put(job_id, "outputs/" + name, cv2.imencode(".jpg", th, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes())
             if key in poses:
                 _, rv, tv = poses[key]
                 R = cv2.Rodrigues(np.asarray(rv, float))[0]
@@ -120,6 +121,8 @@ def finish(conn, st, job_id, views, T, field, g, feats, crops, timings, extra, t
     """Everything after the pipeline's carve: held-out IoU, model files, previews, report, review items, cards. Split out so it can be
     checked on cached views without new Meta calls."""
     n_views = sum(len(v) for v in views.values())
+    if n_views == 0:                                                      # no outline was accepted: say so, rather than crash in the held-out check and be retried
+        raise BuildFailure("no_outlines", "SnapPart could not outline the part in any frame. Check the part name, the light and that the part is on the mat, then film again.")
 
     t = time.perf_counter()
     events.emit(conn, job_id, "stage_started", {"stage": "held-out check"})

@@ -323,12 +323,12 @@ def review_items(conn, storage, jid) -> list[dict]:
     for it in list(rep.get("review_items") or []) + details + user_marks(storage, jid):
         pic = f"review/{it['id']}.png"
         out.append({**{k: it.get(k) for k in ("id", "kind", "reason", "question", "choices", "centre", "normal", "polygon_xy", "z_mm", "area_mm2",
-                                              "feature_id", "note")},
+                                              "feature_id", "note", "radius_mm", "depth_mm")},
                     "image": file_url(jid, pic) if storage.exists(jid, "outputs/" + pic) else None, "decision": ans.get(f"review:{it['id']}")})
     return out
 
 
-def add_mark(storage, jid, point, radius_mm, normal, note) -> dict:
+def add_mark(storage, jid, point, radius_mm, normal, note, depth_mm=3.0) -> dict:
     """A spot the user marks on the model (part frame, mm): a 12-sided region around the point, offered with the same three choices."""
     marks = user_marks(storage, jid)
     p, n = np.asarray(point, float), np.asarray(normal or [0, 0, 1.0], float)
@@ -338,7 +338,7 @@ def add_mark(storage, jid, point, radius_mm, normal, note) -> dict:
     it = {"id": f"U{len(marks) + 1:02d}", "kind": "user_mark", "reason": "marked by you", "question": "What should happen to the spot you marked?",
           "choices": ch, "centre": p.round(3).tolist(), "normal": n.round(3).tolist(), "polygon_xy": poly,
           "z_mm": [round(p[2] - 0.5, 3), round(p[2], 3), round(p[2] + 0.5, 3)],              # a thin band at the marked surface
-          "area_mm2": round(float(np.pi * radius_mm ** 2), 1),
+          "area_mm2": round(float(np.pi * radius_mm ** 2), 1), "radius_mm": radius_mm, "depth_mm": depth_mm,
           "note": note}
     storage.put(jid, "review/user_marks.json", json.dumps(marks + [it]).encode())
     return it
@@ -359,9 +359,16 @@ def review_correction(it: dict, choice: str) -> dict | None:
         raise ApiError(422, "choice_not_available", "This area has no height range recorded, so it can only be kept for now.")
     zlo, zmid, zhi = it["z_mm"]
     up = (it.get("normal") or [0, 0, 1])[2]
+    if abs(up) < 0.5 and it["kind"] == "user_mark" and it.get("centre"):       # a sideways spot: a round cut along its normal, floor at the surface (flat) or depth_mm inside (remove)
+        return {"op": "remove_disc", "centre": it["centre"], "normal": it["normal"], "radius_mm": it.get("radius_mm") or 3.0,
+                "from_mm": -float(it.get("depth_mm") or 3.0) if choice == "Remove" else 0.0, "source": "review", "review_item": it["id"],
+                "reason": f"user chose {choice.lower()}"}
     if abs(up) < 0.5:
         raise ApiError(422, "choice_not_available", "Remove and Make flat work on areas facing up or down for now; this one faces sideways.")
-    if choice == "Remove":
+    if choice == "Remove" and it["kind"] == "user_mark":                    # your mark: cut depth_mm into the part
+        dp = float(it.get("depth_mm") or 3.0)
+        z = [zmid - dp, zhi + 3.0] if up > 0 else [zlo - 3.0, zmid + dp]
+    elif choice == "Remove":
         z = [zlo - 0.2, zhi + 3.0] if up > 0 else [zlo - 3.0, zhi + 0.2]
     else:                                                                   # Make flat
         z = [zmid, zhi + 3.0] if up > 0 else [zlo - 3.0, zmid]

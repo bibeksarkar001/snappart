@@ -171,6 +171,22 @@ def remove_region_op(field, g, region):
     return np.minimum(field, np.clip(sd, -3, 3).astype(np.float32))
 
 
+def remove_disc_op(field, g, c):
+    """Cut away everything within radius_mm of the line through `centre` along `normal`, from `from_mm` along the normal (0 = the marked surface,
+    negative = into the part) outward. Works on any face direction; the cut floor is a flat disc."""
+    n = np.asarray(c["normal"], float); n /= np.linalg.norm(n)
+    ctr, r, z0 = np.asarray(c["centre"], float), float(c["radius_mm"]), float(c["from_mm"])
+    sl, X = _sub(g, field.shape, ctr - (r + 3.0), ctr + (r + 3.0))
+    d = X - ctr
+    a = d @ n
+    rho = np.linalg.norm(d - a[..., None] * n, axis=-1)
+    e1, e2 = rho - r, z0 - a                                            # outside the disc radius / below the cut floor (both positive = outside the cut)
+    sd = np.sqrt(np.maximum(e1, 0) ** 2 + np.maximum(e2, 0) ** 2) + np.minimum(np.maximum(e1, e2), 0)
+    out = field.copy()
+    out[sl] = np.minimum(field[sl], np.clip(sd, -3, 3).astype(np.float32))
+    return out
+
+
 def field_at(field, g, X):
     return map_coordinates(field, ((np.atleast_2d(X) - g.lo) / g.vs).T, order=1, mode="nearest")
 
@@ -195,6 +211,10 @@ def correct_features(field, g, feats, corrections):
         op = c["op"]
         if op == "add_feature":
             feats[c["feature_id"]] = dict(c["feature"])
+        elif op == "remove_feature":
+            feats.pop(c["feature_id"], None)                               # the whole feature goes: its pockets / ridge / plate are not cut or added
+        elif op in ("set_feature_shape", "move_feature_to_opposite_face") and c["feature_id"] not in feats:
+            continue                                                       # the feature was removed (or never detected): nothing to change
         elif op == "set_feature_shape":
             b = feats[c["feature_id"]]
             b.update(shape=c["shape"], shape_corrected=True, **({"top_radius_mm": c["top_radius_mm"]} if c.get("top_radius_mm") is not None else {}))
@@ -220,6 +240,8 @@ def region_corrections(field, g, feats, corrections, answers):
             f = plate_op(f, g, {"polygon_xy": c["region"]["polygon_xy"], "normal": n, "d": d}, th)
         elif c["op"] == "remove_region":
             f = remove_region_op(f, g, c["region"])
+        elif c["op"] == "remove_disc":
+            f = remove_disc_op(f, g, c)
     return f
 
 

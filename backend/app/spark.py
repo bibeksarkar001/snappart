@@ -133,9 +133,14 @@ def word_question(client, q: dict) -> dict:
 
 # ---------------------------------------------------------------- 4. correction proposals
 
-ACTIONS = ["make_flat", "remove", "move_to_opposite_side", "set_shape", "none"]
-PROPOSAL = _obj({"action": {"type": "string", "enum": ACTIONS}, "shape": {"type": "string", "enum": ["box", "rounded", "hill", "unchanged"]},
+ACTIONS = ["make_flat", "remove", "remove_feature", "move_to_opposite_side", "set_shape", "none"]
+FEATURES = ["grooves", "bump", "plate", "none"]
+PROPOSAL = _obj({"action": {"type": "string", "enum": ACTIONS}, "feature": {"type": "string", "enum": FEATURES}, "shape": {"type": "string", "enum": ["box", "rounded", "hill", "unchanged"]},
                  "top": {"type": "string", "enum": ["sharp", "slightly rounded", "quite rounded", "unchanged"]}, "explanation": _str(200)})
+PROPOSAL["required"].remove("feature")                               # only remove_feature needs it
+FEATURE_WORDS = (("grooves", re.compile(r"\b(holes?|slots?|hollow|pockets?|grooves?|openings?|cavit\w+|depth)\b", re.I)),
+                 ("bump", re.compile(r"\b(ridge|bump|rib|lock|lug)\b", re.I)), ("plate", re.compile(r"\b(plate|slab)\b", re.I)))
+GONE = re.compile(r"\b(remove|delete|get rid|no|not|without|normal|solid|fill|filled|isn'?t|nothing|doesn'?t have)\b", re.I)
 RULES = [(re.compile(r"\b(flat|level|smooth)\b", re.I), "make_flat"), (re.compile(r"\b(remove|delete|get rid|not there|shouldn'?t be)\b", re.I), "remove"),
          (re.compile(r"\b(other side|opposite|underside|wrong side|flip)\b", re.I), "move_to_opposite_side"),
          (re.compile(r"\b(round(ed)?|sharp|square|box|hill|pointed)\b", re.I), "set_shape")]
@@ -143,6 +148,9 @@ RULES = [(re.compile(r"\b(flat|level|smooth)\b", re.I), "make_flat"), (re.compil
 
 def rule_action(text: str) -> dict:
     """Deterministic fallback: the first matching keyword rule."""
+    for fid, rx in FEATURE_WORDS:                                       # "there is no hole": a whole detected feature goes
+        if rx.search(text) and GONE.search(text):
+            return {"action": "remove_feature", "feature": fid, "shape": "unchanged", "top": "unchanged", "explanation": "matched the words in your sentence"}
     for rx, act in RULES:
         if rx.search(text):
             shape = "box" if re.search(r"\b(square|box)\b", text, re.I) else "rounded" if re.search(r"\bround(ed)?\b", text, re.I) else \
@@ -158,7 +166,12 @@ def build_correction(choice: dict, item: dict | None, feature_ids) -> dict | Non
     act = choice["action"]
     if act == "none":
         return None
-    if act in ("make_flat", "remove"):
+    if act == "remove_feature":
+        fid = choice.get("feature") or "none"
+        if fid == "none" or fid not in feature_ids:
+            raise ValueError("This part has no " + {"grooves": "slots or holes", "bump": "ridge", "plate": "plate"}.get(fid, "feature") + " to remove.")
+        c = {"op": "remove_feature", "feature_id": fid, "reason": "user: this feature is not on the part"}
+    elif act in ("make_flat", "remove"):
         if item is None:
             raise ValueError("Select the area you mean first (a review item or a marked spot).")
         c = results.review_correction(item, "Make flat" if act == "make_flat" else "Remove")
@@ -241,7 +254,9 @@ def propose(client, text: str, item: dict | None, feature_ids) -> dict:
     t = clean_user_text(text)
     where = f"The user is looking at: {json.dumps({k: (item or {}).get(k) for k in ('kind', 'reason', 'question')})}." if item else \
         "The user has not selected an area."
-    instr = ("Map the user's request to one action: make_flat (the area should be flat), remove (that material is not on the real part), "
+    instr = ("Map the user's request to one action: remove_feature (a whole detected feature is wrong and should go: 'grooves' = the slots / holes / "
+             f"pockets, 'bump' = the ridge, 'plate' = the plate; the model has: {sorted(set(feature_ids))}; set feature to one of them), "
+             "make_flat (the area should be flat), remove (that material is not on the real part), "
              "move_to_opposite_side (the feature is on the other side), set_shape (the ridge's cross-section: box, rounded or hill, and its top), "
              "or none. " + where + f"\n<user_text>{t}</user_text>")
     choice, used = None, {"source": M.SPARK}
